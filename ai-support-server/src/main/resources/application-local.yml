@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ai_support
+    username: ai_support
+    password: change_me_locally
+    driver-class-name: org.postgresql.Driver
+
+  data:
+    redis:
+      host: localhost
+      port: 6380
+      password: change_me_locally
+      database: 0
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.zwf.aisupport.entity
+  configuration:
+    map-underscore-to-camel-case: true
