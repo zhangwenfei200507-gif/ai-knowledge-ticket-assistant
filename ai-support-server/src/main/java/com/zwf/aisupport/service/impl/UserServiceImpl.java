@@ -5,6 +5,7 @@ import com.zwf.aisupport.dto.UserRegisterDTO;
 import com.zwf.aisupport.entity.User;
 import com.zwf.aisupport.mapper.UserMapper;
 import com.zwf.aisupport.service.UserService;
+import com.zwf.aisupport.vo.UserVO;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -20,8 +21,24 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public User findByUsername(String username) {
-        return userMapper.findByUsername(username);
+    public UserVO findByUsername(String username) {
+        User user = userMapper.findByUsername(username);
+        if (user == null) {
+            return null;
+        }
+
+        // Convert database entity to API response object to avoid exposing sensitive fields.
+        UserVO userVO = new UserVO();
+        userVO.setId(user.getId());
+        userVO.setUsername(user.getUsername());
+        userVO.setDisplayName(user.getDisplayName());
+        userVO.setEmail(user.getEmail());
+        userVO.setRole(user.getRole());
+        userVO.setStatus(user.getStatus());
+        userVO.setCreatedTime(user.getCreatedTime());
+        userVO.setUpdatedTime(user.getUpdatedTime());
+
+        return userVO;
     }
 
     @Override

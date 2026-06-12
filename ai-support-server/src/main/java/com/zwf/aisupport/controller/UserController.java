@@ -2,8 +2,8 @@ package com.zwf.aisupport.controller;
 
 import com.zwf.aisupport.common.result.Result;
 import com.zwf.aisupport.dto.UserRegisterDTO;
-import com.zwf.aisupport.entity.User;
 import com.zwf.aisupport.service.UserService;
+import com.zwf.aisupport.vo.UserVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,8 +23,8 @@ public class UserController {
     }
 
     @GetMapping("/{username}")
-    public Result<User> getByUsername(@PathVariable String username) {
-        User user = userService.findByUsername(username);
+    public Result<UserVO> getByUsername(@PathVariable String username) {
+        UserVO user = userService.findByUsername(username);
         return Result.success(user);
     }
 

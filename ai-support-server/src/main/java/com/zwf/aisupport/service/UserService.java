@@ -1,11 +1,11 @@
 package com.zwf.aisupport.service;
 
 import com.zwf.aisupport.dto.UserRegisterDTO;
-import com.zwf.aisupport.entity.User;
+import com.zwf.aisupport.vo.UserVO;
 
 public interface UserService {
 
-    User findByUsername(String username);
+    UserVO findByUsername(String username);
 
     void register(UserRegisterDTO userRegisterDTO);
 }
