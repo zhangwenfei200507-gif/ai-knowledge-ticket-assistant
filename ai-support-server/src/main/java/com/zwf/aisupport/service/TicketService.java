@@ -1,8 +1,13 @@
 package com.zwf.aisupport.service;
 
 import com.zwf.aisupport.dto.TicketCreateDTO;
+import com.zwf.aisupport.vo.TicketVO;
+
+import java.util.List;
 
 public interface TicketService {
 
     void create(TicketCreateDTO ticketCreateDTO);
+
+    List<TicketVO> listMyTickets();
 }
