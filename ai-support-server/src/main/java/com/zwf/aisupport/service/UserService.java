@@ -12,4 +12,6 @@ public interface UserService {
     void register(UserRegisterDTO userRegisterDTO);
 
     LoginVO login(UserLoginDTO userLoginDTO);
+
+    UserVO getCurrentUser();
 }

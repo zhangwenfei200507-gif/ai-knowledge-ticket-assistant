@@ -40,13 +40,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             Claims claims = jwtUtil.parseToken(token);
+            Long userId = claims.get("userId", Long.class);
             String username = claims.getSubject();
             String role = claims.get("role", String.class);
-
             // Store authenticated user information in Spring Security context for this request.
+            CurrentUser currentUser = new CurrentUser(userId, username, role);
+
+// Store current user details in the security context for downstream business code.
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
-                            username,
+                            currentUser,
                             null,
                             List.of(new SimpleGrantedAuthority("ROLE_" + role))
                     );

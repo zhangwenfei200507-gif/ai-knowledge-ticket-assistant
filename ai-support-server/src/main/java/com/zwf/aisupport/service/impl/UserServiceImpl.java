@@ -1,6 +1,7 @@
 package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
+import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.common.util.JwtUtil;
 import com.zwf.aisupport.dto.UserLoginDTO;
 import com.zwf.aisupport.dto.UserRegisterDTO;
@@ -88,5 +89,16 @@ public class UserServiceImpl implements UserService {
         userVO.setUpdatedTime(user.getUpdatedTime());
 
         return userVO;
+    }
+    @Override
+    public UserVO getCurrentUser() {
+        Long currentUserId = CurrentUserUtil.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("User is not authenticated");
+        }
+
+        // Re-query the database so the API returns the latest user profile.
+        User user = userMapper.findById(currentUserId);
+        return convertToUserVO(user);
     }
 }

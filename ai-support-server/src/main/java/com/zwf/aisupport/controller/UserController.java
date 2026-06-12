@@ -22,7 +22,11 @@ public class UserController {
     public UserController(UserService userService) {
         this.userService = userService;
     }
-
+    @GetMapping("/me")
+    public Result<UserVO> getCurrentUser() {
+        UserVO user = userService.getCurrentUser();
+        return Result.success(user);
+    }   
     @GetMapping("/{username}")
     public Result<UserVO> getByUsername(@PathVariable String username) {
         UserVO user = userService.findByUsername(username);
@@ -39,4 +43,5 @@ public class UserController {
         LoginVO loginVO = userService.login(userLoginDTO);
         return Result.success(loginVO);
     }
+
 }

@@ -16,4 +16,6 @@ public interface UserMapper {
             values (#{username}, #{passwordHash}, #{displayName}, #{email}, #{role}, #{status})
             """)
     void insert(User user);
+    @Select("select * from users where id = #{id}")
+    User findById(Long id);
 }
