@@ -1,11 +1,13 @@
 package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
+import com.zwf.aisupport.common.util.JwtUtil;
 import com.zwf.aisupport.dto.UserLoginDTO;
 import com.zwf.aisupport.dto.UserRegisterDTO;
 import com.zwf.aisupport.entity.User;
 import com.zwf.aisupport.mapper.UserMapper;
 import com.zwf.aisupport.service.UserService;
+import com.zwf.aisupport.vo.LoginVO;
 import com.zwf.aisupport.vo.UserVO;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -15,10 +17,12 @@ public class UserServiceImpl implements UserService {
 
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
 
-    public UserServiceImpl(UserMapper userMapper, PasswordEncoder passwordEncoder) {
+    public UserServiceImpl(UserMapper userMapper, PasswordEncoder passwordEncoder,JwtUtil jwtUtil) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
+        this.jwtUtil = jwtUtil;
     }
 
     @Override
@@ -47,7 +51,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public UserVO login(UserLoginDTO userLoginDTO) {
+    public LoginVO login(UserLoginDTO userLoginDTO) {
         User user = userMapper.findByUsername(userLoginDTO.getUsername());
         if (user == null) {
             throw new BusinessException("Invalid username or password");
@@ -59,7 +63,12 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException("Invalid username or password");
         }
 
-        return convertToUserVO(user);
+        String token = jwtUtil.createToken(user.getId(), user.getUsername(), user.getRole());
+
+        LoginVO loginVO = new LoginVO();
+        loginVO.setToken(token);
+        loginVO.setUser(convertToUserVO(user));
+        return loginVO;
     }
 
     private UserVO convertToUserVO(User user) {

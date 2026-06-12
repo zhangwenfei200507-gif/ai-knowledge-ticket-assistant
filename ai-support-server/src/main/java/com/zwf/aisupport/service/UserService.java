@@ -2,6 +2,7 @@ package com.zwf.aisupport.service;
 
 import com.zwf.aisupport.dto.UserLoginDTO;
 import com.zwf.aisupport.dto.UserRegisterDTO;
+import com.zwf.aisupport.vo.LoginVO;
 import com.zwf.aisupport.vo.UserVO;
 
 public interface UserService {
@@ -10,5 +11,5 @@ public interface UserService {
 
     void register(UserRegisterDTO userRegisterDTO);
 
-    UserVO login(UserLoginDTO userLoginDTO);
+    LoginVO login(UserLoginDTO userLoginDTO);
 }

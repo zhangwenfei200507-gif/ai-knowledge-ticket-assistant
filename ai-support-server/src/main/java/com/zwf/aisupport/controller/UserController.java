@@ -3,6 +3,7 @@ package com.zwf.aisupport.controller;
 import com.zwf.aisupport.common.result.Result;
 import com.zwf.aisupport.dto.UserRegisterDTO;
 import com.zwf.aisupport.service.UserService;
+import com.zwf.aisupport.vo.LoginVO;
 import com.zwf.aisupport.vo.UserVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,8 +35,8 @@ public class UserController {
         return Result.success();
     }
     @PostMapping("/login")
-    public Result<UserVO> login(@Valid @RequestBody UserLoginDTO userLoginDTO) {
-        UserVO user = userService.login(userLoginDTO);
-        return Result.success(user);
+    public Result<LoginVO> login(@Valid @RequestBody UserLoginDTO userLoginDTO) {
+        LoginVO loginVO = userService.login(userLoginDTO);
+        return Result.success(loginVO);
     }
 }

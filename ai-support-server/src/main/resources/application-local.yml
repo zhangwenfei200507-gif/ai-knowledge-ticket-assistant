@@ -17,3 +17,8 @@ mybatis:
   type-aliases-package: com.zwf.aisupport.entity
   configuration:
     map-underscore-to-camel-case: true
+
+app:
+  jwt:
+    secret: this-is-a-local-dev-secret-key-for-ai-support-server-please-change-later
+    ttl: 7200000
