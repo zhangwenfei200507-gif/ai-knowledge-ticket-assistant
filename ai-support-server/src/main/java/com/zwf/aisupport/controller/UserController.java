@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
+import com.zwf.aisupport.dto.UserLoginDTO;
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
@@ -32,5 +32,10 @@ public class UserController {
     public Result<Void> register(@Valid @RequestBody UserRegisterDTO userRegisterDTO) {
         userService.register(userRegisterDTO);
         return Result.success();
+    }
+    @PostMapping("/login")
+    public Result<UserVO> login(@Valid @RequestBody UserLoginDTO userLoginDTO) {
+        UserVO user = userService.login(userLoginDTO);
+        return Result.success(user);
     }
 }

@@ -1,6 +1,7 @@
 package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
+import com.zwf.aisupport.dto.UserLoginDTO;
 import com.zwf.aisupport.dto.UserRegisterDTO;
 import com.zwf.aisupport.entity.User;
 import com.zwf.aisupport.mapper.UserMapper;
@@ -23,22 +24,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserVO findByUsername(String username) {
         User user = userMapper.findByUsername(username);
-        if (user == null) {
-            return null;
-        }
-
-        // Convert database entity to API response object to avoid exposing sensitive fields.
-        UserVO userVO = new UserVO();
-        userVO.setId(user.getId());
-        userVO.setUsername(user.getUsername());
-        userVO.setDisplayName(user.getDisplayName());
-        userVO.setEmail(user.getEmail());
-        userVO.setRole(user.getRole());
-        userVO.setStatus(user.getStatus());
-        userVO.setCreatedTime(user.getCreatedTime());
-        userVO.setUpdatedTime(user.getUpdatedTime());
-
-        return userVO;
+        return convertToUserVO(user);
     }
 
     @Override
@@ -58,5 +44,40 @@ public class UserServiceImpl implements UserService {
         user.setStatus(1);
 
         userMapper.insert(user);
+    }
+
+    @Override
+    public UserVO login(UserLoginDTO userLoginDTO) {
+        User user = userMapper.findByUsername(userLoginDTO.getUsername());
+        if (user == null) {
+            throw new BusinessException("Invalid username or password");
+        }
+
+        // Compare raw password from request with BCrypt hash stored in database.
+        boolean passwordMatches = passwordEncoder.matches(userLoginDTO.getPassword(), user.getPasswordHash());
+        if (!passwordMatches) {
+            throw new BusinessException("Invalid username or password");
+        }
+
+        return convertToUserVO(user);
+    }
+
+    private UserVO convertToUserVO(User user) {
+        if (user == null) {
+            return null;
+        }
+
+        // Convert database entity to API response object to avoid exposing sensitive fields.
+        UserVO userVO = new UserVO();
+        userVO.setId(user.getId());
+        userVO.setUsername(user.getUsername());
+        userVO.setDisplayName(user.getDisplayName());
+        userVO.setEmail(user.getEmail());
+        userVO.setRole(user.getRole());
+        userVO.setStatus(user.getStatus());
+        userVO.setCreatedTime(user.getCreatedTime());
+        userVO.setUpdatedTime(user.getUpdatedTime());
+
+        return userVO;
     }
 }
