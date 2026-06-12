@@ -1,5 +1,6 @@
 package com.zwf.aisupport.service.impl;
 
+import com.zwf.aisupport.common.constant.RedisKeyConstant;
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.common.util.JwtUtil;
@@ -10,8 +11,11 @@ import com.zwf.aisupport.mapper.UserMapper;
 import com.zwf.aisupport.service.UserService;
 import com.zwf.aisupport.vo.LoginVO;
 import com.zwf.aisupport.vo.UserVO;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import java.time.Duration;
 
 @Service
 public class UserServiceImpl implements UserService {
@@ -19,11 +23,15 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-
-    public UserServiceImpl(UserMapper userMapper, PasswordEncoder passwordEncoder,JwtUtil jwtUtil) {
+    private final StringRedisTemplate stringRedisTemplate;
+    public UserServiceImpl(UserMapper userMapper,
+                           PasswordEncoder passwordEncoder,
+                           JwtUtil jwtUtil,
+                           StringRedisTemplate stringRedisTemplate) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
+        this.stringRedisTemplate = stringRedisTemplate;
     }
 
     @Override
@@ -66,6 +74,12 @@ public class UserServiceImpl implements UserService {
 
         String token = jwtUtil.createToken(user.getId(), user.getUsername(), user.getRole());
 
+// Store login token in Redis so the server can revoke it before JWT expiration.
+        stringRedisTemplate.opsForValue().set(
+                RedisKeyConstant.LOGIN_TOKEN_PREFIX + token,
+                String.valueOf(user.getId()),
+                Duration.ofHours(2)
+        );
         LoginVO loginVO = new LoginVO();
         loginVO.setToken(token);
         loginVO.setUser(convertToUserVO(user));
@@ -100,5 +114,14 @@ public class UserServiceImpl implements UserService {
         // Re-query the database so the API returns the latest user profile.
         User user = userMapper.findById(currentUserId);
         return convertToUserVO(user);
+    }
+    @Override
+    public void logout(String token) {
+        if (token == null || token.isBlank()) {
+            return;
+        }
+
+        // Remove token from Redis so it can no longer access protected APIs.
+        stringRedisTemplate.delete(RedisKeyConstant.LOGIN_TOKEN_PREFIX + token);
     }
 }

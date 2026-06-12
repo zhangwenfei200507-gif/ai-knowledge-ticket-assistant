@@ -14,4 +14,7 @@ public interface UserService {
     LoginVO login(UserLoginDTO userLoginDTO);
 
     UserVO getCurrentUser();
+
+    void logout(String token);
+
 }

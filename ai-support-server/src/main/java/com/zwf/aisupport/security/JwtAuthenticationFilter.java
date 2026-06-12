@@ -1,11 +1,13 @@
 package com.zwf.aisupport.security;
 
+import com.zwf.aisupport.common.constant.RedisKeyConstant;
 import com.zwf.aisupport.common.util.JwtUtil;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -19,11 +21,12 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final StringRedisTemplate stringRedisTemplate;
 
-    public JwtAuthenticationFilter(JwtUtil jwtUtil) {
+    public JwtAuthenticationFilter(JwtUtil jwtUtil, StringRedisTemplate stringRedisTemplate) {
         this.jwtUtil = jwtUtil;
+        this.stringRedisTemplate = stringRedisTemplate;
     }
-
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -37,6 +40,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         String token = authorizationHeader.substring(7);
+
+// Accept only tokens that are still stored in Redis.
+        Boolean tokenExists = stringRedisTemplate.hasKey(RedisKeyConstant.LOGIN_TOKEN_PREFIX + token);
+        if (!Boolean.TRUE.equals(tokenExists)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         try {
             Claims claims = jwtUtil.parseToken(token);

@@ -6,12 +6,7 @@ import com.zwf.aisupport.service.UserService;
 import com.zwf.aisupport.vo.LoginVO;
 import com.zwf.aisupport.vo.UserVO;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import com.zwf.aisupport.dto.UserLoginDTO;
 @RestController
 @RequestMapping("/api/users")
@@ -26,7 +21,7 @@ public class UserController {
     public Result<UserVO> getCurrentUser() {
         UserVO user = userService.getCurrentUser();
         return Result.success(user);
-    }   
+    }
     @GetMapping("/{username}")
     public Result<UserVO> getByUsername(@PathVariable String username) {
         UserVO user = userService.findByUsername(username);
@@ -43,5 +38,10 @@ public class UserController {
         LoginVO loginVO = userService.login(userLoginDTO);
         return Result.success(loginVO);
     }
-
+    @PostMapping("/logout")
+    public Result<Void> logout(@RequestHeader("Authorization") String authorizationHeader) {
+        String token = authorizationHeader.replace("Bearer ", "");
+        userService.logout(token);
+        return Result.success();
+    }
 }
