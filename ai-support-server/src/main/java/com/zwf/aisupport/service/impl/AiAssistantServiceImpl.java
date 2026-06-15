@@ -50,10 +50,10 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         }
 
         Ticket ticket = new Ticket();
-        ticket.setTitle("AI unresolved question");
+        ticket.setTitle(generateTicketTitle(aiAskDTO.getQuestion()));
         ticket.setDescription(aiAskDTO.getQuestion());
         ticket.setStatus("OPEN");
-        ticket.setPriority("MEDIUM");
+        ticket.setPriority(suggestPriority(aiAskDTO.getQuestion()));
         ticket.setCreatedBy(currentUserId);
 
         // Create a support ticket when the knowledge base cannot answer the user question.
@@ -61,6 +61,37 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
         answerVO.setCreatedTicketId(ticket.getId());
         return answerVO;
+    }
+
+    private String generateTicketTitle(String question) {
+        String trimmedQuestion = question.trim();
+        if (trimmedQuestion.length() <= 90) {
+            return "AI: " + trimmedQuestion;
+        }
+
+        // Keep generated ticket titles short enough for the database title limit.
+        return "AI: " + trimmedQuestion.substring(0, 87) + "...";
+    }
+
+    private String suggestPriority(String question) {
+        String normalizedQuestion = question.toLowerCase();
+
+        if (normalizedQuestion.contains("production")
+                || normalizedQuestion.contains("urgent")
+                || normalizedQuestion.contains("down")
+                || normalizedQuestion.contains("cannot login")
+                || normalizedQuestion.contains("security")) {
+            return "HIGH";
+        }
+
+        if (normalizedQuestion.contains("question")
+                || normalizedQuestion.contains("how to")
+                || normalizedQuestion.contains("guide")) {
+            return "LOW";
+        }
+
+        // Default to MEDIUM when the assistant cannot confidently classify urgency.
+        return "MEDIUM";
     }
 
     private AiAnswerVO buildKnowledgeBasedAnswer(KnowledgeArticle article) {
