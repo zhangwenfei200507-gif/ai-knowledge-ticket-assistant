@@ -29,4 +29,9 @@ public class TicketController {
         List<TicketVO> tickets = ticketService.listMyTickets();
         return Result.success(tickets);
     }
+    @GetMapping("/{id}")
+    public Result<TicketVO> getDetail(@PathVariable Long id) {
+        TicketVO ticket = ticketService.getDetail(id);
+        return Result.success(ticket);
+    }
 }

@@ -71,4 +71,19 @@ public class TicketServiceImpl implements TicketService {
         ticketVO.setUpdatedTime(ticket.getUpdatedTime());
         return ticketVO;
     }
+    @Override
+    public TicketVO getDetail(Long id) {
+        Long currentUserId = CurrentUserUtil.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("User is not authenticated");
+        }
+
+        Ticket ticket = ticketMapper.findById(id);
+        if (ticket == null || !currentUserId.equals(ticket.getCreatedBy())) {
+            throw new BusinessException("Ticket not found");
+        }
+
+        // Return only tickets owned by the current user.
+        return convertToTicketVO(ticket);
+    }
 }

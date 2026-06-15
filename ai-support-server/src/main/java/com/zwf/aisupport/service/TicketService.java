@@ -10,4 +10,5 @@ public interface TicketService {
     void create(TicketCreateDTO ticketCreateDTO);
 
     List<TicketVO> listMyTickets();
+    TicketVO getDetail(Long id);
 }

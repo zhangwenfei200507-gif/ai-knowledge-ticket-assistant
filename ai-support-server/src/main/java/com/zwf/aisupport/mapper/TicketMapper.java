@@ -21,4 +21,7 @@ public interface TicketMapper {
         order by created_time desc
         """)
     List<Ticket> findByCreatedBy(Long createdBy);
+
+    @Select("select * from tickets where id = #{id}")
+    Ticket findById(Long id);
 }
