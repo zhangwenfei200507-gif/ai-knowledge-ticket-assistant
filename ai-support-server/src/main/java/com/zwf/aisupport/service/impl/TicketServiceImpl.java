@@ -181,4 +181,27 @@ public class TicketServiceImpl implements TicketService {
         // The assigned support user marks the ticket as resolved after handling it.
         ticketMapper.resolveTicket(id);
     }
+    @Override
+    public void closeTicket(Long id) {
+        Long currentUserId = CurrentUserUtil.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("User is not authenticated");
+        }
+
+        Ticket ticket = ticketMapper.findById(id);
+        if (ticket == null) {
+            throw new BusinessException("Ticket not found");
+        }
+
+        if (!currentUserId.equals(ticket.getCreatedBy())) {
+            throw new BusinessException("Only the creator can close this ticket");
+        }
+
+        if (!"RESOLVED".equals(ticket.getStatus())) {
+            throw new BusinessException("Only resolved tickets can be closed");
+        }
+
+        // The creator confirms the issue is resolved and closes the ticket.
+        ticketMapper.closeTicket(id);
+    }
 }

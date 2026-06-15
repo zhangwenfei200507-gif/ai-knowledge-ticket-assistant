@@ -40,6 +40,7 @@ public interface TicketMapper {
             order by created_time desc
             """)
     List<Ticket> findAll();
+
     @Update("""
         update tickets
         set assigned_to = #{assignedTo},
@@ -48,12 +49,14 @@ public interface TicketMapper {
         where id = #{id}
         """)
     void assignTicket(@Param("id") Long id, @Param("assignedTo") Long assignedTo);
+
     @Select("""
         select * from tickets
         where assigned_to = #{assignedTo}
         order by updated_time desc
         """)
     List<Ticket> findByAssignedTo(Long assignedTo);
+
     @Update("""
         update tickets
         set status = 'RESOLVED',
@@ -61,4 +64,12 @@ public interface TicketMapper {
         where id = #{id}
         """)
     void resolveTicket(Long id);
+
+    @Update("""
+        update tickets
+        set status = 'CLOSED',
+            updated_time = CURRENT_TIMESTAMP
+        where id = #{id}
+        """)
+    void closeTicket(Long id);
 }

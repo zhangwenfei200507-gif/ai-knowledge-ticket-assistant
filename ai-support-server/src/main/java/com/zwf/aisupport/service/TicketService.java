@@ -24,4 +24,6 @@ public interface TicketService {
     List<TicketVO> listAssignedToMe();
 
     void resolveTicket(Long id);
+
+    void closeTicket(Long id);
 }

@@ -63,4 +63,9 @@ public class TicketController {
         ticketService.assignTicket(id, ticketAssignDTO);
         return Result.success();
     }
+    @PatchMapping("/{id}/close")
+    public Result<Void> closeTicket(@PathVariable Long id) {
+        ticketService.closeTicket(id);
+        return Result.success();
+    }
 }
