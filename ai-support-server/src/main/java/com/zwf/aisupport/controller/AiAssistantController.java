@@ -5,6 +5,7 @@ import com.zwf.aisupport.dto.AiAskDTO;
 import com.zwf.aisupport.dto.AiQuestionLogFeedbackDTO;
 import com.zwf.aisupport.service.AiAssistantService;
 import com.zwf.aisupport.vo.AiAnswerVO;
+import com.zwf.aisupport.vo.AiDashboardStatsVO;
 import com.zwf.aisupport.vo.AiQuestionLogVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -48,5 +49,10 @@ public class AiAssistantController {
                                                   @Valid @RequestBody AiQuestionLogFeedbackDTO feedbackDTO) {
         aiAssistantService.submitQuestionLogFeedback(id, feedbackDTO);
         return Result.success();
+    }
+    @GetMapping("/stats")
+    public Result<AiDashboardStatsVO> getDashboardStats() {
+        AiDashboardStatsVO stats = aiAssistantService.getDashboardStats();
+        return Result.success(stats);
     }
 }

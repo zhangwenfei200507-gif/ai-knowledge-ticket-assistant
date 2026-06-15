@@ -12,6 +12,7 @@ import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.service.AiAssistantService;
 import com.zwf.aisupport.vo.AiAnswerVO;
+import com.zwf.aisupport.vo.AiDashboardStatsVO;
 import com.zwf.aisupport.vo.AiQuestionLogVO;
 import org.springframework.stereotype.Service;
 
@@ -114,7 +115,23 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 .map(this::convertToAiQuestionLogVO)
                 .toList();
     }
+    @Override
+    public AiDashboardStatsVO getDashboardStats() {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can access AI dashboard stats");
+        }
 
+        AiDashboardStatsVO statsVO = new AiDashboardStatsVO();
+        statsVO.setTotalQuestions(aiQuestionLogMapper.countAll());
+        statsVO.setAnsweredByKnowledgeBase(aiQuestionLogMapper.countAnsweredByKnowledgeBase());
+        statsVO.setCreatedTickets(aiQuestionLogMapper.countCreatedTickets());
+        statsVO.setUsefulFeedbackCount(aiQuestionLogMapper.countUsefulFeedback());
+        statsVO.setNotUsefulFeedbackCount(aiQuestionLogMapper.countNotUsefulFeedback());
+        statsVO.setPendingFeedbackCount(aiQuestionLogMapper.countPendingFeedback());
+
+        return statsVO;
+    }
     @Override
     public List<AiQuestionLogVO> listAllQuestionLogs() {
         String role = CurrentUserUtil.getCurrentUserRole();

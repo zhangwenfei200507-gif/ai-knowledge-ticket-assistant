@@ -46,4 +46,22 @@ public interface AiQuestionLogMapper {
     void updateFeedback(@Param("id") Long id,
                         @Param("feedback") String feedback,
                         @Param("feedbackComment") String feedbackComment);
+
+    @Select("select count(*) from ai_question_logs")
+    Long countAll();
+
+    @Select("select count(*) from ai_question_logs where source_article_id is not null")
+    Long countAnsweredByKnowledgeBase();
+
+    @Select("select count(*) from ai_question_logs where created_ticket_id is not null")
+    Long countCreatedTickets();
+
+    @Select("select count(*) from ai_question_logs where feedback = 'USEFUL'")
+    Long countUsefulFeedback();
+
+    @Select("select count(*) from ai_question_logs where feedback = 'NOT_USEFUL'")
+    Long countNotUsefulFeedback();
+
+    @Select("select count(*) from ai_question_logs where feedback is null")
+    Long countPendingFeedback();
 }
