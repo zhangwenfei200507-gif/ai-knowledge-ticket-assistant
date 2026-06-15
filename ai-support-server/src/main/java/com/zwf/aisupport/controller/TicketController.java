@@ -1,6 +1,7 @@
 package com.zwf.aisupport.controller;
 
 import com.zwf.aisupport.common.result.Result;
+import com.zwf.aisupport.dto.TicketAssignDTO;
 import com.zwf.aisupport.dto.TicketCreateDTO;
 import com.zwf.aisupport.dto.TicketStatusUpdateDTO;
 import com.zwf.aisupport.service.TicketService;
@@ -44,6 +45,12 @@ public class TicketController {
     public Result<Void> updateStatus(@PathVariable Long id,
                                      @Valid @RequestBody TicketStatusUpdateDTO ticketStatusUpdateDTO) {
         ticketService.updateStatus(id, ticketStatusUpdateDTO);
+        return Result.success();
+    }
+    @PatchMapping("/{id}/assign")
+    public Result<Void> assignTicket(@PathVariable Long id,
+                                     @Valid @RequestBody TicketAssignDTO ticketAssignDTO) {
+        ticketService.assignTicket(id, ticketAssignDTO);
         return Result.success();
     }
 }

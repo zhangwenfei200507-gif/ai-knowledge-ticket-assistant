@@ -2,10 +2,12 @@ package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
+import com.zwf.aisupport.dto.TicketAssignDTO;
 import com.zwf.aisupport.dto.TicketCreateDTO;
 import com.zwf.aisupport.dto.TicketStatusUpdateDTO;
 import com.zwf.aisupport.entity.Ticket;
 import com.zwf.aisupport.mapper.TicketMapper;
+import com.zwf.aisupport.mapper.UserMapper;
 import com.zwf.aisupport.service.TicketService;
 import com.zwf.aisupport.vo.TicketVO;
 import org.springframework.stereotype.Service;
@@ -18,8 +20,11 @@ public class TicketServiceImpl implements TicketService {
 
     private final TicketMapper ticketMapper;
     private static final Set<String> ALLOWED_STATUSES = Set.of("OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED");
-    public TicketServiceImpl(TicketMapper ticketMapper) {
+    private final UserMapper userMapper;
+
+    public TicketServiceImpl(TicketMapper ticketMapper, UserMapper userMapper) {
         this.ticketMapper = ticketMapper;
+        this.userMapper = userMapper;
     }
 
     @Override
@@ -120,5 +125,24 @@ public class TicketServiceImpl implements TicketService {
                 .stream()
                 .map(this::convertToTicketVO)
                 .toList();
+    }
+    @Override
+    public void assignTicket(Long id, TicketAssignDTO ticketAssignDTO) {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can assign tickets");
+        }
+
+        Ticket ticket = ticketMapper.findById(id);
+        if (ticket == null) {
+            throw new BusinessException("Ticket not found");
+        }
+
+        if (userMapper.findById(ticketAssignDTO.getAssignedTo()) == null) {
+            throw new BusinessException("Assigned user not found");
+        }
+
+        // Assigning a ticket moves it into active processing.
+        ticketMapper.assignTicket(id, ticketAssignDTO.getAssignedTo());
     }
 }

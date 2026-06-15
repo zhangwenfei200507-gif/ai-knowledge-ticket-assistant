@@ -40,4 +40,12 @@ public interface TicketMapper {
             order by created_time desc
             """)
     List<Ticket> findAll();
+    @Update("""
+        update tickets
+        set assigned_to = #{assignedTo},
+            status = 'IN_PROGRESS',
+            updated_time = CURRENT_TIMESTAMP
+        where id = #{id}
+        """)
+    void assignTicket(@Param("id") Long id, @Param("assignedTo") Long assignedTo);
 }
