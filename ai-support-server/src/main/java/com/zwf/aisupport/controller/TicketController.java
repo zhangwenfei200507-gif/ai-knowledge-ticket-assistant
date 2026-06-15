@@ -52,6 +52,11 @@ public class TicketController {
         ticketService.updateStatus(id, ticketStatusUpdateDTO);
         return Result.success();
     }
+    @PatchMapping("/{id}/resolve")
+    public Result<Void> resolveTicket(@PathVariable Long id) {
+        ticketService.resolveTicket(id);
+        return Result.success();
+    }
     @PatchMapping("/{id}/assign")
     public Result<Void> assignTicket(@PathVariable Long id,
                                      @Valid @RequestBody TicketAssignDTO ticketAssignDTO) {

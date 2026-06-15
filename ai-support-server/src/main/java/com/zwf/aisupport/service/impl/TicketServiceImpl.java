@@ -158,4 +158,27 @@ public class TicketServiceImpl implements TicketService {
                 .map(this::convertToTicketVO)
                 .toList();
     }
+    @Override
+    public void resolveTicket(Long id) {
+        Long currentUserId = CurrentUserUtil.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("User is not authenticated");
+        }
+
+        Ticket ticket = ticketMapper.findById(id);
+        if (ticket == null) {
+            throw new BusinessException("Ticket not found");
+        }
+
+        if (!currentUserId.equals(ticket.getAssignedTo())) {
+            throw new BusinessException("Only the assigned user can resolve this ticket");
+        }
+
+        if (!"IN_PROGRESS".equals(ticket.getStatus())) {
+            throw new BusinessException("Only in-progress tickets can be resolved");
+        }
+
+        // The assigned support user marks the ticket as resolved after handling it.
+        ticketMapper.resolveTicket(id);
+    }
 }

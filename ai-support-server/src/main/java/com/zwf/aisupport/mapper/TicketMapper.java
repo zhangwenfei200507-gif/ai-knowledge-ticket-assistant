@@ -54,4 +54,11 @@ public interface TicketMapper {
         order by updated_time desc
         """)
     List<Ticket> findByAssignedTo(Long assignedTo);
+    @Update("""
+        update tickets
+        set status = 'RESOLVED',
+            updated_time = CURRENT_TIMESTAMP
+        where id = #{id}
+        """)
+    void resolveTicket(Long id);
 }
