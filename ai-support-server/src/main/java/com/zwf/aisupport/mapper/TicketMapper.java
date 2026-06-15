@@ -1,9 +1,7 @@
 package com.zwf.aisupport.mapper;
 
 import com.zwf.aisupport.entity.Ticket;
-import org.apache.ibatis.annotations.Insert;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
@@ -15,8 +13,10 @@ public interface TicketMapper {
             values (#{title}, #{description}, #{status}, #{priority}, #{createdBy}, #{assignedTo})
             """)
     void insert(Ticket ticket);
+
     @Select("""
-        select * from tickets
+        
+            select * from tickets
         where created_by = #{createdBy}
         order by created_time desc
         """)
@@ -24,4 +24,14 @@ public interface TicketMapper {
 
     @Select("select * from tickets where id = #{id}")
     Ticket findById(Long id);
-}
+    @Update
+            ("""
+        
+            update tickets
+        set status = #{status},
+            updated_time =
+            CURRENT_TIMESTAMP
+        where id = #{id}
+        """)
+    void updateStatus(@Param("id") Long id, @Param("status") String status);
+    }
