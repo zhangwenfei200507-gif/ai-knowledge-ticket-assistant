@@ -5,6 +5,7 @@ import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
 import com.zwf.aisupport.dto.KnowledgeArticleUpdateDTO;
 import com.zwf.aisupport.service.KnowledgeArticleService;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
+import com.zwf.aisupport.vo.KnowledgeCategoryStatsVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,6 +37,11 @@ public class KnowledgeArticleController {
         List<KnowledgeArticleVO> articles = knowledgeArticleService.searchPublishedArticles(keyword);
         return Result.success(articles);
     }
+    @GetMapping("/categories/stats")
+    public Result<List<KnowledgeCategoryStatsVO>> getCategoryStats() {
+        List<KnowledgeCategoryStatsVO> stats = knowledgeArticleService.getCategoryStats();
+        return Result.success(stats);
+    }
     @GetMapping("/{id}")
     public Result<KnowledgeArticleVO> getDetail(@PathVariable Long id) {
         KnowledgeArticleVO article = knowledgeArticleService.getDetail(id);
@@ -53,4 +59,5 @@ public class KnowledgeArticleController {
         knowledgeArticleService.archive(id);
         return Result.success();
     }
+
 }

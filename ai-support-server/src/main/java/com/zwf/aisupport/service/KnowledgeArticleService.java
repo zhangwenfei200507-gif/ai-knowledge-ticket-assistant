@@ -3,6 +3,7 @@ package com.zwf.aisupport.service;
 import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
 import com.zwf.aisupport.dto.KnowledgeArticleUpdateDTO;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
+import com.zwf.aisupport.vo.KnowledgeCategoryStatsVO;
 
 import java.util.List;
 
@@ -19,4 +20,6 @@ public interface KnowledgeArticleService {
     KnowledgeArticleVO update(Long id, KnowledgeArticleUpdateDTO updateDTO);
 
     void archive(Long id);
+
+    List<KnowledgeCategoryStatsVO> getCategoryStats();
 }

@@ -8,6 +8,7 @@ import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.service.KnowledgeArticleService;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
+import com.zwf.aisupport.vo.KnowledgeCategoryStatsVO;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -122,5 +123,15 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
 
         // Archive outdated knowledge instead of deleting it permanently.
         knowledgeArticleMapper.archive(id);
+    }
+    @Override
+    public List<KnowledgeCategoryStatsVO> getCategoryStats() {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can access knowledge category stats");
+        }
+
+        // Category stats help administrators understand how the knowledge base is organized.
+        return knowledgeArticleMapper.countPublishedArticlesByCategory();
     }
 }

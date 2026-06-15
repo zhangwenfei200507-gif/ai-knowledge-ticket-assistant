@@ -1,6 +1,7 @@
 package com.zwf.aisupport.mapper;
 
 import com.zwf.aisupport.entity.KnowledgeArticle;
+import com.zwf.aisupport.vo.KnowledgeCategoryStatsVO;
 import org.apache.ibatis.annotations.*;
 
 import java.util.List;
@@ -53,4 +54,14 @@ public interface KnowledgeArticleMapper {
         where id = #{id}
         """)
     void archive(Long id);
+
+    @Select("""
+        select coalesce(category, 'Uncategorized') as category,
+               count(*) as article_count
+        from knowledge_articles
+        where status = 'PUBLISHED'
+        group by coalesce(category, 'Uncategorized')
+        order by article_count desc
+        """)
+    List<KnowledgeCategoryStatsVO> countPublishedArticlesByCategory();
 }
