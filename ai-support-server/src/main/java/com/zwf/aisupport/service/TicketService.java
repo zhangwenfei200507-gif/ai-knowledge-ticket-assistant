@@ -21,4 +21,5 @@ public interface TicketService {
 
     void assignTicket(Long id, TicketAssignDTO ticketAssignDTO);
 
+    List<TicketVO> listAssignedToMe();
 }

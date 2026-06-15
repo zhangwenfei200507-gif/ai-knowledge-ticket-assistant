@@ -31,6 +31,11 @@ public class TicketController {
         List<TicketVO> tickets = ticketService.listAllTickets();
         return Result.success(tickets);
     }
+    @GetMapping("/assigned-to-me")
+    public Result<List<TicketVO>> listAssignedToMe() {
+        List<TicketVO> tickets = ticketService.listAssignedToMe();
+        return Result.success(tickets);
+    }
     @GetMapping("/my")
     public Result<List<TicketVO>> listMyTickets() {
         List<TicketVO> tickets = ticketService.listMyTickets();

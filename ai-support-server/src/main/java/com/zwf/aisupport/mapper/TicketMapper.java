@@ -48,4 +48,10 @@ public interface TicketMapper {
         where id = #{id}
         """)
     void assignTicket(@Param("id") Long id, @Param("assignedTo") Long assignedTo);
+    @Select("""
+        select * from tickets
+        where assigned_to = #{assignedTo}
+        order by updated_time desc
+        """)
+    List<Ticket> findByAssignedTo(Long assignedTo);
 }

@@ -145,4 +145,17 @@ public class TicketServiceImpl implements TicketService {
         // Assigning a ticket moves it into active processing.
         ticketMapper.assignTicket(id, ticketAssignDTO.getAssignedTo());
     }
+    @Override
+    public List<TicketVO> listAssignedToMe() {
+        Long currentUserId = CurrentUserUtil.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("User is not authenticated");
+        }
+
+        // Use assigned_to so support users can focus on tickets assigned to them.
+        return ticketMapper.findByAssignedTo(currentUserId)
+                .stream()
+                .map(this::convertToTicketVO)
+                .toList();
+    }
 }
