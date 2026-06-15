@@ -5,6 +5,7 @@ import com.zwf.aisupport.dto.AiQuestionLogFeedbackDTO;
 import com.zwf.aisupport.vo.AiAnswerVO;
 import com.zwf.aisupport.vo.AiDashboardStatsVO;
 import com.zwf.aisupport.vo.AiQuestionLogVO;
+import com.zwf.aisupport.vo.KnowledgeGapVO;
 
 import java.util.List;
 
@@ -21,4 +22,6 @@ public interface AiAssistantService {
     void submitQuestionLogFeedback(Long id, AiQuestionLogFeedbackDTO feedbackDTO);
 
     AiDashboardStatsVO getDashboardStats();
+
+    List<KnowledgeGapVO> listKnowledgeGaps();
 }

@@ -7,6 +7,7 @@ import com.zwf.aisupport.service.AiAssistantService;
 import com.zwf.aisupport.vo.AiAnswerVO;
 import com.zwf.aisupport.vo.AiDashboardStatsVO;
 import com.zwf.aisupport.vo.AiQuestionLogVO;
+import com.zwf.aisupport.vo.KnowledgeGapVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -54,5 +55,10 @@ public class AiAssistantController {
     public Result<AiDashboardStatsVO> getDashboardStats() {
         AiDashboardStatsVO stats = aiAssistantService.getDashboardStats();
         return Result.success(stats);
+    }
+    @GetMapping("/knowledge-gaps")
+    public Result<List<KnowledgeGapVO>> listKnowledgeGaps() {
+        List<KnowledgeGapVO> gaps = aiAssistantService.listKnowledgeGaps();
+        return Result.success(gaps);
     }
 }

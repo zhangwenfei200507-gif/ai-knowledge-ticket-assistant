@@ -64,4 +64,12 @@ public interface AiQuestionLogMapper {
 
     @Select("select count(*) from ai_question_logs where feedback is null")
     Long countPendingFeedback();
+
+    @Select("""
+        select * from ai_question_logs
+        where source_article_id is null
+        order by created_time desc
+        """)
+    List<AiQuestionLog> findKnowledgeGaps();
+
 }

@@ -14,6 +14,7 @@ import com.zwf.aisupport.service.AiAssistantService;
 import com.zwf.aisupport.vo.AiAnswerVO;
 import com.zwf.aisupport.vo.AiDashboardStatsVO;
 import com.zwf.aisupport.vo.AiQuestionLogVO;
+import com.zwf.aisupport.vo.KnowledgeGapVO;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -131,6 +132,31 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         statsVO.setPendingFeedbackCount(aiQuestionLogMapper.countPendingFeedback());
 
         return statsVO;
+    }
+    @Override
+    public List<KnowledgeGapVO> listKnowledgeGaps() {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can access knowledge gaps");
+        }
+
+        // Knowledge gaps help administrators decide what new articles should be added.
+        return aiQuestionLogMapper.findKnowledgeGaps()
+                .stream()
+                .map(this::convertToKnowledgeGapVO)
+                .toList();
+    }
+
+    private KnowledgeGapVO convertToKnowledgeGapVO(AiQuestionLog aiQuestionLog) {
+        KnowledgeGapVO vo = new KnowledgeGapVO();
+        vo.setLogId(aiQuestionLog.getId());
+        vo.setUserId(aiQuestionLog.getUserId());
+        vo.setQuestion(aiQuestionLog.getQuestion());
+        vo.setCreatedTicketId(aiQuestionLog.getCreatedTicketId());
+        vo.setFeedback(aiQuestionLog.getFeedback());
+        vo.setFeedbackComment(aiQuestionLog.getFeedbackComment());
+        vo.setCreatedTime(aiQuestionLog.getCreatedTime());
+        return vo;
     }
     @Override
     public List<AiQuestionLogVO> listAllQuestionLogs() {
