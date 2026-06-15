@@ -1,8 +1,30 @@
-# AI-Powered Knowledge Base & Ticket Assistant
+# AI Document Knowledge & Web-Augmented Support Platform
 
-An enterprise-style Spring Boot backend project that combines user authentication, ticket workflow, knowledge base management, Redis-backed login state, and AI-assisted support automation.
+An enterprise-style Spring Boot backend project for building an AI-powered document knowledge and support platform.
 
-The project is designed as a learning-by-building system, but its product direction follows a real AI support platform: users ask questions, the system searches the knowledge base, creates tickets when no reliable answer is found, records AI usage, collects feedback, identifies knowledge gaps, and helps administrators improve the knowledge base over time.
+The long-term product direction is clear: users upload documents and ask questions, the system searches internal documents and knowledge articles first, uses web search as a later-stage fallback when internal knowledge is insufficient, and creates support tickets when the issue still needs human handling.
+
+The current backend focuses on the first stable foundation: authentication, ticket workflow, structured knowledge articles, AI-style question answering, AI logs, feedback, knowledge gaps, and admin analytics. Document ingestion, RAG, and web-augmented answering will be added in later stages.
+
+## Product Direction
+
+This project is not a simple ticket system, a simple CRUD knowledge base, or a thin chatbot wrapper.
+
+It is designed around this loop:
+
+```text
+Upload documents
+  -> Parse and store knowledge
+  -> Ask questions
+  -> Search internal documents and knowledge articles
+  -> Return answers with sources
+  -> Use web search when internal knowledge is insufficient
+  -> Create tickets when human support is still required
+  -> Record knowledge gaps
+  -> Improve the knowledge base over time
+```
+
+The goal is to make AI the first-response layer for support, while keeping human review, knowledge quality, and traceable sources at the center of the system.
 
 ## Project Highlights
 
@@ -15,6 +37,7 @@ The project is designed as a learning-by-building system, but its product direct
 - Closed-loop knowledge improvement: unanswered AI questions can be converted into reusable knowledge articles.
 - Docker Compose based local infrastructure with PostgreSQL and Redis.
 - Clear layered backend structure: Controller -> Service -> Mapper -> Database.
+- A staged AI roadmap: structured knowledge search first, document ingestion next, RAG later, and web search as an advanced fallback.
 
 ## Tech Stack
 
@@ -31,6 +54,10 @@ The project is designed as a learning-by-building system, but its product direct
 | Version Control | Git, GitHub |
 
 ## Module Overview
+
+### Current Phase
+
+The current implementation uses structured knowledge articles as the first knowledge source. This keeps the foundation stable before adding uploaded documents, semantic search, and web-augmented answers.
 
 ### User And Authentication
 
@@ -72,6 +99,21 @@ The project is designed as a learning-by-building system, but its product direct
 - Report AI dashboard statistics.
 - Identify knowledge gaps.
 - Convert knowledge gaps into new knowledge articles.
+
+### Future Document Knowledge Module
+
+- Upload internal documents such as manuals, notes, FAQs, troubleshooting guides, and project documentation.
+- Store document metadata.
+- Parse document content into searchable chunks.
+- Search document chunks before creating tickets.
+- Return answers with document and paragraph-level sources.
+
+### Future Web-Augmented Answering
+
+- Search trusted web sources when internal knowledge cannot answer a question.
+- Return external source links for review.
+- Record web search results.
+- Allow administrators to convert useful external findings into internal knowledge articles.
 
 ### Admin Dashboard
 
@@ -222,10 +264,41 @@ Local test JSON files such as `ask.json`, `article.json`, `gap-article.json`, an
 
 ## Roadmap
 
-- Add a Vue-based web frontend for users and administrators.
-- Add document upload and parsing for knowledge ingestion.
-- Add vector search and RAG-based semantic retrieval.
-- Add external web search fallback for questions not covered by the local knowledge base.
-- Add AI-generated draft answers for support tickets.
+### Stage 1: Backend Foundation
+
+- Authentication, JWT, Redis login state, and role-aware APIs.
+- Ticket workflow and knowledge article management.
+- AI-style knowledge answering, logs, feedback, knowledge gaps, and admin dashboard statistics.
+
+### Stage 2: Document Knowledge Base
+
+- Add document upload.
+- Store document metadata.
+- Parse `.txt` and `.md` first, then expand to `.pdf` and `.docx`.
+- Split documents into searchable chunks.
+- Let AI answers reference document sources.
+
+### Stage 3: Frontend Product Experience
+
+- Build a calm, professional user workspace for document-based support.
+- Build an admin knowledge operations console.
+- Keep the visual style restrained and premium rather than overly obvious or decorative AI styling.
+
+### Stage 4: RAG And Semantic Retrieval
+
+- Add embeddings.
+- Add vector-based semantic search.
+- Support multi-source answer generation.
+- Add confidence and source ranking.
+
+### Stage 5: Web-Augmented Support
+
+- Add web search fallback for questions not covered by internal knowledge.
+- Record external search evidence.
+- Let administrators review and save useful findings into the internal knowledge base.
+
+### Stage 6: Quality And Operations
+
+- Add higher-level analytics for knowledge coverage, answer quality, and support automation.
 - Add role management and richer permission controls.
 - Add automated tests for core services and APIs.
