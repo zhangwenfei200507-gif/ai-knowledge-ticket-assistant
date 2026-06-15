@@ -2,6 +2,7 @@ package com.zwf.aisupport.controller;
 
 import com.zwf.aisupport.common.result.Result;
 import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
+import com.zwf.aisupport.dto.KnowledgeArticleUpdateDTO;
 import com.zwf.aisupport.service.KnowledgeArticleService;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import jakarta.validation.Valid;
@@ -39,5 +40,17 @@ public class KnowledgeArticleController {
     public Result<KnowledgeArticleVO> getDetail(@PathVariable Long id) {
         KnowledgeArticleVO article = knowledgeArticleService.getDetail(id);
         return Result.success(article);
+    }
+    @PutMapping("/{id}")
+    public Result<KnowledgeArticleVO> update(@PathVariable Long id,
+                                             @Valid @RequestBody KnowledgeArticleUpdateDTO updateDTO) {
+        KnowledgeArticleVO article = knowledgeArticleService.update(id, updateDTO);
+        return Result.success(article);
+    }
+
+    @PatchMapping("/{id}/archive")
+    public Result<Void> archive(@PathVariable Long id) {
+        knowledgeArticleService.archive(id);
+        return Result.success();
     }
 }

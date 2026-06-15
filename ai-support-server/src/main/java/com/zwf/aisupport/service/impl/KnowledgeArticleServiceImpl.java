@@ -3,6 +3,7 @@ package com.zwf.aisupport.service.impl;
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
+import com.zwf.aisupport.dto.KnowledgeArticleUpdateDTO;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.service.KnowledgeArticleService;
@@ -83,5 +84,43 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
                 .stream()
                 .map(this::convertToKnowledgeArticleVO)
                 .toList();
+    }
+    @Override
+    public KnowledgeArticleVO update(Long id, KnowledgeArticleUpdateDTO updateDTO) {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can update knowledge articles");
+        }
+
+        KnowledgeArticle article = knowledgeArticleMapper.findById(id);
+        if (article == null || !"PUBLISHED".equals(article.getStatus())) {
+            throw new BusinessException("Knowledge article not found");
+        }
+
+        article.setTitle(updateDTO.getTitle());
+        article.setContent(updateDTO.getContent());
+        article.setCategory(updateDTO.getCategory());
+
+        // Keep knowledge articles editable so AI answers can improve over time.
+        knowledgeArticleMapper.update(article);
+
+        KnowledgeArticle updatedArticle = knowledgeArticleMapper.findById(id);
+        return convertToKnowledgeArticleVO(updatedArticle);
+    }
+
+    @Override
+    public void archive(Long id) {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can archive knowledge articles");
+        }
+
+        KnowledgeArticle article = knowledgeArticleMapper.findById(id);
+        if (article == null || !"PUBLISHED".equals(article.getStatus())) {
+            throw new BusinessException("Knowledge article not found");
+        }
+
+        // Archive outdated knowledge instead of deleting it permanently.
+        knowledgeArticleMapper.archive(id);
     }
 }

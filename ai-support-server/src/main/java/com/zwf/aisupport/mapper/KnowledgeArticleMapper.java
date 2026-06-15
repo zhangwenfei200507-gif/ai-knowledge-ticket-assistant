@@ -35,4 +35,22 @@ public interface KnowledgeArticleMapper {
         order by updated_time desc
         """)
     List<KnowledgeArticle> searchPublishedArticles(@Param("keyword") String keyword);
+
+    @Update("""
+        update knowledge_articles
+        set title = #{title},
+            content = #{content},
+            category = #{category},
+            updated_time = CURRENT_TIMESTAMP
+        where id = #{id}
+        """)
+    void update(KnowledgeArticle article);
+
+    @Update("""
+        update knowledge_articles
+        set status = 'ARCHIVED',
+            updated_time = CURRENT_TIMESTAMP
+        where id = #{id}
+        """)
+    void archive(Long id);
 }
