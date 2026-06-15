@@ -69,4 +69,13 @@ public interface TicketMapper {
         where id = #{id}
         """)
     void closeTicket(Long id);
+
+    @Select("select count(*) from tickets")
+    Long countAll();
+
+    @Select("select count(*) from tickets where status in ('OPEN', 'IN_PROGRESS')")
+    Long countOpenTickets();
+
+    @Select("select count(*) from tickets where status in ('RESOLVED', 'CLOSED')")
+    Long countResolvedTickets();
 }

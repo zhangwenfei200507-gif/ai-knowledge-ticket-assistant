@@ -64,4 +64,7 @@ public interface KnowledgeArticleMapper {
         order by article_count desc
         """)
     List<KnowledgeCategoryStatsVO> countPublishedArticlesByCategory();
+
+    @Select("select count(*) from knowledge_articles where status = 'PUBLISHED'")
+    Long countPublishedArticles();
 }

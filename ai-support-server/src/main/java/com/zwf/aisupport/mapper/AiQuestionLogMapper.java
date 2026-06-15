@@ -82,4 +82,7 @@ public interface AiQuestionLogMapper {
                               @Param("sourceArticleId") Long sourceArticleId,
                               @Param("sourceTitle") String sourceTitle);
 
+
+    @Select("select count(*) from ai_question_logs where source_article_id is null")
+    Long countKnowledgeGaps();
 }
