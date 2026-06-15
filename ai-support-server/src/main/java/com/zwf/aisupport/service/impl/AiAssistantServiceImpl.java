@@ -3,8 +3,10 @@ package com.zwf.aisupport.service.impl;
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.dto.AiAskDTO;
+import com.zwf.aisupport.entity.AiQuestionLog;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.Ticket;
+import com.zwf.aisupport.mapper.AiQuestionLogMapper;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.service.AiAssistantService;
@@ -18,29 +20,31 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private final KnowledgeArticleMapper knowledgeArticleMapper;
     private final TicketMapper ticketMapper;
+    private final AiQuestionLogMapper aiQuestionLogMapper;
 
     public AiAssistantServiceImpl(KnowledgeArticleMapper knowledgeArticleMapper,
-                                  TicketMapper ticketMapper) {
+                                  TicketMapper ticketMapper,
+                                  AiQuestionLogMapper aiQuestionLogMapper) {
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.ticketMapper = ticketMapper;
+        this.aiQuestionLogMapper = aiQuestionLogMapper;
     }
 
     @Override
     public AiAnswerVO ask(AiAskDTO aiAskDTO) {
-        String keyword = extractKeyword(aiAskDTO.getQuestion());
-        List<KnowledgeArticle> articles = knowledgeArticleMapper.searchPublishedArticles(keyword);
+        AiAnswerVO answerVO = findAnswerFromKnowledgeBase(aiAskDTO);
 
-        if (articles.isEmpty()) {
-            return buildFallbackAnswer();
-        }
+        // Record every AI question so the platform can review usage and improve knowledge later.
+        saveQuestionLog(aiAskDTO.getQuestion(), answerVO);
 
-        return buildKnowledgeBasedAnswer(articles.get(0));
+        return answerVO;
     }
 
     @Override
     public AiAnswerVO askAndCreateTicket(AiAskDTO aiAskDTO) {
-        AiAnswerVO answerVO = ask(aiAskDTO);
+        AiAnswerVO answerVO = findAnswerFromKnowledgeBase(aiAskDTO);
         if (!Boolean.TRUE.equals(answerVO.getSuggestCreateTicket())) {
+            saveQuestionLog(aiAskDTO.getQuestion(), answerVO);
             return answerVO;
         }
 
@@ -60,7 +64,40 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         ticketMapper.insert(ticket);
 
         answerVO.setCreatedTicketId(ticket.getId());
+
+        // Keep the AI answer and the created ticket connected for later review.
+        saveQuestionLog(aiAskDTO.getQuestion(), answerVO);
+
         return answerVO;
+    }
+
+    private AiAnswerVO findAnswerFromKnowledgeBase(AiAskDTO aiAskDTO) {
+        String keyword = extractKeyword(aiAskDTO.getQuestion());
+        List<KnowledgeArticle> articles = knowledgeArticleMapper.searchPublishedArticles(keyword);
+
+        if (articles.isEmpty()) {
+            return buildFallbackAnswer();
+        }
+
+        return buildKnowledgeBasedAnswer(articles.get(0));
+    }
+
+    private void saveQuestionLog(String question, AiAnswerVO answerVO) {
+        Long currentUserId = CurrentUserUtil.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("User is not authenticated");
+        }
+
+        AiQuestionLog aiQuestionLog = new AiQuestionLog();
+        aiQuestionLog.setUserId(currentUserId);
+        aiQuestionLog.setQuestion(question);
+        aiQuestionLog.setAnswer(answerVO.getAnswer());
+        aiQuestionLog.setSourceArticleId(answerVO.getSourceArticleId());
+        aiQuestionLog.setSourceTitle(answerVO.getSourceTitle());
+        aiQuestionLog.setSuggestCreateTicket(answerVO.getSuggestCreateTicket());
+        aiQuestionLog.setCreatedTicketId(answerVO.getCreatedTicketId());
+
+        aiQuestionLogMapper.insert(aiQuestionLog);
     }
 
     private String generateTicketTitle(String question) {
