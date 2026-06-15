@@ -1,11 +1,7 @@
 package com.zwf.aisupport.mapper;
 
 import com.zwf.aisupport.entity.Ticket;
-import org.apache.ibatis.annotations.Insert;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.annotations.Update;
+import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
@@ -13,9 +9,10 @@ import java.util.List;
 public interface TicketMapper {
 
     @Insert("""
-            insert into tickets (title, description, status, priority, created_by, assigned_to)
-            values (#{title}, #{description}, #{status}, #{priority}, #{createdBy}, #{assignedTo})
-            """)
+        insert into tickets (title, description, status, priority, created_by, assigned_to)
+        values (#{title}, #{description}, #{status}, #{priority}, #{createdBy}, #{assignedTo})
+        """)
+    @Options(useGeneratedKeys = true, keyProperty = "id")
     void insert(Ticket ticket);
 
     @Select("""

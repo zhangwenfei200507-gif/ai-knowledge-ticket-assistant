@@ -22,4 +22,10 @@ public class AiAssistantController {
         AiAnswerVO answer = aiAssistantService.ask(aiAskDTO);
         return Result.success(answer);
     }
+
+    @PostMapping("/ask-and-create-ticket")
+    public Result<AiAnswerVO> askAndCreateTicket(@Valid @RequestBody AiAskDTO aiAskDTO) {
+        AiAnswerVO answer = aiAssistantService.askAndCreateTicket(aiAskDTO);
+        return Result.success(answer);
+    }
 }

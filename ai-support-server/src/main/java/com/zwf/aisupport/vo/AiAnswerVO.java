@@ -9,4 +9,5 @@ public class AiAnswerVO {
     private Long sourceArticleId;
     private String sourceTitle;
     private Boolean suggestCreateTicket;
+    private Long createdTicketId;
 }
