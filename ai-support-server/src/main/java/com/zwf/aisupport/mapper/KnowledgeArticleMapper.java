@@ -1,10 +1,7 @@
 package com.zwf.aisupport.mapper;
 
 import com.zwf.aisupport.entity.KnowledgeArticle;
-import org.apache.ibatis.annotations.Insert;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
@@ -12,9 +9,10 @@ import java.util.List;
 public interface KnowledgeArticleMapper {
 
     @Insert("""
-            insert into knowledge_articles (title, content, category, created_by, status)
-            values (#{title}, #{content}, #{category}, #{createdBy}, #{status})
-            """)
+        insert into knowledge_articles (title, content, category, created_by, status)
+        values (#{title}, #{content}, #{category}, #{createdBy}, #{status})
+        """)
+    @Options(useGeneratedKeys = true, keyProperty = "id")
     void insert(KnowledgeArticle article);
 
     @Select("""

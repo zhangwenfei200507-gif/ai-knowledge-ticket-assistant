@@ -3,11 +3,9 @@ package com.zwf.aisupport.controller;
 import com.zwf.aisupport.common.result.Result;
 import com.zwf.aisupport.dto.AiAskDTO;
 import com.zwf.aisupport.dto.AiQuestionLogFeedbackDTO;
+import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
 import com.zwf.aisupport.service.AiAssistantService;
-import com.zwf.aisupport.vo.AiAnswerVO;
-import com.zwf.aisupport.vo.AiDashboardStatsVO;
-import com.zwf.aisupport.vo.AiQuestionLogVO;
-import com.zwf.aisupport.vo.KnowledgeGapVO;
+import com.zwf.aisupport.vo.*;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -60,5 +58,11 @@ public class AiAssistantController {
     public Result<List<KnowledgeGapVO>> listKnowledgeGaps() {
         List<KnowledgeGapVO> gaps = aiAssistantService.listKnowledgeGaps();
         return Result.success(gaps);
+    }
+    @PostMapping("/knowledge-gaps/{logId}/article")
+    public Result<KnowledgeArticleVO> createArticleFromKnowledgeGap(@PathVariable Long logId,
+                                                                    @Valid @RequestBody KnowledgeArticleCreateDTO createDTO) {
+        KnowledgeArticleVO article = aiAssistantService.createArticleFromKnowledgeGap(logId, createDTO);
+        return Result.success(article);
     }
 }

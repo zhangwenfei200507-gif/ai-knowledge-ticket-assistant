@@ -72,4 +72,14 @@ public interface AiQuestionLogMapper {
         """)
     List<AiQuestionLog> findKnowledgeGaps();
 
+    @Update("""
+        update ai_question_logs
+        set source_article_id = #{sourceArticleId},
+            source_title = #{sourceTitle}
+        where id = #{id}
+        """)
+    void linkKnowledgeArticle(@Param("id") Long id,
+                              @Param("sourceArticleId") Long sourceArticleId,
+                              @Param("sourceTitle") String sourceTitle);
+
 }

@@ -4,6 +4,7 @@ import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.dto.AiAskDTO;
 import com.zwf.aisupport.dto.AiQuestionLogFeedbackDTO;
+import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
 import com.zwf.aisupport.entity.AiQuestionLog;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.Ticket;
@@ -11,10 +12,7 @@ import com.zwf.aisupport.mapper.AiQuestionLogMapper;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.service.AiAssistantService;
-import com.zwf.aisupport.vo.AiAnswerVO;
-import com.zwf.aisupport.vo.AiDashboardStatsVO;
-import com.zwf.aisupport.vo.AiQuestionLogVO;
-import com.zwf.aisupport.vo.KnowledgeGapVO;
+import com.zwf.aisupport.vo.*;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -146,7 +144,49 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 .map(this::convertToKnowledgeGapVO)
                 .toList();
     }
+    @Override
+    public KnowledgeArticleVO createArticleFromKnowledgeGap(Long logId, KnowledgeArticleCreateDTO createDTO) {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can create articles from knowledge gaps");
+        }
 
+        Long currentUserId = CurrentUserUtil.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("User is not authenticated");
+        }
+
+        AiQuestionLog aiQuestionLog = aiQuestionLogMapper.findById(logId);
+        if (aiQuestionLog == null || aiQuestionLog.getSourceArticleId() != null) {
+            throw new BusinessException("Knowledge gap not found");
+        }
+
+        KnowledgeArticle article = new KnowledgeArticle();
+        article.setTitle(createDTO.getTitle());
+        article.setContent(createDTO.getContent());
+        article.setCategory(createDTO.getCategory());
+        article.setCreatedBy(currentUserId);
+        article.setStatus("PUBLISHED");
+
+        // Convert an unanswered AI question into reusable knowledge for future answers.
+        knowledgeArticleMapper.insert(article);
+        aiQuestionLogMapper.linkKnowledgeArticle(logId, article.getId(), article.getTitle());
+
+        return convertToKnowledgeArticleVO(article);
+    }
+
+    private KnowledgeArticleVO convertToKnowledgeArticleVO(KnowledgeArticle article) {
+        KnowledgeArticleVO vo = new KnowledgeArticleVO();
+        vo.setId(article.getId());
+        vo.setTitle(article.getTitle());
+        vo.setContent(article.getContent());
+        vo.setCategory(article.getCategory());
+        vo.setCreatedBy(article.getCreatedBy());
+        vo.setStatus(article.getStatus());
+        vo.setCreatedTime(article.getCreatedTime());
+        vo.setUpdatedTime(article.getUpdatedTime());
+        return vo;
+    }
     private KnowledgeGapVO convertToKnowledgeGapVO(AiQuestionLog aiQuestionLog) {
         KnowledgeGapVO vo = new KnowledgeGapVO();
         vo.setLogId(aiQuestionLog.getId());

@@ -2,10 +2,8 @@ package com.zwf.aisupport.service;
 
 import com.zwf.aisupport.dto.AiAskDTO;
 import com.zwf.aisupport.dto.AiQuestionLogFeedbackDTO;
-import com.zwf.aisupport.vo.AiAnswerVO;
-import com.zwf.aisupport.vo.AiDashboardStatsVO;
-import com.zwf.aisupport.vo.AiQuestionLogVO;
-import com.zwf.aisupport.vo.KnowledgeGapVO;
+import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
+import com.zwf.aisupport.vo.*;
 
 import java.util.List;
 
@@ -24,4 +22,6 @@ public interface AiAssistantService {
     AiDashboardStatsVO getDashboardStats();
 
     List<KnowledgeGapVO> listKnowledgeGaps();
+
+    KnowledgeArticleVO createArticleFromKnowledgeGap(Long logId, KnowledgeArticleCreateDTO createDTO);
 }
