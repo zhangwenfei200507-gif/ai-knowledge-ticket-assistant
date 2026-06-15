@@ -25,6 +25,11 @@ public class TicketController {
         ticketService.create(ticketCreateDTO);
         return Result.success();
     }
+    @GetMapping
+    public Result<List<TicketVO>> listAllTickets() {
+        List<TicketVO> tickets = ticketService.listAllTickets();
+        return Result.success(tickets);
+    }
     @GetMapping("/my")
     public Result<List<TicketVO>> listMyTickets() {
         List<TicketVO> tickets = ticketService.listMyTickets();

@@ -22,4 +22,8 @@ public class CurrentUserUtil {
         CurrentUser currentUser = getCurrentUser();
         return currentUser == null ? null : currentUser.getUserId();
     }
+    public static String getCurrentUserRole() {
+        CurrentUser currentUser = getCurrentUser();
+        return currentUser == null ? null : currentUser.getRole();
+    }
 }

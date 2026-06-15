@@ -108,4 +108,17 @@ public class TicketServiceImpl implements TicketService {
         // Only the owner can change status in the current learning-stage workflow.
         ticketMapper.updateStatus(id, status);
     }
+    @Override
+    public List<TicketVO> listAllTickets() {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can access all tickets");
+        }
+
+        // Admin users can review all tickets for support management.
+        return ticketMapper.findAll()
+                .stream()
+                .map(this::convertToTicketVO)
+                .toList();
+    }
 }

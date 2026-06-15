@@ -13,4 +13,5 @@ public interface TicketService {
     List<TicketVO> listMyTickets();
     TicketVO getDetail(Long id);
     void updateStatus(Long id, TicketStatusUpdateDTO ticketStatusUpdateDTO);
+    List<TicketVO> listAllTickets();
 }
