@@ -11,6 +11,7 @@ import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.service.AiAssistantService;
 import com.zwf.aisupport.vo.AiAnswerVO;
+import com.zwf.aisupport.vo.AiQuestionLogVO;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -99,7 +100,47 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
         aiQuestionLogMapper.insert(aiQuestionLog);
     }
+   @Override
+    public List<AiQuestionLogVO> listMyQuestionLogs() {
+        Long currentUserId = CurrentUserUtil.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("User is not authenticated");
+        }
 
+        // Users can review their own AI question history.
+        return aiQuestionLogMapper.findByUserId(currentUserId)
+                .stream()
+                .map(this::convertToAiQuestionLogVO)
+                .toList();
+    }
+
+    @Override
+    public List<AiQuestionLogVO> listAllQuestionLogs() {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can access AI question logs");
+        }
+
+        // Admin users can review AI usage across the whole platform.
+        return aiQuestionLogMapper.findAll()
+                .stream()
+                .map(this::convertToAiQuestionLogVO)
+                .toList();
+    }
+
+    private AiQuestionLogVO convertToAiQuestionLogVO(AiQuestionLog aiQuestionLog) {
+        AiQuestionLogVO vo = new AiQuestionLogVO();
+        vo.setId(aiQuestionLog.getId());
+        vo.setUserId(aiQuestionLog.getUserId());
+        vo.setQuestion(aiQuestionLog.getQuestion());
+        vo.setAnswer(aiQuestionLog.getAnswer());
+        vo.setSourceArticleId(aiQuestionLog.getSourceArticleId());
+        vo.setSourceTitle(aiQuestionLog.getSourceTitle());
+        vo.setSuggestCreateTicket(aiQuestionLog.getSuggestCreateTicket());
+        vo.setCreatedTicketId(aiQuestionLog.getCreatedTicketId());
+        vo.setCreatedTime(aiQuestionLog.getCreatedTime());
+        return vo;
+    }
     private String generateTicketTitle(String question) {
         String trimmedQuestion = question.trim();
         if (trimmedQuestion.length() <= 90) {
