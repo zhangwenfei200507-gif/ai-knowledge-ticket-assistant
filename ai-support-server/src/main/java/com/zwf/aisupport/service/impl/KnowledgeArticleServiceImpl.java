@@ -72,4 +72,16 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
         knowledgeArticleVO.setUpdatedTime(article.getUpdatedTime());
         return knowledgeArticleVO;
     }
+    @Override
+    public List<KnowledgeArticleVO> searchPublishedArticles(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return listPublishedArticles();
+        }
+
+        // Keyword search is the first step before adding AI semantic retrieval.
+        return knowledgeArticleMapper.searchPublishedArticles(keyword.trim())
+                .stream()
+                .map(this::convertToKnowledgeArticleVO)
+                .toList();
+    }
 }

@@ -3,6 +3,7 @@ package com.zwf.aisupport.mapper;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
@@ -25,4 +26,15 @@ public interface KnowledgeArticleMapper {
 
     @Select("select * from knowledge_articles where id = #{id}")
     KnowledgeArticle findById(Long id);
+
+    @Select("""
+        select * from knowledge_articles
+        where status = 'PUBLISHED'
+          and (
+              lower(title) like lower(concat('%', #{keyword}, '%'))
+              or lower(content) like lower(concat('%', #{keyword}, '%'))
+          )
+        order by updated_time desc
+        """)
+    List<KnowledgeArticle> searchPublishedArticles(@Param("keyword") String keyword);
 }

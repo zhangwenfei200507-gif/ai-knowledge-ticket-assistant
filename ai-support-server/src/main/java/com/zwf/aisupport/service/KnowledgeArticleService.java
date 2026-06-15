@@ -12,4 +12,6 @@ public interface KnowledgeArticleService {
     List<KnowledgeArticleVO> listPublishedArticles();
 
     KnowledgeArticleVO getDetail(Long id);
+
+    List<KnowledgeArticleVO> searchPublishedArticles(String keyword);
 }

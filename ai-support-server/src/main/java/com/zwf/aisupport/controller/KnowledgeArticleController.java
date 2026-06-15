@@ -30,7 +30,11 @@ public class KnowledgeArticleController {
         List<KnowledgeArticleVO> articles = knowledgeArticleService.listPublishedArticles();
         return Result.success(articles);
     }
-
+    @GetMapping("/search")
+    public Result<List<KnowledgeArticleVO>> searchPublishedArticles(@RequestParam String keyword) {
+        List<KnowledgeArticleVO> articles = knowledgeArticleService.searchPublishedArticles(keyword);
+        return Result.success(articles);
+    }
     @GetMapping("/{id}")
     public Result<KnowledgeArticleVO> getDetail(@PathVariable Long id) {
         KnowledgeArticleVO article = knowledgeArticleService.getDetail(id);
