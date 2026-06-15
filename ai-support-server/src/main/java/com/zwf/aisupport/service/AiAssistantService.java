@@ -1,6 +1,7 @@
 package com.zwf.aisupport.service;
 
 import com.zwf.aisupport.dto.AiAskDTO;
+import com.zwf.aisupport.dto.AiQuestionLogFeedbackDTO;
 import com.zwf.aisupport.vo.AiAnswerVO;
 import com.zwf.aisupport.vo.AiQuestionLogVO;
 
@@ -15,4 +16,6 @@ public interface AiAssistantService {
     List<AiQuestionLogVO> listMyQuestionLogs();
 
     List<AiQuestionLogVO> listAllQuestionLogs();
+
+    void submitQuestionLogFeedback(Long id, AiQuestionLogFeedbackDTO feedbackDTO);
 }

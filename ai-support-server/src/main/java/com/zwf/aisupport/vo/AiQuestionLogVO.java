@@ -15,5 +15,8 @@ public class AiQuestionLogVO {
     private String sourceTitle;
     private Boolean suggestCreateTicket;
     private Long createdTicketId;
+    private String feedback;
+    private String feedbackComment;
+    private LocalDateTime feedbackTime;
     private LocalDateTime createdTime;
 }

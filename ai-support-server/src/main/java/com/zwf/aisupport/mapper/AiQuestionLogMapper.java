@@ -1,9 +1,7 @@
 package com.zwf.aisupport.mapper;
 
 import com.zwf.aisupport.entity.AiQuestionLog;
-import org.apache.ibatis.annotations.Insert;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
@@ -34,4 +32,18 @@ public interface AiQuestionLogMapper {
             order by created_time desc
             """)
     List<AiQuestionLog> findAll();
+
+    @Select("select * from ai_question_logs where id = #{id}")
+    AiQuestionLog findById(Long id);
+
+    @Update("""
+            update ai_question_logs
+            set feedback = #{feedback},
+                feedback_comment = #{feedbackComment},
+                feedback_time = CURRENT_TIMESTAMP
+            where id = #{id}
+            """)
+    void updateFeedback(@Param("id") Long id,
+                        @Param("feedback") String feedback,
+                        @Param("feedbackComment") String feedbackComment);
 }

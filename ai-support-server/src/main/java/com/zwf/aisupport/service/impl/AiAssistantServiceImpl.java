@@ -3,6 +3,7 @@ package com.zwf.aisupport.service.impl;
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.dto.AiAskDTO;
+import com.zwf.aisupport.dto.AiQuestionLogFeedbackDTO;
 import com.zwf.aisupport.entity.AiQuestionLog;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.Ticket;
@@ -127,7 +128,25 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 .map(this::convertToAiQuestionLogVO)
                 .toList();
     }
+    @Override
+    public void submitQuestionLogFeedback(Long id, AiQuestionLogFeedbackDTO feedbackDTO) {
+        Long currentUserId = CurrentUserUtil.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("User is not authenticated");
+        }
 
+        AiQuestionLog aiQuestionLog = aiQuestionLogMapper.findById(id);
+        if (aiQuestionLog == null || !currentUserId.equals(aiQuestionLog.getUserId())) {
+            throw new BusinessException("AI question log not found");
+        }
+
+        // Users can mark whether an AI answer was useful for future quality review.
+        aiQuestionLogMapper.updateFeedback(
+                id,
+                feedbackDTO.getFeedback(),
+                feedbackDTO.getFeedbackComment()
+        );
+    }
     private AiQuestionLogVO convertToAiQuestionLogVO(AiQuestionLog aiQuestionLog) {
         AiQuestionLogVO vo = new AiQuestionLogVO();
         vo.setId(aiQuestionLog.getId());
@@ -138,6 +157,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         vo.setSourceTitle(aiQuestionLog.getSourceTitle());
         vo.setSuggestCreateTicket(aiQuestionLog.getSuggestCreateTicket());
         vo.setCreatedTicketId(aiQuestionLog.getCreatedTicketId());
+        vo.setFeedback(aiQuestionLog.getFeedback());
+        vo.setFeedbackComment(aiQuestionLog.getFeedbackComment());
+        vo.setFeedbackTime(aiQuestionLog.getFeedbackTime());
         vo.setCreatedTime(aiQuestionLog.getCreatedTime());
         return vo;
     }

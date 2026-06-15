@@ -2,6 +2,7 @@ package com.zwf.aisupport.controller;
 
 import com.zwf.aisupport.common.result.Result;
 import com.zwf.aisupport.dto.AiAskDTO;
+import com.zwf.aisupport.dto.AiQuestionLogFeedbackDTO;
 import com.zwf.aisupport.service.AiAssistantService;
 import com.zwf.aisupport.vo.AiAnswerVO;
 import com.zwf.aisupport.vo.AiQuestionLogVO;
@@ -41,5 +42,11 @@ public class AiAssistantController {
     public Result<List<AiQuestionLogVO>> listAllQuestionLogs() {
         List<AiQuestionLogVO> logs = aiAssistantService.listAllQuestionLogs();
         return Result.success(logs);
+    }
+    @PatchMapping("/logs/{id}/feedback")
+    public Result<Void> submitQuestionLogFeedback(@PathVariable Long id,
+                                                  @Valid @RequestBody AiQuestionLogFeedbackDTO feedbackDTO) {
+        aiAssistantService.submitQuestionLogFeedback(id, feedbackDTO);
+        return Result.success();
     }
 }

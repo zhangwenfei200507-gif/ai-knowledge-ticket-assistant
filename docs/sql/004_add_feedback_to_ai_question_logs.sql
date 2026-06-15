@@ -1,0 +1,4 @@
+ALTER TABLE ai_question_logs
+ADD COLUMN IF NOT EXISTS feedback VARCHAR(20),
+ADD COLUMN IF NOT EXISTS feedback_comment TEXT,
+ADD COLUMN IF NOT EXISTS feedback_time TIMESTAMP;
