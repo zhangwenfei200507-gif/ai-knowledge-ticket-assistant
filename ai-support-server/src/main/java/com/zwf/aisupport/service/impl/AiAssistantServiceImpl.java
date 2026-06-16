@@ -78,13 +78,16 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private AiAnswerVO findAnswerFromKnowledgeBase(AiAskDTO aiAskDTO) {
-        String keyword = extractKeyword(aiAskDTO.getQuestion());
+        String question = aiAskDTO.getQuestion().trim();
+        String keyword = extractKeyword(question);
 
-        List<DocumentSearchResultVO> documentResults = documentChunkMapper.searchChunks(keyword);
+        // Search uploaded document chunks with the full user question first.
+        List<DocumentSearchResultVO> documentResults = documentChunkMapper.searchChunks(question);
         if (!documentResults.isEmpty()) {
             return buildDocumentBasedAnswer(documentResults.get(0));
         }
 
+        // Then fall back to the simplified keyword search for structured knowledge articles.
         List<KnowledgeArticle> articles = knowledgeArticleMapper.searchPublishedArticles(keyword);
         if (!articles.isEmpty()) {
             return buildKnowledgeBasedAnswer(articles.get(0));
@@ -348,8 +351,12 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             return "login";
         }
 
-        // Use the original question as a simple keyword before semantic retrieval is added.
-        return question.trim();
+        String[] words = normalizedQuestion.split("\\s+");
+        if (words.length > 0) {
+            return words[0];
+        }
+
+        return normalizedQuestion;
     }
 
     private AiAnswerVO buildFallbackAnswer() {
