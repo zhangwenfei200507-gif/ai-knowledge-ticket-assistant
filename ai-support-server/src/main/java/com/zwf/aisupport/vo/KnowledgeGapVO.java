@@ -10,6 +10,8 @@ public class KnowledgeGapVO {
     private Long logId;
     private Long userId;
     private String question;
+    private String answer;
+    private String sourceType;
     private Long createdTicketId;
     private String feedback;
     private String feedbackComment;

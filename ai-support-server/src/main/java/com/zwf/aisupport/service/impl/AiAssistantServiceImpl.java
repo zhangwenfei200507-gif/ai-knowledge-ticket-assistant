@@ -209,6 +209,8 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         vo.setLogId(aiQuestionLog.getId());
         vo.setUserId(aiQuestionLog.getUserId());
         vo.setQuestion(aiQuestionLog.getQuestion());
+        vo.setAnswer(aiQuestionLog.getAnswer());
+        vo.setSourceType(aiQuestionLog.getSourceType());
         vo.setCreatedTicketId(aiQuestionLog.getCreatedTicketId());
         vo.setFeedback(aiQuestionLog.getFeedback());
         vo.setFeedbackComment(aiQuestionLog.getFeedbackComment());
