@@ -4,7 +4,7 @@ An enterprise-style Spring Boot backend project for building an AI-powered docum
 
 The long-term product direction is clear: users upload documents and ask questions, the system searches internal documents and knowledge articles first, uses web search as a later-stage fallback when internal knowledge is insufficient, and creates support tickets when the issue still needs human handling.
 
-The current backend focuses on the first stable foundation: authentication, ticket workflow, structured knowledge articles, AI-style question answering, AI logs, feedback, knowledge gaps, and admin analytics. Document ingestion, RAG, and web-augmented answering will be added in later stages.
+The current backend focuses on the first stable foundation plus the first document knowledge layer: authentication, ticket workflow, structured knowledge articles, uploaded `.txt` / `.md` documents, document chunk search, AI-style question answering, AI logs, feedback, knowledge gaps, and admin analytics. RAG, semantic retrieval, and web-augmented answering will be added in later stages.
 
 ## Product Direction
 
@@ -32,12 +32,13 @@ The goal is to make AI the first-response layer for support, while keeping human
 - User registration, login, current-user query, and role-based access control.
 - Ticket lifecycle management, including creation, assignment, resolution, and closure.
 - Knowledge base article creation, search, update, archive, and category statistics.
-- AI assistant API that answers from the knowledge base and creates tickets when needed.
+- Uploaded document metadata, text chunking, keyword search, archive flow, and category stats.
+- AI assistant API that answers from uploaded documents or knowledge articles and creates tickets when needed.
 - AI question logging, answer feedback, dashboard statistics, and knowledge-gap discovery.
 - Closed-loop knowledge improvement: unanswered AI questions can be converted into reusable knowledge articles.
 - Docker Compose based local infrastructure with PostgreSQL and Redis.
 - Clear layered backend structure: Controller -> Service -> Mapper -> Database.
-- A staged AI roadmap: structured knowledge search first, document ingestion next, RAG later, and web search as an advanced fallback.
+- A staged AI roadmap: structured and document knowledge search first, RAG later, and web search as an advanced fallback.
 
 ## Tech Stack
 
@@ -57,7 +58,7 @@ The goal is to make AI the first-response layer for support, while keeping human
 
 ### Current Phase
 
-The current implementation uses structured knowledge articles as the first knowledge source. This keeps the foundation stable before adding uploaded documents, semantic search, and web-augmented answers.
+The current implementation uses uploaded document chunks first and structured knowledge articles second. This keeps the foundation stable before adding embeddings, semantic retrieval, and web-augmented answers.
 
 ### User And Authentication
 
@@ -87,10 +88,20 @@ The current implementation uses structured knowledge articles as the first knowl
 - Archive outdated articles.
 - Count articles by category.
 
+### Document Knowledge Base
+
+- Upload `.txt` and `.md` documents.
+- Store document metadata.
+- Split document text into searchable chunks.
+- Search active document chunks by keyword or full question text.
+- View chunks for a document.
+- Archive outdated documents.
+- Count active documents by category.
+
 ### AI Assistant
 
-- Ask AI based on the current knowledge base.
-- Return source article information when an answer is found.
+- Ask AI based on uploaded documents first, then structured knowledge articles.
+- Return source document chunk or source article information when an answer is found.
 - Suggest ticket creation when no reliable answer exists.
 - Automatically create tickets from unanswered questions.
 - Generate AI-created ticket titles and priority.
@@ -100,13 +111,14 @@ The current implementation uses structured knowledge articles as the first knowl
 - Identify knowledge gaps.
 - Convert knowledge gaps into new knowledge articles.
 
-### Future Document Knowledge Module
+### Current Document Knowledge Module
 
-- Upload internal documents such as manuals, notes, FAQs, troubleshooting guides, and project documentation.
+- Upload internal `.txt` and `.md` documents such as manuals, notes, FAQs, troubleshooting guides, and project documentation.
 - Store document metadata.
 - Parse document content into searchable chunks.
 - Search document chunks before creating tickets.
-- Return answers with document and paragraph-level sources.
+- Return answers with document and chunk-level sources.
+- Track whether AI answers came from documents, articles, or no internal source.
 
 ### Future Web-Augmented Answering
 
@@ -121,6 +133,9 @@ The current implementation uses structured knowledge articles as the first knowl
 - Open and in-progress ticket count.
 - Resolved and closed ticket count.
 - Published knowledge article count.
+- Active document count.
+- Document answer count.
+- Article answer count.
 - AI question count.
 - AI-created ticket count.
 - Current knowledge-gap count.
@@ -157,6 +172,8 @@ Run them in order when setting up a fresh local database:
 002_create_knowledge_articles_table.sql
 003_create_ai_question_logs_table.sql
 004_add_feedback_to_ai_question_logs.sql
+005_create_documents_tables.sql
+006_add_document_source_to_ai_question_logs.sql
 ```
 
 ### 3. Start Backend
@@ -216,6 +233,17 @@ PUT   /api/knowledge/articles/{id}
 PATCH /api/knowledge/articles/{id}/archive
 ```
 
+### Document APIs
+
+```text
+POST  /api/documents/upload
+GET   /api/documents
+GET   /api/documents/{documentId}/chunks
+GET   /api/documents/chunks/search?keyword=...
+GET   /api/documents/categories/stats
+PATCH /api/documents/{documentId}/archive
+```
+
 ### AI Assistant APIs
 
 ```text
@@ -272,11 +300,12 @@ Local test JSON files such as `ask.json`, `article.json`, `gap-article.json`, an
 
 ### Stage 2: Document Knowledge Base
 
-- Add document upload.
-- Store document metadata.
-- Parse `.txt` and `.md` first, then expand to `.pdf` and `.docx`.
-- Split documents into searchable chunks.
-- Let AI answers reference document sources.
+- Add document upload. Done for `.txt` and `.md`.
+- Store document metadata. Done.
+- Parse `.txt` and `.md` first, then expand to `.pdf` and `.docx`. Current parser supports `.txt` and `.md`.
+- Split documents into searchable chunks. Done.
+- Let AI answers reference document sources. Done.
+- Next: add focused tests and prepare for frontend product flows.
 
 ### Stage 3: Frontend Product Experience
 

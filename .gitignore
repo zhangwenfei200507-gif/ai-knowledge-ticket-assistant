@@ -19,3 +19,10 @@ dist/
 *.jar
 *.war
 
+# Local manual API test payloads and upload samples
+/ask.json
+/article.json
+/article-update.json
+/gap-article.json
+/archive-test.md
+/redis-guide.md
