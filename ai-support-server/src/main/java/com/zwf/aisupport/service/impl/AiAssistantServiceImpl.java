@@ -103,6 +103,11 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         aiQuestionLog.setUserId(currentUserId);
         aiQuestionLog.setQuestion(question);
         aiQuestionLog.setAnswer(answerVO.getAnswer());
+        aiQuestionLog.setSourceType(answerVO.getSourceType());
+        aiQuestionLog.setSourceDocumentId(answerVO.getSourceDocumentId());
+        aiQuestionLog.setSourceDocumentName(answerVO.getSourceDocumentName());
+        aiQuestionLog.setSourceChunkId(answerVO.getSourceChunkId());
+        aiQuestionLog.setSourceChunkIndex(answerVO.getSourceChunkIndex());
         aiQuestionLog.setSourceArticleId(answerVO.getSourceArticleId());
         aiQuestionLog.setSourceTitle(answerVO.getSourceTitle());
         aiQuestionLog.setSuggestCreateTicket(answerVO.getSuggestCreateTicket());
@@ -245,6 +250,11 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         vo.setUserId(aiQuestionLog.getUserId());
         vo.setQuestion(aiQuestionLog.getQuestion());
         vo.setAnswer(aiQuestionLog.getAnswer());
+        vo.setSourceType(aiQuestionLog.getSourceType());
+        vo.setSourceDocumentId(aiQuestionLog.getSourceDocumentId());
+        vo.setSourceDocumentName(aiQuestionLog.getSourceDocumentName());
+        vo.setSourceChunkId(aiQuestionLog.getSourceChunkId());
+        vo.setSourceChunkIndex(aiQuestionLog.getSourceChunkIndex());
         vo.setSourceArticleId(aiQuestionLog.getSourceArticleId());
         vo.setSourceTitle(aiQuestionLog.getSourceTitle());
         vo.setSuggestCreateTicket(aiQuestionLog.getSuggestCreateTicket());

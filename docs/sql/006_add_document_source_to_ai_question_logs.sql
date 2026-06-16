@@ -1,0 +1,6 @@
+ALTER TABLE ai_question_logs
+ADD COLUMN IF NOT EXISTS source_type VARCHAR(30),
+ADD COLUMN IF NOT EXISTS source_document_id BIGINT,
+ADD COLUMN IF NOT EXISTS source_document_name VARCHAR(255),
+ADD COLUMN IF NOT EXISTS source_chunk_id BIGINT,
+ADD COLUMN IF NOT EXISTS source_chunk_index INTEGER;

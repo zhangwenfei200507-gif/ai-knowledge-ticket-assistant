@@ -19,4 +19,9 @@ public class AiQuestionLog {
     private String feedbackComment;
     private LocalDateTime feedbackTime;
     private LocalDateTime createdTime;
+    private String sourceType;
+    private Long sourceDocumentId;
+    private String sourceDocumentName;
+    private Long sourceChunkId;
+    private Integer sourceChunkIndex;
 }

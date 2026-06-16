@@ -9,17 +9,36 @@ import java.util.List;
 public interface AiQuestionLogMapper {
 
     @Insert("""
-            insert into ai_question_logs (
-                user_id, question, answer, source_article_id, source_title,
-                suggest_create_ticket, created_ticket_id
-            )
-            values (
-                #{userId}, #{question}, #{answer}, #{sourceArticleId}, #{sourceTitle},
-                #{suggestCreateTicket}, #{createdTicketId}
-            )
-            """)
+        insert into ai_question_logs (
+            user_id,
+            question,
+            answer,
+            source_type,
+            source_article_id,
+            source_title,
+            source_document_id,
+            source_document_name,
+            source_chunk_id,
+            source_chunk_index,
+            suggest_create_ticket,
+            created_ticket_id
+        )
+        values (
+            #{userId},
+            #{question},
+            #{answer},
+            #{sourceType},
+            #{sourceArticleId},
+            #{sourceTitle},
+            #{sourceDocumentId},
+            #{sourceDocumentName},
+            #{sourceChunkId},
+            #{sourceChunkIndex},
+            #{suggestCreateTicket},
+            #{createdTicketId}
+        )
+        """)
     void insert(AiQuestionLog aiQuestionLog);
-
     @Select("""
             select * from ai_question_logs
             where user_id = #{userId}
@@ -66,10 +85,10 @@ public interface AiQuestionLogMapper {
     Long countPendingFeedback();
 
     @Select("""
-        select * from ai_question_logs
-        where source_article_id is null
-        order by created_time desc
-        """)
+    select * from ai_question_logs
+    where source_type = 'NONE'
+    order by created_time desc
+    """)
     List<AiQuestionLog> findKnowledgeGaps();
 
     @Update("""
@@ -83,6 +102,6 @@ public interface AiQuestionLogMapper {
                               @Param("sourceTitle") String sourceTitle);
 
 
-    @Select("select count(*) from ai_question_logs where source_article_id is null")
+    @Select("select count(*) from ai_question_logs where source_type = 'NONE'")
     Long countKnowledgeGaps();
 }
