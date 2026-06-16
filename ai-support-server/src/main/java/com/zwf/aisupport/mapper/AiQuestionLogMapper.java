@@ -69,9 +69,6 @@ public interface AiQuestionLogMapper {
     @Select("select count(*) from ai_question_logs")
     Long countAll();
 
-    @Select("select count(*) from ai_question_logs where source_article_id is not null")
-    Long countAnsweredByKnowledgeBase();
-
     @Select("select count(*) from ai_question_logs where created_ticket_id is not null")
     Long countCreatedTickets();
 
@@ -104,4 +101,16 @@ public interface AiQuestionLogMapper {
 
     @Select("select count(*) from ai_question_logs where source_type = 'NONE'")
     Long countKnowledgeGaps();
+
+    @Select("select count(*) from ai_question_logs where source_type in ('DOCUMENT', 'ARTICLE')")
+    Long countAnsweredByInternalKnowledge();
+
+    @Select("select count(*) from ai_question_logs where source_type = 'DOCUMENT'")
+    Long countAnsweredByDocument();
+
+    @Select("select count(*) from ai_question_logs where source_type = 'ARTICLE'")
+    Long countAnsweredByArticle();
+
+    @Select("select count(*) from ai_question_logs where source_type = 'NONE'")
+    Long countUnansweredQuestions();
 }

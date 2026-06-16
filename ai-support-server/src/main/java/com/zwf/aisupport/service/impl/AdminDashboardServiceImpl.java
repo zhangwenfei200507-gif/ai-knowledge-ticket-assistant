@@ -36,6 +36,8 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
         overviewVO.setOpenTickets(ticketMapper.countOpenTickets());
         overviewVO.setResolvedTickets(ticketMapper.countResolvedTickets());
         overviewVO.setKnowledgeArticles(knowledgeArticleMapper.countPublishedArticles());
+        overviewVO.setDocumentAnswers(aiQuestionLogMapper.countAnsweredByDocument());
+        overviewVO.setArticleAnswers(aiQuestionLogMapper.countAnsweredByArticle());
         overviewVO.setAiQuestions(aiQuestionLogMapper.countAll());
         overviewVO.setAiCreatedTickets(aiQuestionLogMapper.countCreatedTickets());
         overviewVO.setKnowledgeGaps(aiQuestionLogMapper.countKnowledgeGaps());

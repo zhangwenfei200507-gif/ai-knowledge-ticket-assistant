@@ -12,4 +12,6 @@ public class AdminDashboardOverviewVO {
     private Long aiQuestions;
     private Long aiCreatedTickets;
     private Long knowledgeGaps;
+    private Long documentAnswers;
+    private Long articleAnswers;
 }

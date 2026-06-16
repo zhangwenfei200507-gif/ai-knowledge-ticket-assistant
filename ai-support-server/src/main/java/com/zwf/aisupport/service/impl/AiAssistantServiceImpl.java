@@ -137,7 +137,10 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
         AiDashboardStatsVO statsVO = new AiDashboardStatsVO();
         statsVO.setTotalQuestions(aiQuestionLogMapper.countAll());
-        statsVO.setAnsweredByKnowledgeBase(aiQuestionLogMapper.countAnsweredByKnowledgeBase());
+        statsVO.setAnsweredByKnowledgeBase(aiQuestionLogMapper.countAnsweredByInternalKnowledge());
+        statsVO.setAnsweredByDocument(aiQuestionLogMapper.countAnsweredByDocument());
+        statsVO.setAnsweredByArticle(aiQuestionLogMapper.countAnsweredByArticle());
+        statsVO.setUnansweredQuestions(aiQuestionLogMapper.countUnansweredQuestions());
         statsVO.setCreatedTickets(aiQuestionLogMapper.countCreatedTickets());
         statsVO.setUsefulFeedbackCount(aiQuestionLogMapper.countUsefulFeedback());
         statsVO.setNotUsefulFeedbackCount(aiQuestionLogMapper.countNotUsefulFeedback());
