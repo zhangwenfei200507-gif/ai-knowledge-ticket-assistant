@@ -9,6 +9,7 @@ import com.zwf.aisupport.entity.AiQuestionLog;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.Ticket;
 import com.zwf.aisupport.mapper.AiQuestionLogMapper;
+import com.zwf.aisupport.mapper.DocumentChunkMapper;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.service.AiAssistantService;
@@ -23,13 +24,16 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private final KnowledgeArticleMapper knowledgeArticleMapper;
     private final TicketMapper ticketMapper;
     private final AiQuestionLogMapper aiQuestionLogMapper;
+    private final DocumentChunkMapper documentChunkMapper;
 
     public AiAssistantServiceImpl(KnowledgeArticleMapper knowledgeArticleMapper,
                                   TicketMapper ticketMapper,
-                                  AiQuestionLogMapper aiQuestionLogMapper) {
+                                  AiQuestionLogMapper aiQuestionLogMapper,
+                                  DocumentChunkMapper documentChunkMapper) {
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.ticketMapper = ticketMapper;
         this.aiQuestionLogMapper = aiQuestionLogMapper;
+        this.documentChunkMapper = documentChunkMapper;
     }
 
     @Override
@@ -75,13 +79,18 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private AiAnswerVO findAnswerFromKnowledgeBase(AiAskDTO aiAskDTO) {
         String keyword = extractKeyword(aiAskDTO.getQuestion());
-        List<KnowledgeArticle> articles = knowledgeArticleMapper.searchPublishedArticles(keyword);
 
-        if (articles.isEmpty()) {
-            return buildFallbackAnswer();
+        List<DocumentSearchResultVO> documentResults = documentChunkMapper.searchChunks(keyword);
+        if (!documentResults.isEmpty()) {
+            return buildDocumentBasedAnswer(documentResults.get(0));
         }
 
-        return buildKnowledgeBasedAnswer(articles.get(0));
+        List<KnowledgeArticle> articles = knowledgeArticleMapper.searchPublishedArticles(keyword);
+        if (!articles.isEmpty()) {
+            return buildKnowledgeBasedAnswer(articles.get(0));
+        }
+
+        return buildFallbackAnswer();
     }
 
     private void saveQuestionLog(String question, AiAnswerVO answerVO) {
@@ -280,16 +289,37 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private AiAnswerVO buildKnowledgeBasedAnswer(KnowledgeArticle article) {
         AiAnswerVO answerVO = new AiAnswerVO();
         answerVO.setAnswer("Based on the knowledge base: " + article.getContent());
+        answerVO.setSourceType("ARTICLE");
         answerVO.setSourceArticleId(article.getId());
         answerVO.setSourceTitle(article.getTitle());
+        answerVO.setSourceDocumentId(null);
+        answerVO.setSourceDocumentName(null);
+        answerVO.setSourceChunkId(null);
+        answerVO.setSourceChunkIndex(null);
         answerVO.setSuggestCreateTicket(false);
         answerVO.setCreatedTicketId(null);
         return answerVO;
     }
-
+    private AiAnswerVO buildDocumentBasedAnswer(DocumentSearchResultVO documentResult) {
+        AiAnswerVO answerVO = new AiAnswerVO();
+        answerVO.setAnswer("Based on the uploaded document " + documentResult.getOriginalFilename() + ": " + documentResult.getContent());
+        answerVO.setSourceType("DOCUMENT");
+        answerVO.setSourceArticleId(null);
+        answerVO.setSourceTitle(null);
+        answerVO.setSourceDocumentId(documentResult.getDocumentId());
+        answerVO.setSourceDocumentName(documentResult.getOriginalFilename());
+        answerVO.setSourceChunkId(documentResult.getChunkId());
+        answerVO.setSourceChunkIndex(documentResult.getChunkIndex());
+        answerVO.setSuggestCreateTicket(false);
+        answerVO.setCreatedTicketId(null);
+        return answerVO;
+    }
     private String extractKeyword(String question) {
         String normalizedQuestion = question.trim().toLowerCase();
 
+        if (normalizedQuestion.contains("redis")) {
+            return "redis";
+        }
         if (normalizedQuestion.contains("password")) {
             return "password";
         }
@@ -306,9 +336,14 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private AiAnswerVO buildFallbackAnswer() {
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer("I could not find a reliable answer in the knowledge base. A support ticket can be created for further assistance.");
+        answerVO.setAnswer("I could not find a reliable answer in the uploaded documents or knowledge base. A support ticket can be created for further assistance.");
+        answerVO.setSourceType("NONE");
         answerVO.setSourceArticleId(null);
         answerVO.setSourceTitle(null);
+        answerVO.setSourceDocumentId(null);
+        answerVO.setSourceDocumentName(null);
+        answerVO.setSourceChunkId(null);
+        answerVO.setSourceChunkIndex(null);
         answerVO.setSuggestCreateTicket(true);
         answerVO.setCreatedTicketId(null);
         return answerVO;
