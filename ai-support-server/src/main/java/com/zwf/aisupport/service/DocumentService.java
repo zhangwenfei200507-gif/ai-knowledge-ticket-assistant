@@ -16,4 +16,6 @@ public interface DocumentService {
     List<DocumentChunkVO> listChunks(Long documentId);
 
     List<DocumentSearchResultVO> searchChunks(String keyword);
+
+    void archive(Long documentId);
 }

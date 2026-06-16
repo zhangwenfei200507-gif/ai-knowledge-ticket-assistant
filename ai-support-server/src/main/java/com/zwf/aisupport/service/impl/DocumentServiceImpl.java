@@ -95,6 +95,21 @@ public class DocumentServiceImpl implements DocumentService {
         // Search document chunks first by keyword before adding semantic retrieval later.
         return documentChunkMapper.searchChunks(keyword.trim());
     }
+    @Override
+    public void archive(Long documentId) {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can archive documents");
+        }
+
+        KnowledgeDocument document = knowledgeDocumentMapper.findById(documentId);
+        if (document == null || !"ACTIVE".equals(document.getStatus())) {
+            throw new BusinessException("Document not found");
+        }
+
+        // Archive outdated documents so they are no longer used as AI answer sources.
+        knowledgeDocumentMapper.archive(documentId);
+    }
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("File cannot be empty");

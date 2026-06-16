@@ -28,4 +28,15 @@ public interface KnowledgeDocumentMapper {
 
     @Select("select * from documents where id = #{id}")
     KnowledgeDocument findById(Long id);
+
+    @Update("""
+        update documents
+        set status = 'ARCHIVED',
+            updated_time = CURRENT_TIMESTAMP
+        where id = #{id}
+        """)
+    void archive(Long id);
+
+    @Select("select count(*) from documents where status = 'ACTIVE'")
+    Long countActiveDocuments();
 }

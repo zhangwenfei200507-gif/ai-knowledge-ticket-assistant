@@ -9,6 +9,7 @@ public class AdminDashboardOverviewVO {
     private Long openTickets;
     private Long resolvedTickets;
     private Long knowledgeArticles;
+    private Long documents;
     private Long aiQuestions;
     private Long aiCreatedTickets;
     private Long knowledgeGaps;

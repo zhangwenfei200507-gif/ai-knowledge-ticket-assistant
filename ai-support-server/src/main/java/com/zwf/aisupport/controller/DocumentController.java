@@ -42,4 +42,9 @@ public class DocumentController {
         List<DocumentChunkVO> chunks = documentService.listChunks(documentId);
         return Result.success(chunks);
     }
+    @PatchMapping("/{documentId}/archive")
+    public Result<Void> archive(@PathVariable Long documentId) {
+        documentService.archive(documentId);
+        return Result.success();
+    }
 }
