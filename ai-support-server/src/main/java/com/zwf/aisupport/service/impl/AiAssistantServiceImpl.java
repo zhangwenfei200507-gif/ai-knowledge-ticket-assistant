@@ -91,7 +91,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         // Then fall back to the simplified keyword search for structured knowledge articles.
         List<KnowledgeArticle> articles = knowledgeArticleMapper.searchPublishedArticles(keyword);
         if (!articles.isEmpty()) {
-            return buildKnowledgeBasedAnswer(articles.get(0));
+            return buildKnowledgeBasedAnswer(articles);
         }
 
         return buildFallbackAnswer();
@@ -305,7 +305,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return "MEDIUM";
     }
 
-    private AiAnswerVO buildKnowledgeBasedAnswer(KnowledgeArticle article) {
+    private AiAnswerVO buildKnowledgeBasedAnswer(List<KnowledgeArticle> articles) {
+        KnowledgeArticle article = articles.get(0);
+
         AiAnswerVO answerVO = new AiAnswerVO();
         answerVO.setAnswer("Based on the knowledge base: " + article.getContent());
         answerVO.setSourceType("ARTICLE");
@@ -318,7 +320,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         answerVO.setSourceChunkIndex(null);
         answerVO.setSuggestCreateTicket(false);
         answerVO.setCreatedTicketId(null);
-        answerVO.setSources(buildArticleSources(article));
+        answerVO.setSources(buildArticleSources(articles));
         return answerVO;
     }
 
@@ -399,21 +401,23 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
         return sources;
     }
-    private List<AiAnswerSourceVO> buildArticleSources(KnowledgeArticle article) {
+    private List<AiAnswerSourceVO> buildArticleSources(List<KnowledgeArticle> articles) {
         List<AiAnswerSourceVO> sources = new ArrayList<>();
 
-        AiAnswerSourceVO source = new AiAnswerSourceVO();
-        source.setSourceType("ARTICLE");
-        source.setSourceScore(null);
-        source.setSourceArticleId(article.getId());
-        source.setSourceTitle(article.getTitle());
-        source.setSourceDocumentId(null);
-        source.setSourceDocumentName(null);
-        source.setSourceChunkId(null);
-        source.setSourceChunkIndex(null);
-        source.setPreviewContent(article.getContent());
+        for (KnowledgeArticle article : articles) {
+            AiAnswerSourceVO source = new AiAnswerSourceVO();
+            source.setSourceType("ARTICLE");
+            source.setSourceScore(null);
+            source.setSourceArticleId(article.getId());
+            source.setSourceTitle(article.getTitle());
+            source.setSourceDocumentId(null);
+            source.setSourceDocumentName(null);
+            source.setSourceChunkId(null);
+            source.setSourceChunkIndex(null);
+            source.setPreviewContent(article.getContent());
+            sources.add(source);
+        }
 
-        sources.add(source);
         return sources;
     }
 }
