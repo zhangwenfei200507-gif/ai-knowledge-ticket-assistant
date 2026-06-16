@@ -3,6 +3,7 @@ package com.zwf.aisupport.controller;
 import com.zwf.aisupport.common.result.Result;
 import com.zwf.aisupport.service.DocumentService;
 import com.zwf.aisupport.vo.DocumentChunkVO;
+import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -31,7 +32,11 @@ public class DocumentController {
         List<KnowledgeDocumentVO> documents = documentService.listDocuments();
         return Result.success(documents);
     }
-
+    @GetMapping("/chunks/search")
+    public Result<List<DocumentSearchResultVO>> searchChunks(@RequestParam String keyword) {
+        List<DocumentSearchResultVO> results = documentService.searchChunks(keyword);
+        return Result.success(results);
+    }
     @GetMapping("/{documentId}/chunks")
     public Result<List<DocumentChunkVO>> listChunks(@PathVariable Long documentId) {
         List<DocumentChunkVO> chunks = documentService.listChunks(documentId);

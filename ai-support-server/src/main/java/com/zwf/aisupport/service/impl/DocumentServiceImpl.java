@@ -8,6 +8,7 @@ import com.zwf.aisupport.mapper.DocumentChunkMapper;
 import com.zwf.aisupport.mapper.KnowledgeDocumentMapper;
 import com.zwf.aisupport.service.DocumentService;
 import com.zwf.aisupport.vo.DocumentChunkVO;
+import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -85,7 +86,15 @@ public class DocumentServiceImpl implements DocumentService {
                 .map(this::convertToDocumentChunkVO)
                 .toList();
     }
+    @Override
+    public List<DocumentSearchResultVO> searchChunks(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            throw new BusinessException("Search keyword cannot be blank");
+        }
 
+        // Search document chunks first by keyword before adding semantic retrieval later.
+        return documentChunkMapper.searchChunks(keyword.trim());
+    }
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("File cannot be empty");

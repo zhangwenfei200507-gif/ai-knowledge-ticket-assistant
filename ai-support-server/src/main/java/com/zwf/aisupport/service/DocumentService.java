@@ -1,6 +1,7 @@
 package com.zwf.aisupport.service;
 
 import com.zwf.aisupport.vo.DocumentChunkVO;
+import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -13,4 +14,6 @@ public interface DocumentService {
     List<KnowledgeDocumentVO> listDocuments();
 
     List<DocumentChunkVO> listChunks(Long documentId);
+
+    List<DocumentSearchResultVO> searchChunks(String keyword);
 }
