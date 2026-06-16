@@ -20,4 +20,5 @@ public class AiAnswerVO {
 
     private Boolean suggestCreateTicket;
     private Long createdTicketId;
+    private java.util.List<AiAnswerSourceVO> sources;
 }

@@ -16,6 +16,7 @@ import com.zwf.aisupport.service.AiAssistantService;
 import com.zwf.aisupport.vo.*;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -84,7 +85,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         // Search uploaded document chunks with the full user question first.
         List<DocumentSearchResultVO> documentResults = documentChunkMapper.searchChunks(question);
         if (!documentResults.isEmpty()) {
-            return buildDocumentBasedAnswer(documentResults.get(0));
+            return buildDocumentBasedAnswer(documentResults);
         }
 
         // Then fall back to the simplified keyword search for structured knowledge articles.
@@ -317,10 +318,13 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         answerVO.setSourceChunkIndex(null);
         answerVO.setSuggestCreateTicket(false);
         answerVO.setCreatedTicketId(null);
+        answerVO.setSources(buildArticleSources(article));
         return answerVO;
     }
 
-    private AiAnswerVO buildDocumentBasedAnswer(DocumentSearchResultVO documentResult) {
+    private AiAnswerVO buildDocumentBasedAnswer(List<DocumentSearchResultVO> documentResults) {
+        DocumentSearchResultVO documentResult = documentResults.get(0);
+
         AiAnswerVO answerVO = new AiAnswerVO();
         answerVO.setAnswer("Based on the uploaded document " + documentResult.getOriginalFilename() + ": " + documentResult.getContent());
         answerVO.setSourceType("DOCUMENT");
@@ -333,6 +337,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         answerVO.setSourceChunkIndex(documentResult.getChunkIndex());
         answerVO.setSuggestCreateTicket(false);
         answerVO.setCreatedTicketId(null);
+        answerVO.setSources(buildDocumentSources(documentResults));
         return answerVO;
     }
     private String extractKeyword(String question) {
@@ -372,6 +377,43 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         answerVO.setSourceChunkIndex(null);
         answerVO.setSuggestCreateTicket(true);
         answerVO.setCreatedTicketId(null);
+        answerVO.setSources(new ArrayList<>());
         return answerVO;
+    }
+    private List<AiAnswerSourceVO> buildDocumentSources(List<DocumentSearchResultVO> documentResults) {
+        List<AiAnswerSourceVO> sources = new ArrayList<>();
+
+        for (DocumentSearchResultVO result : documentResults) {
+            AiAnswerSourceVO source = new AiAnswerSourceVO();
+            source.setSourceType("DOCUMENT");
+            source.setSourceScore(result.getRelevanceScore());
+            source.setSourceArticleId(null);
+            source.setSourceTitle(null);
+            source.setSourceDocumentId(result.getDocumentId());
+            source.setSourceDocumentName(result.getOriginalFilename());
+            source.setSourceChunkId(result.getChunkId());
+            source.setSourceChunkIndex(result.getChunkIndex());
+            source.setPreviewContent(result.getContent());
+            sources.add(source);
+        }
+
+        return sources;
+    }
+    private List<AiAnswerSourceVO> buildArticleSources(KnowledgeArticle article) {
+        List<AiAnswerSourceVO> sources = new ArrayList<>();
+
+        AiAnswerSourceVO source = new AiAnswerSourceVO();
+        source.setSourceType("ARTICLE");
+        source.setSourceScore(null);
+        source.setSourceArticleId(article.getId());
+        source.setSourceTitle(article.getTitle());
+        source.setSourceDocumentId(null);
+        source.setSourceDocumentName(null);
+        source.setSourceChunkId(null);
+        source.setSourceChunkIndex(null);
+        source.setPreviewContent(article.getContent());
+
+        sources.add(source);
+        return sources;
     }
 }
