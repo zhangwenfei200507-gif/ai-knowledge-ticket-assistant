@@ -1,6 +1,7 @@
 package com.zwf.aisupport.mapper;
 
 import com.zwf.aisupport.entity.KnowledgeDocument;
+import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
 import org.apache.ibatis.annotations.*;
 
 import java.util.List;
@@ -39,4 +40,14 @@ public interface KnowledgeDocumentMapper {
 
     @Select("select count(*) from documents where status = 'ACTIVE'")
     Long countActiveDocuments();
+
+    @Select("""
+        select coalesce(category, 'Uncategorized') as category,
+               count(*) as document_count
+        from documents
+        where status = 'ACTIVE'
+        group by coalesce(category, 'Uncategorized')
+        order by document_count desc
+        """)
+    List<DocumentCategoryStatsVO> countActiveDocumentsByCategory();
 }

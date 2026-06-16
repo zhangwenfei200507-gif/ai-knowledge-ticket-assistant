@@ -7,6 +7,7 @@ import com.zwf.aisupport.entity.KnowledgeDocument;
 import com.zwf.aisupport.mapper.DocumentChunkMapper;
 import com.zwf.aisupport.mapper.KnowledgeDocumentMapper;
 import com.zwf.aisupport.service.DocumentService;
+import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
 import com.zwf.aisupport.vo.DocumentChunkVO;
 import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
@@ -109,6 +110,16 @@ public class DocumentServiceImpl implements DocumentService {
 
         // Archive outdated documents so they are no longer used as AI answer sources.
         knowledgeDocumentMapper.archive(documentId);
+    }
+    @Override
+    public List<DocumentCategoryStatsVO> getCategoryStats() {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can access document category stats");
+        }
+
+        // Document category stats help administrators understand how uploaded knowledge is organized.
+        return knowledgeDocumentMapper.countActiveDocumentsByCategory();
     }
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {

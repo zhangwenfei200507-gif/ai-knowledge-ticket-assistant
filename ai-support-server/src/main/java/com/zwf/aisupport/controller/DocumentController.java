@@ -2,6 +2,7 @@ package com.zwf.aisupport.controller;
 
 import com.zwf.aisupport.common.result.Result;
 import com.zwf.aisupport.service.DocumentService;
+import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
 import com.zwf.aisupport.vo.DocumentChunkVO;
 import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
@@ -36,6 +37,11 @@ public class DocumentController {
     public Result<List<DocumentSearchResultVO>> searchChunks(@RequestParam String keyword) {
         List<DocumentSearchResultVO> results = documentService.searchChunks(keyword);
         return Result.success(results);
+    }
+    @GetMapping("/categories/stats")
+    public Result<List<DocumentCategoryStatsVO>> getCategoryStats() {
+        List<DocumentCategoryStatsVO> stats = documentService.getCategoryStats();
+        return Result.success(stats);
     }
     @GetMapping("/{documentId}/chunks")
     public Result<List<DocumentChunkVO>> listChunks(@PathVariable Long documentId) {

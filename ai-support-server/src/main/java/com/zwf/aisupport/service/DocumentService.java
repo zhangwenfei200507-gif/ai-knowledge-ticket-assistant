@@ -1,5 +1,6 @@
 package com.zwf.aisupport.service;
 
+import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
 import com.zwf.aisupport.vo.DocumentChunkVO;
 import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
@@ -18,4 +19,6 @@ public interface DocumentService {
     List<DocumentSearchResultVO> searchChunks(String keyword);
 
     void archive(Long documentId);
+
+    List<DocumentCategoryStatsVO> getCategoryStats();
 }
