@@ -11,4 +11,5 @@ public class DocumentSearchResultVO {
     private String category;
     private Integer chunkIndex;
     private String content;
+    private Double relevanceScore;
 }

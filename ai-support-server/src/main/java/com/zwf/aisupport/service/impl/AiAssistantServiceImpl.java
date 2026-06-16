@@ -305,6 +305,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         AiAnswerVO answerVO = new AiAnswerVO();
         answerVO.setAnswer("Based on the knowledge base: " + article.getContent());
         answerVO.setSourceType("ARTICLE");
+        answerVO.setSourceScore(null);
         answerVO.setSourceArticleId(article.getId());
         answerVO.setSourceTitle(article.getTitle());
         answerVO.setSourceDocumentId(null);
@@ -315,10 +316,12 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         answerVO.setCreatedTicketId(null);
         return answerVO;
     }
+
     private AiAnswerVO buildDocumentBasedAnswer(DocumentSearchResultVO documentResult) {
         AiAnswerVO answerVO = new AiAnswerVO();
         answerVO.setAnswer("Based on the uploaded document " + documentResult.getOriginalFilename() + ": " + documentResult.getContent());
         answerVO.setSourceType("DOCUMENT");
+        answerVO.setSourceScore(documentResult.getRelevanceScore());
         answerVO.setSourceArticleId(null);
         answerVO.setSourceTitle(null);
         answerVO.setSourceDocumentId(documentResult.getDocumentId());
@@ -353,6 +356,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         AiAnswerVO answerVO = new AiAnswerVO();
         answerVO.setAnswer("I could not find a reliable answer in the uploaded documents or knowledge base. A support ticket can be created for further assistance.");
         answerVO.setSourceType("NONE");
+        answerVO.setSourceScore(null);
         answerVO.setSourceArticleId(null);
         answerVO.setSourceTitle(null);
         answerVO.setSourceDocumentId(null);

@@ -8,6 +8,7 @@ public class AiAnswerVO {
     private String answer;
 
     private String sourceType;
+    private Double sourceScore;
 
     private Long sourceArticleId;
     private String sourceTitle;
