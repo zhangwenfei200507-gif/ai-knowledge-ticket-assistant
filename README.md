@@ -46,6 +46,7 @@ The goal is to make AI the first-response layer for support, while keeping human
 | --- | --- |
 | Language | Java 17 |
 | Backend Framework | Spring Boot 3.5.15 |
+| Frontend | Vite, JavaScript, CSS |
 | Build Tool | Maven |
 | Database | PostgreSQL |
 | Cache / Login State | Redis |
@@ -142,6 +143,16 @@ The current implementation uses uploaded document chunks first and structured kn
 
 ## Local Development
 
+### Project Structure
+
+```text
+ai-knowledge-ticket-assistant
+├─ ai-support-server   Spring Boot backend API
+├─ ai-support-web      Vite frontend workspace
+├─ docs                SQL scripts and learning notes
+└─ docker-compose.yml  Local PostgreSQL and Redis
+```
+
 ### 1. Start Infrastructure
 
 From the project root:
@@ -193,6 +204,28 @@ Health check:
 
 ```text
 GET /api/health
+```
+
+### 4. Start Frontend
+
+The frontend is stored separately from the backend:
+
+```powershell
+cd ai-support-web
+pnpm install
+pnpm dev
+```
+
+The frontend runs on:
+
+```text
+http://localhost:5173
+```
+
+During local development, Vite proxies `/api` requests to:
+
+```text
+http://localhost:8090
 ```
 
 ## Main API Overview
@@ -294,9 +327,10 @@ Local test JSON files such as `ask.json`, `article.json`, `gap-article.json`, an
 
 ### Stage 1: Backend Foundation
 
-- Authentication, JWT, Redis login state, and role-aware APIs.
-- Ticket workflow and knowledge article management.
-- AI-style knowledge answering, logs, feedback, knowledge gaps, and admin dashboard statistics.
+- Authentication, JWT, Redis login state, and role-aware APIs. MVP complete.
+- Ticket workflow and knowledge article management. MVP complete.
+- AI-style knowledge answering, logs, feedback, knowledge gaps, and admin dashboard statistics. MVP complete.
+- Later: add production-grade tests, richer permissions, paging, filtering, operation logs, and stricter workflow validation.
 
 ### Stage 2: Document Knowledge Base
 
@@ -306,9 +340,11 @@ Local test JSON files such as `ask.json`, `article.json`, `gap-article.json`, an
 - Split documents into searchable chunks. Done.
 - Let AI answers reference document sources. Done.
 - Next: add focused tests and prepare for frontend product flows.
+- Later: add PDF / DOCX parsing, stronger retrieval evaluation, semantic search, confidence scoring, and better document lifecycle controls.
 
 ### Stage 3: Frontend Product Experience
 
+- Current focus: build the first usable workspace for login, asking questions, and reviewing document / article source candidates.
 - Build a calm, professional user workspace for document-based support.
 - Build an admin knowledge operations console.
 - Keep the visual style restrained and premium rather than overly obvious or decorative AI styling.
