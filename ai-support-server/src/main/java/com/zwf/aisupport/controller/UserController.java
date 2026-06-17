@@ -1,13 +1,15 @@
 package com.zwf.aisupport.controller;
 
 import com.zwf.aisupport.common.result.Result;
+import com.zwf.aisupport.dto.UserForgotPasswordDTO;
+import com.zwf.aisupport.dto.UserLoginDTO;
 import com.zwf.aisupport.dto.UserRegisterDTO;
 import com.zwf.aisupport.service.UserService;
 import com.zwf.aisupport.vo.LoginVO;
 import com.zwf.aisupport.vo.UserVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
-import com.zwf.aisupport.dto.UserLoginDTO;
+
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
@@ -33,11 +35,19 @@ public class UserController {
         userService.register(userRegisterDTO);
         return Result.success();
     }
+
     @PostMapping("/login")
     public Result<LoginVO> login(@Valid @RequestBody UserLoginDTO userLoginDTO) {
         LoginVO loginVO = userService.login(userLoginDTO);
         return Result.success(loginVO);
     }
+
+    @PostMapping("/forgot-password")
+    public Result<Void> resetPassword(@Valid @RequestBody UserForgotPasswordDTO forgotPasswordDTO) {
+        userService.resetPassword(forgotPasswordDTO);
+        return Result.success();
+    }
+
     @PostMapping("/logout")
     public Result<Void> logout(@RequestHeader("Authorization") String authorizationHeader) {
         String token = authorizationHeader.replace("Bearer ", "");

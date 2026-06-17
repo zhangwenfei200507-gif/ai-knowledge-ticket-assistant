@@ -28,7 +28,12 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints used before a user has a token.
-                        .requestMatchers("/api/health", "/api/users/register", "/api/users/login").permitAll()
+                        .requestMatchers(
+                                "/api/health",
+                                "/api/users/register",
+                                "/api/users/login",
+                                "/api/users/forgot-password"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
                 // Run JWT parsing before Spring Security checks whether the request is authenticated.

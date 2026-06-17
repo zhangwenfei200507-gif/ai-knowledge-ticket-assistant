@@ -1,8 +1,8 @@
-# AI Document Knowledge & Web-Augmented Support Platform
+# CloudOps AI Knowledge Support Platform
 
-An enterprise-style Spring Boot backend project for building an AI-powered document knowledge and support platform.
+An enterprise-style AI knowledge support platform for CloudOps and B2B SaaS support teams.
 
-The long-term product direction is clear: users upload documents and ask questions, the system searches internal documents and knowledge articles first, uses web search as a later-stage fallback when internal knowledge is insufficient, and creates support tickets when the issue still needs human handling.
+The long-term product direction is clear: support engineers upload internal runbooks, SOPs, configuration notes, and troubleshooting guides; users ask operational questions; the system searches internal documents and knowledge articles first, uses trusted web evidence as a later-stage fallback when internal knowledge is insufficient, and creates support tickets when the issue still needs human handling.
 
 The current backend focuses on the first stable foundation plus the first document knowledge layer: authentication, ticket workflow, structured knowledge articles, uploaded `.txt` / `.md` documents, document chunk search, AI-style question answering, AI logs, feedback, knowledge gaps, and admin analytics. RAG, semantic retrieval, and web-augmented answering will be added in later stages.
 
@@ -10,21 +10,68 @@ The current backend focuses on the first stable foundation plus the first docume
 
 This project is not a simple ticket system, a simple CRUD knowledge base, or a thin chatbot wrapper.
 
-It is designed around this loop:
+It is designed for a CloudOps / SaaS support loop:
 
 ```text
-Upload documents
-  -> Parse and store knowledge
-  -> Ask questions
-  -> Search internal documents and knowledge articles
-  -> Return answers with sources
-  -> Use web search when internal knowledge is insufficient
-  -> Create tickets when human support is still required
-  -> Record knowledge gaps
-  -> Improve the knowledge base over time
+Upload CloudOps runbooks, SOPs, and configuration notes
+  -> Parse and store internal operational knowledge
+  -> Ask questions about incidents, login failures, cache outages, or deployment issues
+  -> Search internal documents and knowledge articles first
+  -> Return grounded answers with traceable sources
+  -> Use trusted web evidence when internal knowledge is insufficient
+  -> Create support tickets when human handling is still required
+  -> Record knowledge gaps and weak coverage areas
+  -> Let administrators review evidence and improve the internal knowledge base
 ```
 
-The goal is to make AI the first-response layer for support, while keeping human review, knowledge quality, and traceable sources at the center of the system.
+The goal is to make AI the first-response layer for CloudOps support, while keeping private internal context, human review, knowledge quality, and traceable sources at the center of the system.
+
+## Target Enterprise Scenario
+
+The project is modeled around a B2B SaaS / cloud-native operations support team.
+
+Typical users are support engineers, platform engineers, or technical support staff who need to answer questions about:
+
+- Login failures, JWT validation, and authentication flow issues.
+- Redis cache outages, token storage problems, and session-state failures.
+- PostgreSQL connection timeouts and database troubleshooting.
+- Docker Compose local environments and container startup failures.
+- Kubernetes deployment, scaling, and rollback issues.
+- Production incident escalation, support ticket priority, and SLA handling.
+- Customer-facing support responses and operational communication templates.
+
+Internal knowledge is still essential because it contains private context that web search cannot know: service ownership, internal runbooks, environment configuration, escalation policy, customer support templates, and company-specific troubleshooting procedures.
+
+Trusted web evidence is used to supplement internal knowledge with external technical facts, official documentation, and current best practices. It should be reviewed before being converted into reusable internal knowledge.
+
+## Core Knowledge Scope
+
+The internal knowledge base should be built around these essential CloudOps categories:
+
+| Category | Example Knowledge |
+| --- | --- |
+| System Architecture | Service dependencies, Redis role, JWT login flow, PostgreSQL schema notes |
+| Troubleshooting Runbooks | Login failure, Redis outage, JWT invalid token, database timeout, backend startup failure |
+| Operational SOPs | Incident escalation, rollback procedure, service restart process, SLA and ownership rules |
+| Configuration Reference | Local ports, Redis/PostgreSQL settings, Spring profiles, environment variables |
+| Security And Permissions | JWT lifecycle, logout behavior, admin API access, role-based permissions |
+| Support Communication | Customer response templates, outage updates, diagnostic information requests |
+| Trusted External Sources | redis.io, docs.spring.io, postgresql.org, docs.docker.com, kubernetes.io, learn.microsoft.com |
+
+Priority seed documents and articles:
+
+```text
+1. Redis Login Troubleshooting Guide
+2. JWT Authentication Failure Runbook
+3. PostgreSQL Connection Timeout Checklist
+4. Docker Compose Local Environment Guide
+5. Kubernetes Deployment Rollback Procedure
+6. Production Incident Escalation Policy
+7. Ticket Priority Classification Rules
+8. Customer Response Template For Login Issues
+9. Spring Security Permission Troubleshooting
+10. Trusted External Sources For CloudOps Troubleshooting
+```
 
 ## Project Highlights
 
@@ -39,6 +86,7 @@ The goal is to make AI the first-response layer for support, while keeping human
 - Docker Compose based local infrastructure with PostgreSQL and Redis.
 - Clear layered backend structure: Controller -> Service -> Mapper -> Database.
 - A staged AI roadmap: structured and document knowledge search first, RAG later, and web search as an advanced fallback.
+- CloudOps-focused knowledge scope covering authentication, Redis, PostgreSQL, Docker, Kubernetes, incident SOPs, tickets, and trusted external sources.
 
 ## Tech Stack
 
@@ -147,10 +195,12 @@ The current implementation uses uploaded document chunks first and structured kn
 
 ```text
 ai-knowledge-ticket-assistant
-├─ ai-support-server   Spring Boot backend API
-├─ ai-support-web      Vite frontend workspace
-├─ docs                SQL scripts and learning notes
-└─ docker-compose.yml  Local PostgreSQL and Redis
+|-- ai-support-server   Spring Boot backend API
+|-- ai-support-web      Vite frontend workspace
+|-- docs                SQL scripts and learning notes
+|-- Pictures            UI reference images
+|-- TestFiles           Local manual API test files
+`-- docker-compose.yml  Local PostgreSQL and Redis
 ```
 
 ### 1. Start Infrastructure
@@ -179,6 +229,7 @@ docs/sql
 Run them in order when setting up a fresh local database:
 
 ```text
+000_create_users_table.sql
 001_create_tickets_table.sql
 002_create_knowledge_articles_table.sql
 003_create_ai_question_logs_table.sql
@@ -227,6 +278,17 @@ During local development, Vite proxies `/api` requests to:
 ```text
 http://localhost:8090
 ```
+
+## UI Direction References
+
+The Stage 3 frontend should follow the reference images in:
+
+```text
+Pictures/admin-knowledge-operations-center.png
+Pictures/user-document-intelligence-workspace.png
+```
+
+These images define the intended CloudOps product style: premium, practical, evidence-centered, and clearly separated between user document Q&A and administrator knowledge operations.
 
 ## Main API Overview
 
@@ -321,7 +383,7 @@ git commit -m "feat: describe milestone"
 git push
 ```
 
-Local test JSON files such as `ask.json`, `article.json`, `gap-article.json`, and `article-update.json` are only used for manual API testing and should not be committed.
+Local test JSON and markdown files are stored under `TestFiles/` for manual API testing and should not be committed.
 
 ## Roadmap
 

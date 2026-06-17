@@ -4,6 +4,7 @@ import com.zwf.aisupport.common.constant.RedisKeyConstant;
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.common.util.JwtUtil;
+import com.zwf.aisupport.dto.UserForgotPasswordDTO;
 import com.zwf.aisupport.dto.UserLoginDTO;
 import com.zwf.aisupport.dto.UserRegisterDTO;
 import com.zwf.aisupport.entity.User;
@@ -42,17 +43,28 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void register(UserRegisterDTO userRegisterDTO) {
-        User existingUser = userMapper.findByUsername(userRegisterDTO.getUsername());
+        if (!userRegisterDTO.getPassword().equals(userRegisterDTO.getConfirmPassword())) {
+            throw new BusinessException("Passwords do not match");
+        }
+
+        String email = userRegisterDTO.getEmail().trim();
+        User existingEmailUser = userMapper.findByEmail(email);
+        if (existingEmailUser != null) {
+            throw new BusinessException("Email already exists");
+        }
+
+        String username = resolveRegistrationUsername(userRegisterDTO, email);
+        User existingUser = userMapper.findByUsername(username);
         if (existingUser != null) {
             throw new BusinessException("Username already exists");
         }
 
         User user = new User();
-        user.setUsername(userRegisterDTO.getUsername());
+        user.setUsername(username);
         // Store only the encrypted password, never the raw password.
         user.setPasswordHash(passwordEncoder.encode(userRegisterDTO.getPassword()));
-        user.setDisplayName(userRegisterDTO.getDisplayName());
-        user.setEmail(userRegisterDTO.getEmail());
+        user.setDisplayName(resolveDisplayName(userRegisterDTO, email));
+        user.setEmail(email);
         user.setRole("USER");
         user.setStatus(1);
 
@@ -61,7 +73,12 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public LoginVO login(UserLoginDTO userLoginDTO) {
-        User user = userMapper.findByUsername(userLoginDTO.getUsername());
+        String identifier = userLoginDTO.getLoginIdentifier();
+        if (identifier == null || identifier.isBlank()) {
+            throw new BusinessException("Username or email cannot be blank");
+        }
+
+        User user = userMapper.findByUsernameOrEmail(identifier);
         if (user == null) {
             throw new BusinessException("Invalid username or password");
         }
@@ -84,6 +101,56 @@ public class UserServiceImpl implements UserService {
         loginVO.setToken(token);
         loginVO.setUser(convertToUserVO(user));
         return loginVO;
+    }
+
+    @Override
+    public void resetPassword(UserForgotPasswordDTO forgotPasswordDTO) {
+        if (!forgotPasswordDTO.getNewPassword().equals(forgotPasswordDTO.getConfirmPassword())) {
+            throw new BusinessException("Passwords do not match");
+        }
+
+        String identifier = forgotPasswordDTO.getUsernameOrEmail().trim();
+        String registeredEmail = forgotPasswordDTO.getRegisteredEmail().trim();
+
+        User user = userMapper.findByUsernameOrEmail(identifier);
+        if (user == null || user.getEmail() == null || !user.getEmail().equalsIgnoreCase(registeredEmail)) {
+            throw new BusinessException("Account information does not match");
+        }
+
+        userMapper.updatePassword(user.getId(), passwordEncoder.encode(forgotPasswordDTO.getNewPassword()));
+    }
+
+    private String resolveRegistrationUsername(UserRegisterDTO userRegisterDTO, String email) {
+        if (userRegisterDTO.getUsername() != null && !userRegisterDTO.getUsername().isBlank()) {
+            return userRegisterDTO.getUsername().trim();
+        }
+
+        String baseUsername = email.substring(0, email.indexOf("@"))
+                .replaceAll("[^A-Za-z0-9_]", "_");
+
+        if (baseUsername.length() < 3) {
+            baseUsername = "user_" + baseUsername;
+        }
+        if (baseUsername.length() > 40) {
+            baseUsername = baseUsername.substring(0, 40);
+        }
+
+        String candidate = baseUsername;
+        int suffix = 1;
+        while (userMapper.findByUsername(candidate) != null) {
+            candidate = baseUsername + "_" + suffix;
+            suffix++;
+        }
+
+        return candidate;
+    }
+
+    private String resolveDisplayName(UserRegisterDTO userRegisterDTO, String email) {
+        if (userRegisterDTO.getDisplayName() != null && !userRegisterDTO.getDisplayName().isBlank()) {
+            return userRegisterDTO.getDisplayName().trim();
+        }
+
+        return email.substring(0, email.indexOf("@"));
     }
 
     private UserVO convertToUserVO(User user) {
