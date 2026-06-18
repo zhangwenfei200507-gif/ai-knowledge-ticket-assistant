@@ -149,7 +149,16 @@ function App() {
           localStorage.setItem('aegiscloud_user', JSON.stringify(data.user ?? {}));
         }
 
-        setNotice({ type: 'success', text: 'Signed in successfully.' });
+        const userRole = data?.user?.role === 'ADMIN' ? 'ADMIN' : 'USER';
+        localStorage.setItem('aegiscloud_entry', userRole === 'ADMIN' ? '/admin' : '/workspace');
+
+        setNotice({
+          type: 'success',
+          text:
+            userRole === 'ADMIN'
+              ? 'Signed in as ADMIN. Admin console access is ready.'
+              : 'Signed in as USER. Workspace access is ready.',
+        });
       }
 
       if (mode === 'register') {

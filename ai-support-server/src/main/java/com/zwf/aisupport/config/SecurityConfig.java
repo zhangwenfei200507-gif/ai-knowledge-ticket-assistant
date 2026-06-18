@@ -3,6 +3,7 @@ package com.zwf.aisupport.config;
 import com.zwf.aisupport.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -34,6 +35,25 @@ public class SecurityConfig {
                                 "/api/users/login",
                                 "/api/users/forgot-password"
                         ).permitAll()
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/ai/logs",
+                                "/api/ai/stats",
+                                "/api/ai/knowledge-gaps",
+                                "/api/documents/categories/stats",
+                                "/api/knowledge/articles/categories/stats",
+                                "/api/tickets"
+                        ).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/ai/knowledge-gaps/*/article",
+                                "/api/knowledge/articles"
+                        ).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/knowledge/articles/*").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH,
+                                "/api/documents/*/archive",
+                                "/api/knowledge/articles/*/archive",
+                                "/api/tickets/*/assign"
+                        ).hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
                 // Run JWT parsing before Spring Security checks whether the request is authenticated.
