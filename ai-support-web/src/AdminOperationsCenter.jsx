@@ -32,7 +32,18 @@ import {
   Upload,
   UserRound,
 } from 'lucide-react';
-import { askAiQuestion, getOperationsCenter, uploadKnowledgeArticle, uploadKnowledgeDocument } from './api/admin';
+import {
+  archiveKnowledgeArticle,
+  archiveKnowledgeDocument,
+  askAiQuestion,
+  getDocumentChunks,
+  getKnowledgeArticles,
+  getKnowledgeDocuments,
+  getOperationsCenter,
+  updateKnowledgeArticle,
+  uploadKnowledgeArticle,
+  uploadKnowledgeDocument,
+} from './api/admin';
 
 const fallbackData = {
   title: 'CloudOps AI Knowledge Operations Center',
@@ -464,6 +475,59 @@ function Table({ columns, rows, empty }) {
   );
 }
 
+function formatDateTime(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString();
+}
+
+function formatFileSize(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB';
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function KnowledgeReader({ article, chunks, actions }) {
+  if (!article && !chunks?.length) {
+    return <EmptyState text="Select an item to preview its stored knowledge." />;
+  }
+
+  if (article) {
+    return (
+      <article className="knowledgeReader">
+        <div className="knowledgeReaderHeader">
+          <span>ARTICLE</span>
+          <strong>{article.title}</strong>
+          <small>{article.category || 'Uncategorized'} · {formatDateTime(article.updatedTime || article.createdTime)}</small>
+          {actions && <div className="readerActions">{actions}</div>}
+        </div>
+        <pre>{article.content}</pre>
+      </article>
+    );
+  }
+
+  return (
+    <div className="knowledgeReader">
+      <div className="knowledgeReaderHeader">
+        <span>DOCUMENT CHUNKS</span>
+        <strong>{chunks.length} searchable chunks</strong>
+        <small>These are the exact passages used by document retrieval.</small>
+        {actions && <div className="readerActions">{actions}</div>}
+      </div>
+      <div className="chunkList">
+        {chunks.map((chunk) => (
+          <article key={chunk.id || chunk.chunkIndex}>
+            <b>Chunk {chunk.chunkIndex}</b>
+            <p>{chunk.content}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AdminModal({ title, children, onClose }) {
   return (
     <div className="adminModalOverlay" role="dialog" aria-modal="true">
@@ -507,6 +571,14 @@ function AdminOperationsCenter() {
   const [articleForm, setArticleForm] = useState({ title: '', category: 'General', file: null });
   const [documentForm, setDocumentForm] = useState({ category: 'General', file: null });
   const [questionForm, setQuestionForm] = useState({ question: '' });
+  const [articles, setArticles] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [selectedArticle, setSelectedArticle] = useState(null);
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [selectedChunks, setSelectedChunks] = useState([]);
+  const [articleSearch, setArticleSearch] = useState('');
+  const [documentSearch, setDocumentSearch] = useState('');
+  const [articleEditor, setArticleEditor] = useState({ id: null, title: '', category: '', content: '' });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const user = useMemo(() => {
     try {
@@ -529,6 +601,28 @@ function AdminOperationsCenter() {
       });
   }, []);
 
+  const filteredArticles = useMemo(() => {
+    const keyword = articleSearch.trim().toLowerCase();
+    if (!keyword) return articles;
+    return articles.filter((article) => [
+      article.title,
+      article.category,
+      article.content,
+      article.status,
+    ].some((value) => String(value ?? '').toLowerCase().includes(keyword)));
+  }, [articles, articleSearch]);
+
+  const filteredDocuments = useMemo(() => {
+    const keyword = documentSearch.trim().toLowerCase();
+    if (!keyword) return documents;
+    return documents.filter((document) => [
+      document.originalFilename,
+      document.category,
+      document.contentType,
+      document.status,
+    ].some((value) => String(value ?? '').toLowerCase().includes(keyword)));
+  }, [documents, documentSearch]);
+
   useEffect(() => {
     loadOperationsCenter();
   }, [loadOperationsCenter]);
@@ -536,6 +630,71 @@ function AdminOperationsCenter() {
   const openModal = (modal) => {
     setActionStatus({ type: '', text: '' });
     setActiveModal(modal);
+  };
+
+  const openArticleLibrary = async () => {
+    openModal('articleLibrary');
+    setActionStatus({ type: 'loading', text: 'Loading stored knowledge articles...' });
+    try {
+      const result = await getKnowledgeArticles();
+      setArticles(result ?? []);
+      setSelectedArticle((result ?? [])[0] ?? null);
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const openDocumentLibrary = async () => {
+    openModal('documentLibrary');
+    setActionStatus({ type: 'loading', text: 'Loading uploaded documents...' });
+    try {
+      const result = await getKnowledgeDocuments();
+      const loadedDocuments = result ?? [];
+      setDocuments(loadedDocuments);
+      setSelectedDocument(loadedDocuments[0] ?? null);
+      if (loadedDocuments[0]) {
+        const chunks = await getDocumentChunks(loadedDocuments[0].id);
+        setSelectedChunks(chunks ?? []);
+      } else {
+        setSelectedChunks([]);
+      }
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const viewDocumentChunks = async (document) => {
+    setSelectedDocument(document);
+    setActionStatus({ type: 'loading', text: 'Loading document chunks...' });
+    try {
+      const result = await getDocumentChunks(document.id);
+      setSelectedChunks(result ?? []);
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const openArticleEditor = (article) => {
+    if (!article) return;
+    setArticleEditor({
+      id: article.id,
+      title: article.title || '',
+      category: article.category || '',
+      content: article.content || '',
+    });
+    openModal('editArticle');
+  };
+
+  const copyToClipboard = async (text, successText) => {
+    try {
+      await navigator.clipboard.writeText(text || '');
+      setActionStatus({ type: 'success', text: successText });
+    } catch {
+      setActionStatus({ type: 'error', text: 'Clipboard permission was not available. Select and copy the text manually.' });
+    }
   };
 
   const closeModal = () => {
@@ -551,8 +710,8 @@ function AdminOperationsCenter() {
     const actions = {
       'Command Center': () => window.scrollTo({ top: 0, behavior: 'smooth' }),
       'User Document Q&A': () => openModal('ask'),
-      Runbooks: () => openModal('uploadDocument'),
-      'Knowledge Base': () => openModal('uploadArticle'),
+      Runbooks: openDocumentLibrary,
+      'Knowledge Base': openArticleLibrary,
       'Web Evidence': () => openModal('webEvidenceUnavailable'),
       'LLM Reasoning': () => scrollToSection('ai-reasoning-layer'),
       'Knowledge Gaps': () => scrollToSection('knowledge-gap-loop'),
@@ -575,6 +734,7 @@ function AdminOperationsCenter() {
       await uploadKnowledgeArticle(articleForm);
       setActionStatus({ type: 'success', text: 'Article saved to the knowledge base.' });
       setArticleForm({ title: '', category: 'General', file: null });
+      setArticles([]);
       loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -593,6 +753,8 @@ function AdminOperationsCenter() {
       await uploadKnowledgeDocument(documentForm);
       setActionStatus({ type: 'success', text: 'Document uploaded and indexed for AI retrieval.' });
       setDocumentForm({ category: 'General', file: null });
+      setDocuments([]);
+      setSelectedChunks([]);
       loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -611,6 +773,72 @@ function AdminOperationsCenter() {
       await askAiQuestion({ question: questionForm.question.trim() });
       setActionStatus({ type: 'success', text: 'Question recorded. Dashboard metrics will reflect the new AI log.' });
       setQuestionForm({ question: '' });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const submitArticleEdit = async (event) => {
+    event.preventDefault();
+    if (!articleEditor.title.trim() || !articleEditor.content.trim()) {
+      setActionStatus({ type: 'error', text: 'Title and content are required.' });
+      return;
+    }
+
+    setActionStatus({ type: 'loading', text: 'Saving article changes...' });
+    try {
+      const updated = await updateKnowledgeArticle(articleEditor.id, {
+        title: articleEditor.title.trim(),
+        category: articleEditor.category.trim() || null,
+        content: articleEditor.content.trim(),
+      });
+      setArticles((current) => current.map((article) => article.id === updated.id ? updated : article));
+      setSelectedArticle(updated);
+      setActionStatus({ type: 'success', text: 'Article updated and ready for AI retrieval.' });
+      setActiveModal('articleLibrary');
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const archiveSelectedArticle = async () => {
+    if (!selectedArticle) return;
+    const confirmed = window.confirm(`Archive article "${selectedArticle.title}"? It will no longer be used as an AI answer source.`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Archiving article...' });
+    try {
+      await archiveKnowledgeArticle(selectedArticle.id);
+      const remaining = articles.filter((article) => article.id !== selectedArticle.id);
+      setArticles(remaining);
+      setSelectedArticle(remaining[0] ?? null);
+      setActionStatus({ type: 'success', text: 'Article archived. It is removed from active AI retrieval.' });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const archiveSelectedDocument = async () => {
+    if (!selectedDocument) return;
+    const confirmed = window.confirm(`Archive document "${selectedDocument.originalFilename}"? Its chunks will no longer be used by AI retrieval.`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Archiving document...' });
+    try {
+      await archiveKnowledgeDocument(selectedDocument.id);
+      const remaining = documents.filter((document) => document.id !== selectedDocument.id);
+      setDocuments(remaining);
+      setSelectedDocument(remaining[0] ?? null);
+      if (remaining[0]) {
+        const chunks = await getDocumentChunks(remaining[0].id);
+        setSelectedChunks(chunks ?? []);
+      } else {
+        setSelectedChunks([]);
+      }
+      setActionStatus({ type: 'success', text: 'Document archived. Its chunks are removed from active retrieval.' });
       loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -669,6 +897,105 @@ function AdminOperationsCenter() {
       );
     }
 
+    if (activeModal === 'editArticle') {
+      return (
+        <AdminModal title="Edit Knowledge Article" onClose={() => setActiveModal('articleLibrary')}>
+          <form className="adminActionForm wide" onSubmit={submitArticleEdit}>
+            <Field label="Title">
+              <input value={articleEditor.title} onChange={(event) => setArticleEditor((current) => ({ ...current, title: event.target.value }))} />
+            </Field>
+            <Field label="Category">
+              <input value={articleEditor.category} onChange={(event) => setArticleEditor((current) => ({ ...current, category: event.target.value }))} />
+            </Field>
+            <Field label="Content">
+              <textarea value={articleEditor.content} rows={16} onChange={(event) => setArticleEditor((current) => ({ ...current, content: event.target.value }))} />
+            </Field>
+            <div className="formButtonRow">
+              <button className="adminSubmitButton" type="submit">Save Changes</button>
+              <button className="secondaryAdminButton" type="button" onClick={() => setActiveModal('articleLibrary')}>Cancel</button>
+            </div>
+            {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+          </form>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'articleLibrary') {
+      return (
+        <AdminModal title="Knowledge Articles" onClose={closeModal}>
+          <div className="knowledgeLibrary">
+            <div className="libraryList">
+              <div className="libraryToolbar">
+                <strong>{articles.length} Articles</strong>
+                <button type="button" onClick={() => openModal('uploadArticle')}>Upload New</button>
+              </div>
+              <input className="librarySearch" value={articleSearch} placeholder="Search title, category, content..." onChange={(event) => setArticleSearch(event.target.value)} />
+              {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+              {filteredArticles.length ? filteredArticles.map((article) => (
+                <button
+                  className={selectedArticle?.id === article.id ? 'active' : ''}
+                  type="button"
+                  key={article.id}
+                  onClick={() => setSelectedArticle(article)}
+                >
+                  <strong>{article.title}</strong>
+                  <span>{article.category || 'Uncategorized'} · {statusText(article.status)}</span>
+                </button>
+              )) : <EmptyState text="No knowledge articles uploaded yet." />}
+            </div>
+            <KnowledgeReader
+              article={selectedArticle}
+              actions={selectedArticle && (
+                <>
+                  <button type="button" onClick={() => openArticleEditor(selectedArticle)}>Edit</button>
+                  <button type="button" onClick={() => copyToClipboard(selectedArticle.content, 'Article content copied.')}>Copy</button>
+                  <button className="danger" type="button" onClick={archiveSelectedArticle}>Archive</button>
+                </>
+              )}
+            />
+          </div>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'documentLibrary') {
+      return (
+        <AdminModal title="Uploaded Runbook Documents" onClose={closeModal}>
+          <div className="knowledgeLibrary">
+            <div className="libraryList">
+              <div className="libraryToolbar">
+                <strong>{documents.length} Documents</strong>
+                <button type="button" onClick={() => openModal('uploadDocument')}>Upload New</button>
+              </div>
+              <input className="librarySearch" value={documentSearch} placeholder="Search filename, category, type..." onChange={(event) => setDocumentSearch(event.target.value)} />
+              {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+              {filteredDocuments.length ? filteredDocuments.map((document) => (
+                <button
+                  className={selectedDocument?.id === document.id ? 'active' : ''}
+                  type="button"
+                  key={document.id}
+                  onClick={() => viewDocumentChunks(document)}
+                >
+                  <strong>{document.originalFilename}</strong>
+                  <span>{document.category || 'Uncategorized'} · {formatFileSize(document.fileSize)} · {statusText(document.status)}</span>
+                </button>
+              )) : <EmptyState text="No documents uploaded yet." />}
+            </div>
+            <KnowledgeReader
+              chunks={selectedChunks}
+              actions={selectedDocument && (
+                <>
+                  <button type="button" onClick={() => viewDocumentChunks(selectedDocument)}>Refresh Chunks</button>
+                  <button type="button" onClick={() => copyToClipboard(selectedChunks.map((chunk) => chunk.content).join('\n\n'), 'Document chunks copied.')}>Copy Chunks</button>
+                  <button className="danger" type="button" onClick={archiveSelectedDocument}>Archive</button>
+                </>
+              )}
+            />
+          </div>
+        </AdminModal>
+      );
+    }
+
     const capabilityMessages = {
       webEvidenceUnavailable: ['External Web Evidence', 'Web search, trusted-domain scoring, and evidence review are not configured yet. The queue stays empty until the real web evidence service is implemented.'],
       trustedSourcesUnavailable: ['Trusted Sources', 'Trusted domain management needs a dedicated trusted_sources table and review workflow. No fake trusted domains are created.'],
@@ -711,7 +1038,9 @@ function AdminOperationsCenter() {
         <div className="quickActions">
           <strong>Quick Actions</strong>
           <button type="button" onClick={() => openModal('uploadArticle')}><FileText size={15} />New Article</button>
+          <button type="button" onClick={openArticleLibrary}><BookOpen size={15} />View Articles</button>
           <button type="button" onClick={() => openModal('uploadDocument')}><Upload size={15} />Upload Document</button>
+          <button type="button" onClick={openDocumentLibrary}><FileText size={15} />View Documents</button>
           <button type="button" onClick={() => openModal('webEvidenceUnavailable')}><Search size={15} />Search Web Evidence</button>
           <button type="button" onClick={() => scrollToSection('knowledge-gap-loop')}><Target size={15} />Review Knowledge Gap</button>
           <button type="button" onClick={() => openModal('documentationUnavailable')}><Megaphone size={15} />Create Announcement</button>
@@ -759,10 +1088,10 @@ function AdminOperationsCenter() {
         </section>
 
         <section className="operationsGrid">
-          <Section number="1" title="CloudOps Knowledge Core" action="New Article" onAction={() => openModal('uploadArticle')} className="span2" id="knowledge-core">
+          <Section number="1" title="CloudOps Knowledge Core" action="View Articles" onAction={openArticleLibrary} className="span2" id="knowledge-core">
             <KnowledgeCore data={data.knowledgeCore} />
           </Section>
-          <Section number="2" title="Document Ingestion Pipeline" action="Upload" onAction={() => openModal('uploadDocument')} className="span2" id="document-ingestion">
+          <Section number="2" title="Document Ingestion Pipeline" action="View Documents" onAction={openDocumentLibrary} className="span2" id="document-ingestion">
             <IngestionPipeline data={data.ingestionPipeline} />
           </Section>
           <Section number="4" title="External Web Evidence Queue" action="Configure" onAction={() => openModal('webEvidenceUnavailable')} className="span2" id="external-evidence">

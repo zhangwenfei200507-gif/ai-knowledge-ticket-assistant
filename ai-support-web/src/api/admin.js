@@ -46,6 +46,25 @@ const requestJson = async (path, options = {}) => {
   return body?.data ?? null;
 };
 
+export const getKnowledgeArticles = () => requestJson('/api/knowledge/articles');
+
+export const getKnowledgeDocuments = () => requestJson('/api/documents');
+
+export const getDocumentChunks = (documentId) => requestJson(`/api/documents/${documentId}/chunks`);
+
+export const updateKnowledgeArticle = (id, payload) => requestJson(`/api/knowledge/articles/${id}`, {
+  method: 'PUT',
+  body: JSON.stringify(payload),
+});
+
+export const archiveKnowledgeArticle = (id) => requestJson(`/api/knowledge/articles/${id}/archive`, {
+  method: 'PATCH',
+});
+
+export const archiveKnowledgeDocument = (id) => requestJson(`/api/documents/${id}/archive`, {
+  method: 'PATCH',
+});
+
 export const uploadKnowledgeArticle = ({ file, category, title }) => {
   const formData = new FormData();
   formData.append('file', file);
