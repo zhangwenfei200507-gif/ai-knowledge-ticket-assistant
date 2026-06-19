@@ -162,16 +162,12 @@ const categoryIconMap = {
 };
 
 const navItems = [
-  ['Command Center', Home],
-  ['User Document Q&A', FileText],
-  ['Runbooks', CalendarDays],
-  ['Knowledge Base', Bot],
-  ['Web Evidence', Globe2],
-  ['LLM Reasoning', Network],
-  ['Knowledge Gaps', AlertTriangle],
-  ['Tickets', GitBranch],
-  ['Trusted Sources', ShieldCheck],
-  ['Model Settings', Settings],
+  ['command', 'Command Center', Home],
+  ['knowledge', 'Knowledge Library', BookOpen],
+  ['documents', 'Document Library', FileText],
+  ['ai', 'AI Activity', Bot],
+  ['gaps', 'Knowledge Gaps', AlertTriangle],
+  ['tickets', 'Tickets', GitBranch],
 ];
 
 function statusText(status) {
@@ -511,6 +507,42 @@ function formatFileSize(value) {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
+function buildNotificationKeys(gaps = [], tickets = []) {
+  const gapKeys = gaps.map((gap) => `gap:${gap.logId ?? gap.id ?? gap.question}`);
+  const ticketKeys = tickets.map((ticket) => `ticket:${ticket.ticketId ?? ticket.id ?? ticket.title}`);
+  return [...gapKeys, ...ticketKeys].filter(Boolean);
+}
+
+function KnowledgeContentBlock({ content }) {
+  const lines = String(content || '').split(/\r?\n/);
+  return (
+    <div className="knowledgeContentBlock">
+      {lines.map((line, index) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return <div className="knowledgeSpacer" key={`space-${index}`} />;
+        }
+        if (trimmed.startsWith('#')) {
+          return <h3 key={`heading-${index}`}>{trimmed.replace(/^#+\s*/, '')}</h3>;
+        }
+        if (/^(Purpose|Category|Primary keywords|Source references|Fast triage checklist|Common root causes|Recovery actions|Escalate immediately when|Prevention controls|Resolution notes|Impact model|Useful commands|Operational checks|Decision model|Triage checklist|Knowledge follow-up|Long-term target):?/i.test(trimmed)) {
+          return <div className="knowledgeSignal" key={`signal-${index}`}>{trimmed.replace(/:$/, '')}</div>;
+        }
+        if (/^[-*]\s+/.test(trimmed)) {
+          return <p className="knowledgeBullet" key={`bullet-${index}`}>{trimmed.replace(/^[-*]\s+/, '')}</p>;
+        }
+        if (/^\d+\.\s+/.test(trimmed)) {
+          return <p className="knowledgeStep" key={`step-${index}`}><b>{trimmed.match(/^\d+/)?.[0]}</b>{trimmed.replace(/^\d+\.\s+/, '')}</p>;
+        }
+        if (/^```/.test(trimmed)) {
+          return <div className="knowledgeCodeFence" key={`code-${index}`}>Command / SQL block</div>;
+        }
+        return <p key={`p-${index}`}>{trimmed}</p>;
+      })}
+    </div>
+  );
+}
+
 function KnowledgeReader({ article, chunks, actions }) {
   if (!article && !chunks?.length) {
     return <EmptyState text="Select an item to preview its stored knowledge." />;
@@ -525,7 +557,7 @@ function KnowledgeReader({ article, chunks, actions }) {
           <small>{article.category || 'Uncategorized'} · {formatDateTime(article.updatedTime || article.createdTime)}</small>
           {actions && <div className="readerActions">{actions}</div>}
         </div>
-        <pre>{article.content}</pre>
+        <KnowledgeContentBlock content={article.content} />
       </article>
     );
   }
@@ -542,7 +574,7 @@ function KnowledgeReader({ article, chunks, actions }) {
         {chunks.map((chunk) => (
           <article key={chunk.id || chunk.chunkIndex}>
             <b>Chunk {chunk.chunkIndex}</b>
-            <p>{chunk.content}</p>
+            <KnowledgeContentBlock content={chunk.content} />
           </article>
         ))}
       </div>
@@ -608,6 +640,14 @@ function AdminOperationsCenter() {
   const [tickets, setTickets] = useState([]);
   const [profile, setProfile] = useState(null);
   const [metricContext, setMetricContext] = useState(null);
+  const [activePage, setActivePage] = useState('command');
+  const [readNotificationKeys, setReadNotificationKeys] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('aegiscloud_read_notifications') || '[]');
+    } catch {
+      return [];
+    }
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const user = useMemo(() => {
     try {
@@ -652,6 +692,22 @@ function AdminOperationsCenter() {
     ].some((value) => String(value ?? '').toLowerCase().includes(keyword)));
   }, [documents, documentSearch]);
 
+  const dashboardNotificationKeys = useMemo(() => buildNotificationKeys(
+    data.knowledgeGapLoop?.gaps ?? [],
+    data.ticketEscalation?.tickets ?? []
+  ), [data.knowledgeGapLoop?.gaps, data.ticketEscalation?.tickets]);
+
+  const unreadNotificationCount = useMemo(
+    () => dashboardNotificationKeys.filter((key) => !readNotificationKeys.includes(key)).length,
+    [dashboardNotificationKeys, readNotificationKeys]
+  );
+
+  const markNotificationsRead = (keys) => {
+    const nextKeys = Array.from(new Set([...readNotificationKeys, ...keys]));
+    setReadNotificationKeys(nextKeys);
+    localStorage.setItem('aegiscloud_read_notifications', JSON.stringify(nextKeys));
+  };
+
   useEffect(() => {
     loadOperationsCenter();
   }, [loadOperationsCenter]);
@@ -661,8 +717,7 @@ function AdminOperationsCenter() {
     setActiveModal(modal);
   };
 
-  const openArticleLibrary = async () => {
-    openModal('articleLibrary');
+  const loadArticles = async () => {
     setActionStatus({ type: 'loading', text: 'Loading stored knowledge articles...' });
     try {
       const result = await getKnowledgeArticles();
@@ -674,9 +729,12 @@ function AdminOperationsCenter() {
     }
   };
 
-  const openAiLogs = async (context = 'questions') => {
-    openModal('aiLogs');
-    setMetricContext(context);
+  const openArticleLibrary = async () => {
+    openModal('articleLibrary');
+    await loadArticles();
+  };
+
+  const loadAiLogs = async () => {
     setActionStatus({ type: 'loading', text: 'Loading real AI question records...' });
     try {
       const result = await getAiQuestionLogs();
@@ -688,8 +746,13 @@ function AdminOperationsCenter() {
     }
   };
 
-  const openTickets = async () => {
-    openModal('ticketList');
+  const openAiLogs = async (context = 'questions') => {
+    openModal('aiLogs');
+    setMetricContext(context);
+    await loadAiLogs();
+  };
+
+  const loadTickets = async () => {
     setActionStatus({ type: 'loading', text: 'Loading real ticket queue...' });
     try {
       const result = await getTickets();
@@ -701,6 +764,11 @@ function AdminOperationsCenter() {
     }
   };
 
+  const openTickets = async () => {
+    openModal('ticketList');
+    await loadTickets();
+  };
+
   const openNotifications = async () => {
     openModal('notifications');
     setActionStatus({ type: 'loading', text: 'Loading real admin notifications...' });
@@ -708,6 +776,7 @@ function AdminOperationsCenter() {
       const [gapResults, ticketResults] = await Promise.all([getKnowledgeGaps(), getTickets()]);
       setKnowledgeGaps(gapResults ?? []);
       setTickets(ticketResults ?? []);
+      markNotificationsRead(buildNotificationKeys(gapResults ?? [], ticketResults ?? []));
       setActionStatus({ type: '', text: '' });
     } catch (error) {
       setKnowledgeGaps([]);
@@ -743,8 +812,7 @@ function AdminOperationsCenter() {
     window.location.reload();
   };
 
-  const openDocumentLibrary = async () => {
-    openModal('documentLibrary');
+  const loadDocuments = async () => {
     setActionStatus({ type: 'loading', text: 'Loading uploaded documents...' });
     try {
       const result = await getKnowledgeDocuments();
@@ -761,6 +829,11 @@ function AdminOperationsCenter() {
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
     }
+  };
+
+  const openDocumentLibrary = async () => {
+    openModal('documentLibrary');
+    await loadDocuments();
   };
 
   const viewDocumentChunks = async (document) => {
@@ -867,28 +940,63 @@ function AdminOperationsCenter() {
 
   const handleNavAction = (label) => {
     const actions = {
-      'Command Center': () => window.scrollTo({ top: 0, behavior: 'smooth' }),
-      'User Document Q&A': () => openModal('ask'),
-      Runbooks: openDocumentLibrary,
-      'Knowledge Base': openArticleLibrary,
-      'Web Evidence': () => openModal('webEvidenceUnavailable'),
-      'LLM Reasoning': () => scrollToSection('ai-reasoning-layer'),
-      'Knowledge Gaps': () => scrollToSection('knowledge-gap-loop'),
-      Tickets: () => scrollToSection('ticket-escalation'),
-      'Trusted Sources': () => openModal('trustedSourcesUnavailable'),
-      'Model Settings': () => scrollToSection('model-search-controls'),
+      command: () => {
+        setActivePage('command');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      },
+      knowledge: async () => {
+        setActivePage('knowledge');
+        await loadArticles();
+      },
+      documents: async () => {
+        setActivePage('documents');
+        await loadDocuments();
+      },
+      ai: async () => {
+        setActivePage('ai');
+        await loadAiLogs();
+      },
+      gaps: () => {
+        setActivePage('gaps');
+        setActionStatus({ type: '', text: '' });
+      },
+      tickets: async () => {
+        setActivePage('tickets');
+        await loadTickets();
+      },
     };
     actions[label]?.();
   };
 
+  const openGlobalSearch = () => {
+    setGlobalSearchResults({ articles: [], chunks: [] });
+    setActionStatus({ type: '', text: '' });
+    setActiveModal('globalSearch');
+  };
+
   const handleMetricClick = (metricKey) => {
     const actions = {
-      totalKnowledgeArticles: openArticleLibrary,
-      runbookDocuments: openDocumentLibrary,
+      totalKnowledgeArticles: async () => {
+        setActivePage('knowledge');
+        await loadArticles();
+      },
+      runbookDocuments: async () => {
+        setActivePage('documents');
+        await loadDocuments();
+      },
       knowledgeCoverage: () => openModal('coverageDetail'),
-      questionsAnswered7d: () => openAiLogs('questions'),
-      avgAnswerConfidence: () => openAiLogs('confidence'),
-      openTickets,
+      questionsAnswered7d: async () => {
+        setActivePage('ai');
+        await loadAiLogs();
+      },
+      avgAnswerConfidence: async () => {
+        setActivePage('ai');
+        await loadAiLogs();
+      },
+      openTickets: async () => {
+        setActivePage('tickets');
+        await loadTickets();
+      },
     };
     actions[metricKey]?.();
   };
@@ -1014,6 +1122,266 @@ function AdminOperationsCenter() {
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
     }
+  };
+
+  const renderCommandCenterPage = () => (
+    <>
+      <section className="metricsGrid">
+        {(data.metrics ?? []).map((metric) => <MetricCard metric={metric} key={metric.key} onClick={() => handleMetricClick(metric.key)} />)}
+      </section>
+
+      <section className="commandCenterGrid">
+        <article className="commandPanel highlight">
+          <span>Primary Workflow</span>
+          <h2>Build reliable internal knowledge first.</h2>
+          <p>Upload verified runbooks, review gaps, and let AI answer only from grounded sources.</p>
+          <div>
+            <button type="button" onClick={() => openModal('uploadArticle')}><FileText size={15} />New Article</button>
+            <button type="button" onClick={() => openModal('uploadDocument')}><Upload size={15} />Upload Document</button>
+          </div>
+        </article>
+
+        <article className="commandPanel">
+          <span>Current Queue</span>
+          <h3>{data.knowledgeGapLoop?.gaps?.length ?? 0} gaps · {data.ticketEscalation?.tickets?.length ?? 0} tickets</h3>
+          <p>Work items here come from real AI misses and open support tickets.</p>
+          <div>
+            <button type="button" onClick={() => setActivePage('gaps')}>Review Gaps</button>
+            <button type="button" onClick={async () => { setActivePage('tickets'); await loadTickets(); }}>Open Tickets</button>
+          </div>
+        </article>
+
+        <article className="commandPanel">
+          <span>Knowledge Access</span>
+          <h3>Search and manage stored sources.</h3>
+          <p>Use the libraries for maintenance. Use search when you need a precise source quickly.</p>
+          <div>
+            <button type="button" onClick={openGlobalSearch}>Search</button>
+            <button type="button" onClick={async () => { setActivePage('knowledge'); await loadArticles(); }}>Articles</button>
+            <button type="button" onClick={async () => { setActivePage('documents'); await loadDocuments(); }}>Documents</button>
+          </div>
+        </article>
+      </section>
+
+      <section className="commandInsightGrid">
+        <article className="insightPanel">
+          <div className="insightHeader">
+            <span>Coverage Map</span>
+            <button type="button" onClick={() => openModal('coverageDetail')}>Details</button>
+          </div>
+          <div className="miniCoverageList">
+            {(data.knowledgeCore?.categories ?? []).slice(0, 5).map((category) => (
+              <div key={category.category}>
+                <p><strong>{category.category}</strong><b>{category.coveragePercent ?? 0}%</b></p>
+                <i><em style={{ width: `${category.coveragePercent ?? 0}%` }} /></i>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="insightPanel">
+          <div className="insightHeader">
+            <span>Source Mix</span>
+            <button type="button" onClick={async () => { setActivePage('ai'); await loadAiLogs(); }}>Open AI Activity</button>
+          </div>
+          <div className="sourceMixCards">
+            {(data.reasoningLayer?.sourceMix ?? []).length ? data.reasoningLayer.sourceMix.map((source) => (
+              <div key={source.source}>
+                <strong>{source.source}</strong>
+                <span>{source.count ?? 0}</span>
+                <i>{source.percent ?? 0}%</i>
+              </div>
+            )) : <EmptyState text="No AI source data yet." />}
+          </div>
+        </article>
+
+        <article className="insightPanel">
+          <div className="insightHeader">
+            <span>Attention Queue</span>
+            <button type="button" onClick={openNotifications}>Review</button>
+          </div>
+          <div className="attentionList">
+            {(data.knowledgeGapLoop?.gaps ?? []).slice(0, 2).map((gap) => (
+              <button type="button" key={gap.logId} onClick={() => setActivePage('gaps')}>
+                <strong>{gap.priority}</strong>
+                <span>{gap.question}</span>
+              </button>
+            ))}
+            {(data.ticketEscalation?.tickets ?? []).slice(0, 2).map((ticket) => (
+              <button type="button" key={ticket.ticketId} onClick={async () => { setActivePage('tickets'); await loadTickets(); }}>
+                <strong>{ticket.priority}</strong>
+                <span>{ticket.title}</span>
+              </button>
+            ))}
+            {!(data.knowledgeGapLoop?.gaps ?? []).length && !(data.ticketEscalation?.tickets ?? []).length && <EmptyState text="No urgent work items." />}
+          </div>
+        </article>
+      </section>
+    </>
+  );
+
+  const renderKnowledgePage = () => (
+    <section className="adminPageSurface">
+      <div className="adminPageHeader">
+        <div>
+          <span>Knowledge Library</span>
+          <h2>Published Articles</h2>
+          <p>Maintain concise internal articles used by AI as structured answer sources.</p>
+        </div>
+        <div>
+          <button type="button" onClick={loadArticles}>Refresh</button>
+          <button type="button" onClick={() => openModal('uploadArticle')}>New Article</button>
+        </div>
+      </div>
+      <div className="knowledgeLibrary embedded">
+        <div className="libraryList">
+          <div className="libraryToolbar">
+            <strong>{articles.length} Articles</strong>
+            <button type="button" onClick={() => openModal('uploadArticle')}>Upload New</button>
+          </div>
+          <input className="librarySearch" value={articleSearch} placeholder="Search title, category, content..." onChange={(event) => setArticleSearch(event.target.value)} />
+          {actionStatus.text && activePage === 'knowledge' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+          {filteredArticles.length ? filteredArticles.map((article) => (
+            <button className={selectedArticle?.id === article.id ? 'active' : ''} type="button" key={article.id} onClick={() => setSelectedArticle(article)}>
+              <strong>{article.title}</strong>
+              <span>{article.category || 'Uncategorized'} · {statusText(article.status)}</span>
+            </button>
+          )) : <EmptyState text="No knowledge articles uploaded yet." />}
+        </div>
+        <KnowledgeReader
+          article={selectedArticle}
+          actions={selectedArticle && (
+            <>
+              <button type="button" onClick={() => openArticleEditor(selectedArticle)}>Edit</button>
+              <button type="button" onClick={() => copyToClipboard(selectedArticle.content, 'Article content copied.')}>Copy</button>
+              <button className="danger" type="button" onClick={archiveSelectedArticle}>Archive</button>
+            </>
+          )}
+        />
+      </div>
+    </section>
+  );
+
+  const renderDocumentPage = () => (
+    <section className="adminPageSurface">
+      <div className="adminPageHeader">
+        <div>
+          <span>Document Library</span>
+          <h2>Uploaded Runbooks</h2>
+          <p>Inspect uploaded documents and the exact chunks used by retrieval.</p>
+        </div>
+        <div>
+          <button type="button" onClick={loadDocuments}>Refresh</button>
+          <button type="button" onClick={() => openModal('uploadDocument')}>Upload Document</button>
+        </div>
+      </div>
+      <div className="knowledgeLibrary embedded">
+        <div className="libraryList">
+          <div className="libraryToolbar">
+            <strong>{documents.length} Documents</strong>
+            <button type="button" onClick={() => openModal('uploadDocument')}>Upload New</button>
+          </div>
+          <input className="librarySearch" value={documentSearch} placeholder="Search filename, category, type..." onChange={(event) => setDocumentSearch(event.target.value)} />
+          {actionStatus.text && activePage === 'documents' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+          {filteredDocuments.length ? filteredDocuments.map((document) => (
+            <button className={selectedDocument?.id === document.id ? 'active' : ''} type="button" key={document.id} onClick={() => viewDocumentChunks(document)}>
+              <strong>{document.originalFilename}</strong>
+              <span>{document.category || 'Uncategorized'} · {formatFileSize(document.fileSize)} · {statusText(document.status)}</span>
+            </button>
+          )) : <EmptyState text="No documents uploaded yet." />}
+        </div>
+        <KnowledgeReader
+          chunks={selectedChunks}
+          actions={selectedDocument && (
+            <>
+              <button type="button" onClick={() => viewDocumentChunks(selectedDocument)}>Refresh Chunks</button>
+              <button type="button" onClick={() => copyToClipboard(selectedChunks.map((chunk) => chunk.content).join('\n\n'), 'Document chunks copied.')}>Copy Chunks</button>
+              <button className="danger" type="button" onClick={archiveSelectedDocument}>Archive</button>
+            </>
+          )}
+        />
+      </div>
+    </section>
+  );
+
+  const renderAiPage = () => (
+    <section className="adminPageSurface">
+      <div className="adminPageHeader">
+        <div>
+          <span>AI Activity</span>
+          <h2>Reasoning and Question Logs</h2>
+          <p>Review real AI usage, source grounding, and answer quality signals.</p>
+        </div>
+        <div>
+          <button type="button" onClick={loadAiLogs}>Refresh Logs</button>
+          <button type="button" onClick={() => openModal('ask')}>Ask AI</button>
+        </div>
+      </div>
+      <div className="pageSplitGrid">
+        <ReasoningLayer data={data.reasoningLayer} />
+        <div className="topRecordList">
+          {aiLogs.length ? aiLogs.map((log) => (
+            <article key={log.id}>
+              <strong>{log.question}</strong>
+              <span>{statusText(log.sourceType)} · {formatDateTime(log.createdTime)}</span>
+              <p>{log.answer}</p>
+            </article>
+          )) : <EmptyState text="No AI question logs loaded yet." />}
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderGapsPage = () => (
+    <section className="adminPageSurface">
+      <div className="adminPageHeader">
+        <div>
+          <span>Knowledge Gaps</span>
+          <h2>Unanswered or Low Confidence Questions</h2>
+          <p>Turn repeated misses into durable internal knowledge.</p>
+        </div>
+        <div>
+          <button type="button" onClick={loadOperationsCenter}>Refresh</button>
+        </div>
+      </div>
+      <KnowledgeGaps data={data.knowledgeGapLoop} />
+    </section>
+  );
+
+  const renderTicketsPage = () => {
+    const openTicketRows = tickets.length ? tickets : (data.ticketEscalation?.tickets ?? []);
+    return (
+      <section className="adminPageSurface">
+        <div className="adminPageHeader">
+          <div>
+            <span>Tickets</span>
+            <h2>Support Escalation Queue</h2>
+            <p>Track real open support work created by users or AI escalation.</p>
+          </div>
+          <div>
+            <button type="button" onClick={loadTickets}>Refresh Tickets</button>
+          </div>
+        </div>
+        <div className="topRecordList full">
+          {openTicketRows.length ? openTicketRows.map((ticket) => (
+            <article key={ticket.id || ticket.title}>
+              <strong>{ticket.title}</strong>
+              <span>{ticket.priority} · {ticket.status || ticket.owner || 'Open'} · {formatDateTime(ticket.createdTime)}</span>
+              <p>{ticket.description || `Owner: ${ticket.owner || 'Unassigned'} · SLA: ${ticket.sla || '-'}`}</p>
+            </article>
+          )) : <EmptyState text="No open tickets." />}
+        </div>
+      </section>
+    );
+  };
+
+  const renderActivePage = () => {
+    if (activePage === 'knowledge') return renderKnowledgePage();
+    if (activePage === 'documents') return renderDocumentPage();
+    if (activePage === 'ai') return renderAiPage();
+    if (activePage === 'gaps') return renderGapsPage();
+    if (activePage === 'tickets') return renderTicketsPage();
+    return renderCommandCenterPage();
   };
 
   const renderModal = () => {
@@ -1285,7 +1653,7 @@ function AdminOperationsCenter() {
               <section>
                 <h3>Knowledge Gaps</h3>
                 {knowledgeGaps.length ? knowledgeGaps.map((gap) => (
-                  <button type="button" key={gap.logId} onClick={() => scrollToSection('knowledge-gap-loop')}>
+                  <button type="button" key={gap.logId} onClick={() => { setActivePage('gaps'); closeModal(); }}>
                     <strong>{gap.question}</strong>
                     <span>{formatDateTime(gap.createdTime)}</span>
                   </button>
@@ -1294,7 +1662,7 @@ function AdminOperationsCenter() {
               <section>
                 <h3>Open Tickets</h3>
                 {openTicketRows.length ? openTicketRows.map((ticket) => (
-                  <button type="button" key={ticket.id} onClick={() => scrollToSection('ticket-escalation')}>
+                  <button type="button" key={ticket.id} onClick={() => { setActivePage('tickets'); closeModal(); }}>
                     <strong>{ticket.title}</strong>
                     <span>{ticket.priority} · {ticket.status}</span>
                   </button>
@@ -1423,22 +1791,25 @@ function AdminOperationsCenter() {
           </div>
         </div>
         <nav className="adminNav">
-          {navItems.map(([label, Icon], index) => (
-            <button className={index === 0 ? 'active' : ''} type="button" key={label} onClick={() => handleNavAction(label)}>
+          {navItems.map(([id, label, Icon]) => (
+            <button className={activePage === id ? 'active' : ''} type="button" key={id} onClick={() => handleNavAction(id)}>
               <Icon size={18} />
               <span>{label}</span>
             </button>
           ))}
         </nav>
         <div className="quickActions">
-          <strong>Quick Actions</strong>
-          <button type="button" onClick={() => openModal('uploadArticle')}><FileText size={15} />New Article</button>
-          <button type="button" onClick={openArticleLibrary}><BookOpen size={15} />View Articles</button>
-          <button type="button" onClick={() => openModal('uploadDocument')}><Upload size={15} />Upload Document</button>
-          <button type="button" onClick={openDocumentLibrary}><FileText size={15} />View Documents</button>
-          <button type="button" onClick={() => openModal('webEvidenceUnavailable')}><Search size={15} />Search Web Evidence</button>
-          <button type="button" onClick={() => scrollToSection('knowledge-gap-loop')}><Target size={15} />Review Knowledge Gap</button>
-          <button type="button" onClick={() => openModal('documentationUnavailable')}><Megaphone size={15} />Create Announcement</button>
+          <div className="quickActionsHeader">
+            <strong>Quick Actions</strong>
+            <span>Live</span>
+          </div>
+          <button className="primary" type="button" onClick={() => openModal('uploadArticle')}><FileText size={15} />New Article</button>
+          <button className="primary" type="button" onClick={() => openModal('uploadDocument')}><Upload size={15} />Upload Document</button>
+          <button type="button" onClick={openGlobalSearch}><Search size={15} />Search Knowledge</button>
+          <button type="button" onClick={async () => { setActivePage('knowledge'); await loadArticles(); }}><BookOpen size={15} />Manage Articles</button>
+          <button type="button" onClick={async () => { setActivePage('documents'); await loadDocuments(); }}><FileText size={15} />Manage Documents</button>
+          <button type="button" onClick={() => setActivePage('gaps')}><Target size={15} />Review Gaps</button>
+          <button type="button" onClick={async () => { setActivePage('tickets'); await loadTickets(); }}><Ticket size={15} />Open Tickets</button>
         </div>
         <button className="lastUpdated" type="button" onClick={loadOperationsCenter}>
           <span>Last Updated</span>
@@ -1464,9 +1835,9 @@ function AdminOperationsCenter() {
                 <input value={globalSearch} placeholder="Search stored knowledge..." onChange={(event) => setGlobalSearch(event.target.value)} />
                 <button type="submit" aria-label="Search stored knowledge"><Search size={18} /></button>
               </form>
-              <button className="notificationButton" type="button" onClick={openNotifications}>
+              <button className={`notificationButton ${unreadNotificationCount > 0 ? 'hasUnread' : ''}`} type="button" onClick={openNotifications}>
                 <Bell size={19} />
-                <i>{(data.knowledgeGapLoop?.gaps?.length ?? 0) + (data.ticketEscalation?.tickets?.length ?? 0)}</i>
+                {unreadNotificationCount > 0 && <i>{unreadNotificationCount}</i>}
               </button>
               <button className="adminProfile" type="button" onClick={openProfile}>
                 <div><UserRound size={18} /></div>
@@ -1491,36 +1862,7 @@ function AdminOperationsCenter() {
           <div className="adminBanner">Backend data is unavailable. Showing empty structure only; no data is fabricated.</div>
         )}
 
-        <section className="metricsGrid">
-          {(data.metrics ?? []).map((metric) => <MetricCard metric={metric} key={metric.key} onClick={() => handleMetricClick(metric.key)} />)}
-        </section>
-
-        <section className="operationsGrid">
-          <Section number="1" title="CloudOps Knowledge Core" action="View Articles" onAction={openArticleLibrary} className="span2" id="knowledge-core">
-            <KnowledgeCore data={data.knowledgeCore} />
-          </Section>
-          <Section number="2" title="Document Ingestion Pipeline" action="View Documents" onAction={openDocumentLibrary} className="span2" id="document-ingestion">
-            <IngestionPipeline data={data.ingestionPipeline} />
-          </Section>
-          <Section number="4" title="External Web Evidence Queue" action="Configure" onAction={() => openModal('webEvidenceUnavailable')} className="span2" id="external-evidence">
-            <ExternalEvidence data={data.externalEvidence} />
-          </Section>
-          <Section number="3" title="AI Reasoning Layer" action="Ask AI" onAction={() => openModal('ask')} className="span2" id="ai-reasoning-layer">
-            <ReasoningLayer data={data.reasoningLayer} />
-          </Section>
-          <Section number="5" title="Knowledge Gap Loop" action="Review All" onAction={() => scrollToSection('knowledge-gap-loop')} className="span2" id="knowledge-gap-loop">
-            <KnowledgeGaps data={data.knowledgeGapLoop} />
-          </Section>
-          <Section number="6" title="Support Automation - Ticket Escalation Queue" action="View All" onAction={() => scrollToSection('ticket-escalation')} className="span2" id="ticket-escalation">
-            <Tickets data={data.ticketEscalation} />
-          </Section>
-          <Section number="7" title="Knowledge & Answer Analytics" action="Refresh" onAction={loadOperationsCenter} className="span3" id="answer-analytics">
-            <Analytics data={data.answerAnalytics} />
-          </Section>
-          <Section number="8" title="Model & Search Controls" action="Configure" onAction={() => openModal('webEvidenceUnavailable')} className="span3" id="model-search-controls">
-            <ModelControls data={data.modelSearchControls} />
-          </Section>
-        </section>
+        {renderActivePage()}
 
         <footer className="adminFooter">
           <span>i</span>

@@ -626,6 +626,18 @@ button {
     #faf8f4;
 }
 
+.adminShell,
+.adminSidebar,
+.adminMain,
+.adminMetricCard,
+.commandPanel,
+.adminPageSurface,
+.quickActions,
+.adminNav button,
+.quickActions button {
+  transition: all 180ms ease;
+}
+
 .adminShell.sidebarCollapsed {
   grid-template-columns: 86px 1fr;
 }
@@ -653,9 +665,13 @@ button {
   position: sticky;
   top: 0;
   height: 100vh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   padding: 24px 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   color: #f4fbf8;
   background:
     linear-gradient(180deg, rgba(19, 43, 43, 0.88), rgba(4, 18, 24, 0.98)),
@@ -663,11 +679,36 @@ button {
   box-shadow: 18px 0 45px rgba(13, 25, 28, 0.14);
 }
 
+.adminSidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 180px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(108, 208, 154, 0.14), transparent);
+}
+
+.adminSidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.adminSidebar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.adminSidebar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(208, 235, 224, 0.22);
+}
+
 .adminLogo {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 32px;
+  flex: 0 0 auto;
+  margin-bottom: 24px;
 }
 
 .adminLogo svg {
@@ -690,8 +731,11 @@ button {
 }
 
 .adminNav {
+  position: relative;
+  z-index: 1;
   display: grid;
-  gap: 7px;
+  flex: 0 0 auto;
+  gap: 6px;
 }
 
 .adminNav button,
@@ -706,7 +750,8 @@ button {
 }
 
 .adminNav button {
-  min-height: 46px;
+  position: relative;
+  min-height: 43px;
   padding: 0 16px;
   border-radius: 6px;
   font-size: 14px;
@@ -719,30 +764,91 @@ button {
   box-shadow: inset 3px 0 0 #41d184;
 }
 
-.quickActions {
-  margin-top: auto;
-  padding: 16px;
-  border: 1px solid rgba(210, 234, 224, 0.21);
-  border-radius: 8px;
-  background: rgba(4, 21, 29, 0.45);
+.adminNav button.active::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #b9ffd8;
+  box-shadow: 0 0 16px rgba(123, 255, 184, 0.75);
 }
 
-.quickActions strong {
+.quickActions {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  margin-top: 20px;
+  padding: 14px;
+  border: 1px solid rgba(111, 214, 157, 0.32);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(22, 91, 67, 0.32), rgba(4, 21, 29, 0.64)),
+    rgba(4, 21, 29, 0.54);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 14px 34px rgba(0, 0, 0, 0.18);
+}
+
+.quickActions::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), transparent 45%);
+}
+
+.quickActionsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.quickActionsHeader strong {
   display: block;
-  margin-bottom: 11px;
   font-size: 13px;
+}
+
+.quickActionsHeader span {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  color: #c9ffe1;
+  background: rgba(53, 181, 111, 0.18);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .quickActions button {
   width: 100%;
-  min-height: 36px;
-  padding: 0;
+  min-height: 35px;
+  padding: 0 10px;
+  border-radius: 7px;
   font-size: 13px;
+}
+
+.quickActions button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateX(2px);
+}
+
+.quickActions button.primary {
+  margin-bottom: 6px;
+  color: #f7fffb;
+  background: linear-gradient(90deg, rgba(26, 166, 106, 0.86), rgba(18, 93, 70, 0.84));
+  box-shadow: 0 8px 22px rgba(10, 80, 56, 0.26);
 }
 
 .lastUpdated {
   position: relative;
   display: grid;
+  flex: 0 0 auto;
   gap: 3px;
   width: 100%;
   text-align: left;
@@ -771,10 +877,17 @@ button {
 }
 
 .collapseButton {
+  flex: 0 0 auto;
   margin-top: 18px;
   min-height: 34px;
   padding: 0 10px;
   font-size: 13px;
+}
+
+.collapseButton:hover,
+.lastUpdated:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .adminMain {
@@ -964,6 +1077,14 @@ button {
   border-radius: 50%;
 }
 
+.notificationButton.hasUnread {
+  color: #fff;
+  border-color: rgba(191, 58, 65, 0.46);
+  background: radial-gradient(circle at 30% 20%, #fb6972, #b92937);
+  box-shadow: 0 10px 28px rgba(190, 45, 58, 0.2);
+  animation: notifyPulse 1600ms ease-in-out infinite;
+}
+
 .notificationButton i {
   position: absolute;
   top: -3px;
@@ -977,6 +1098,17 @@ button {
   background: #df3144;
   font-size: 10px;
   font-style: normal;
+}
+
+@keyframes notifyPulse {
+  0%, 100% {
+    transform: translateY(0);
+    box-shadow: 0 10px 28px rgba(190, 45, 58, 0.2);
+  }
+  50% {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 34px rgba(190, 45, 58, 0.32);
+  }
 }
 
 .adminProfile {
@@ -1068,6 +1200,13 @@ button {
   box-shadow: 0 18px 42px rgba(38, 31, 20, 0.1);
 }
 
+.adminMetricCard:active,
+.commandPanel button:active,
+.adminPageHeader button:active,
+.quickActions button:active {
+  transform: translateY(0);
+}
+
 .adminMetricIcon {
   width: 46px;
   height: 46px;
@@ -1124,6 +1263,356 @@ button {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 14px;
+}
+
+.commandCenterGrid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr;
+  gap: 14px;
+}
+
+.commandInsightGrid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.insightPanel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 230px;
+  padding: 16px;
+  border: 1px solid #e4e2dc;
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(252, 250, 246, 0.92)),
+    #fff;
+  box-shadow: 0 13px 34px rgba(38, 31, 20, 0.07);
+  animation: panelIn 240ms ease both;
+}
+
+.insightHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.insightHeader span {
+  color: #0a7654;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.insightHeader button {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #d8ddd8;
+  border-radius: 6px;
+  color: #18312a;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.miniCoverageList {
+  display: grid;
+  gap: 11px;
+}
+
+.miniCoverageList p {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 6px;
+  color: #17231f;
+  font-size: 12px;
+}
+
+.miniCoverageList b {
+  color: #0b7654;
+}
+
+.miniCoverageList i {
+  display: block;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf0eb;
+}
+
+.miniCoverageList em {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0b7654, #5cbf78);
+}
+
+.sourceMixCards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.sourceMixCards div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #e4e8e1;
+  border-radius: 8px;
+  background: #fbfaf6;
+}
+
+.sourceMixCards strong {
+  color: #17231f;
+  font-size: 12px;
+}
+
+.sourceMixCards span {
+  color: #071512;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.sourceMixCards i {
+  color: #66736d;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.attentionList {
+  display: grid;
+  gap: 8px;
+}
+
+.attentionList button {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid #e4e8e1;
+  border-radius: 8px;
+  color: #17231f;
+  background: #fff;
+  text-align: left;
+}
+
+.attentionList button:hover {
+  border-color: rgba(8, 112, 78, 0.45);
+  background: #f0f8f3;
+}
+
+.attentionList strong {
+  display: inline-flex;
+  justify-content: center;
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: #8b3428;
+  background: #fff0eb;
+  font-size: 10px;
+}
+
+.attentionList span {
+  overflow: hidden;
+  color: #34413d;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commandPanel {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 190px;
+  padding: 18px;
+  border: 1px solid #e4e2dc;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 13px 34px rgba(38, 31, 20, 0.07);
+  animation: panelIn 220ms ease both;
+}
+
+.commandPanel.highlight {
+  background:
+    linear-gradient(135deg, rgba(13, 104, 77, 0.95), rgba(8, 51, 42, 0.94)),
+    #0b4d3b;
+}
+
+.commandPanel span {
+  color: #0a7654;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.commandPanel.highlight span {
+  color: #adf0ce;
+}
+
+.commandPanel h2,
+.commandPanel h3,
+.commandPanel p {
+  margin: 0;
+}
+
+.commandPanel h2 {
+  max-width: 460px;
+  color: #fff;
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+.commandPanel h3 {
+  color: #071512;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.commandPanel p {
+  color: #5f6b66;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.commandPanel.highlight p {
+  color: rgba(244, 251, 248, 0.74);
+}
+
+.commandPanel div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 4px;
+}
+
+.commandPanel button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid #d8ddd8;
+  border-radius: 7px;
+  color: #12342d;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.commandPanel button:hover,
+.adminPageHeader button:hover {
+  border-color: rgba(8, 112, 78, 0.45);
+  background: #f0f8f3;
+}
+
+.commandPanel.highlight button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.commandPanel.highlight button {
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.adminPageSurface {
+  min-width: 0;
+  border: 1px solid #e4e2dc;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 13px 34px rgba(38, 31, 20, 0.07);
+  animation: panelIn 220ms ease both;
+}
+
+.adminPageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border-bottom: 1px solid #eceee9;
+}
+
+.adminPageHeader span {
+  color: #0a7654;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.adminPageHeader h2,
+.adminPageHeader p {
+  margin: 0;
+}
+
+.adminPageHeader h2 {
+  margin-top: 4px;
+  color: #071512;
+  font-size: 21px;
+}
+
+.adminPageHeader p {
+  margin-top: 6px;
+  color: #66736d;
+  font-size: 13px;
+}
+
+.adminPageHeader > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.adminPageHeader button {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #d8ddd8;
+  border-radius: 7px;
+  color: #18312a;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.adminPageHeader button:last-child {
+  color: #fff;
+  border-color: #07533d;
+  background: linear-gradient(92deg, #06764f, #064232);
+}
+
+.knowledgeLibrary.embedded {
+  min-height: 620px;
+  border-radius: 0 0 10px 10px;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pageSplitGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+  gap: 14px;
+  padding: 14px;
+}
+
+.topRecordList.full {
+  max-height: none;
+  padding: 14px;
 }
 
 .adminSection {
@@ -2262,6 +2751,97 @@ button {
   line-height: 1.7;
 }
 
+.knowledgeContentBlock {
+  display: grid;
+  gap: 8px;
+  max-height: 470px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.knowledgeContentBlock h3 {
+  margin: 10px 0 2px;
+  padding: 10px 12px;
+  border-left: 4px solid #0b7654;
+  border-radius: 8px;
+  color: #082019;
+  background: linear-gradient(90deg, rgba(11, 118, 84, 0.12), rgba(255, 255, 255, 0));
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.knowledgeContentBlock p {
+  margin: 0;
+  color: #2f3d38;
+  font-size: 13px;
+  line-height: 1.72;
+}
+
+.knowledgeSignal {
+  width: fit-content;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid rgba(12, 111, 80, 0.16);
+  border-radius: 999px;
+  color: #07543e;
+  background: #eef8f2;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.knowledgeBullet,
+.knowledgeStep {
+  position: relative;
+  padding: 9px 11px 9px 32px;
+  border: 1px solid #e7ece5;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.knowledgeBullet::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 17px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #0b7654;
+  box-shadow: 0 0 0 4px rgba(11, 118, 84, 0.12);
+}
+
+.knowledgeStep {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  padding-left: 10px;
+}
+
+.knowledgeStep b {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(135deg, #0b7654, #5aa86d);
+  font-size: 11px;
+}
+
+.knowledgeCodeFence {
+  padding: 10px 12px;
+  border: 1px solid #dce6dd;
+  border-radius: 8px;
+  color: #184438;
+  background: #edf7f1;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.knowledgeSpacer {
+  height: 4px;
+}
+
 .chunkList {
   display: grid;
   gap: 12px;
@@ -2311,6 +2891,12 @@ button {
   .reasoningGrid,
   .analyticsGrid,
   .controlsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .commandCenterGrid,
+  .commandInsightGrid,
+  .pageSplitGrid {
     grid-template-columns: 1fr;
   }
 
@@ -2390,6 +2976,9 @@ button {
 
   .metricsGrid,
   .operationsGrid,
+  .commandCenterGrid,
+  .commandInsightGrid,
+  .pageSplitGrid,
   .knowledgeCoreGrid,
   .analyticsGrid,
   .controlsGrid,
@@ -2400,5 +2989,9 @@ button {
   .adminSection.span2,
   .adminSection.span3 {
     grid-column: span 1;
+  }
+
+  .adminPageHeader {
+    display: grid;
   }
 }
