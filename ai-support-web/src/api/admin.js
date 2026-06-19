@@ -56,6 +56,18 @@ export const getDocumentChunks = (documentId) => requestJson(`/api/documents/${d
 
 export const searchDocumentChunks = (keyword) => requestJson(`/api/documents/chunks/search?keyword=${encodeURIComponent(keyword)}`);
 
+export const getAiQuestionLogs = () => requestJson('/api/ai/logs');
+
+export const getKnowledgeGaps = () => requestJson('/api/ai/knowledge-gaps');
+
+export const getTickets = () => requestJson('/api/tickets');
+
+export const getCurrentUser = () => requestJson('/api/users/me');
+
+export const logoutCurrentUser = () => requestJson('/api/users/logout', {
+  method: 'POST',
+});
+
 export const updateKnowledgeArticle = (id, payload) => requestJson(`/api/knowledge/articles/${id}`, {
   method: 'PUT',
   body: JSON.stringify(payload),

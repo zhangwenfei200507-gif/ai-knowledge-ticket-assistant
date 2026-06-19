@@ -1054,10 +1054,18 @@ button {
   min-height: 118px;
   padding: 18px 16px;
   border-radius: 9px;
+  text-align: left;
+  cursor: pointer;
 }
 
 .adminMetricCard.warning {
   border-color: #ead3ab;
+}
+
+.adminMetricCard:hover {
+  transform: translateY(-1px);
+  border-color: rgba(8, 112, 78, 0.28);
+  box-shadow: 0 18px 42px rgba(38, 31, 20, 0.1);
 }
 
 .adminMetricIcon {
@@ -1905,6 +1913,170 @@ button {
   text-overflow: ellipsis;
 }
 
+.topDetailPanel,
+.profilePanel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.topDetailLead {
+  margin: 0;
+  color: #5f6c67;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.coverageDetailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.coverageDetailGrid article {
+  display: grid;
+  gap: 7px;
+  padding: 13px;
+  border: 1px solid #e4e8e1;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.coverageDetailGrid strong,
+.topRecordList strong,
+.notificationGroups strong {
+  color: #071512;
+  font-size: 13px;
+}
+
+.coverageDetailGrid span,
+.topRecordList span,
+.notificationGroups span {
+  color: #66736d;
+  font-size: 11px;
+}
+
+.coverageDetailGrid div {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf0eb;
+}
+
+.coverageDetailGrid i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0b7654, #4da96c);
+}
+
+.coverageDetailGrid b {
+  color: #0b7654;
+  font-size: 12px;
+}
+
+.topRecordList {
+  display: grid;
+  gap: 10px;
+  max-height: 460px;
+  overflow: auto;
+}
+
+.topRecordList article {
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+  border: 1px solid #e4e8e1;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.topRecordList p {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  color: #4f5d58;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.notificationGroups,
+.environmentGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.notificationGroups section {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.notificationGroups h3 {
+  margin: 0;
+  color: #071512;
+  font-size: 13px;
+}
+
+.notificationGroups button {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid #e4e8e1;
+  border-radius: 8px;
+  color: #15231f;
+  background: #fff;
+  text-align: left;
+}
+
+.notificationGroups button:hover {
+  border-color: rgba(8, 112, 78, 0.45);
+  background: #f0f8f3;
+}
+
+.profileHero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e4e8e1;
+  border-radius: 8px;
+  background: #fbfaf6;
+}
+
+.profileHero > div {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #0c4b3a;
+  background: #ead9c4;
+}
+
+.profileHero strong,
+.profileHero span {
+  display: block;
+}
+
+.profileHero strong {
+  color: #071512;
+  font-size: 16px;
+}
+
+.profileHero span {
+  margin-top: 4px;
+  color: #64716c;
+  font-size: 12px;
+}
+
+.serviceHealthBar.detail {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .globalSearchResults strong {
   color: #071512;
   font-size: 13px;
@@ -2150,6 +2322,16 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .coverageDetailGrid,
+  .notificationGroups,
+  .environmentGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .serviceHealthBar.detail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .libraryList {
     max-height: 260px;
     overflow: auto;
@@ -2195,6 +2377,10 @@ button {
   }
 
   .serviceHealthBar {
+    grid-template-columns: 1fr;
+  }
+
+  .serviceHealthBar.detail {
     grid-template-columns: 1fr;
   }
 

@@ -36,10 +36,15 @@ import {
   archiveKnowledgeArticle,
   archiveKnowledgeDocument,
   askAiQuestion,
+  getAiQuestionLogs,
+  getCurrentUser,
   getDocumentChunks,
+  getKnowledgeGaps,
   getKnowledgeArticles,
   getKnowledgeDocuments,
   getOperationsCenter,
+  getTickets,
+  logoutCurrentUser,
   searchDocumentChunks,
   searchKnowledgeArticles,
   updateKnowledgeArticle,
@@ -210,11 +215,11 @@ function EmptyState({ text }) {
   return <div className="adminEmptyState">{text}</div>;
 }
 
-function MetricCard({ metric }) {
+function MetricCard({ metric, onClick }) {
   const Icon = metricIconMap[metric.icon] || Gauge;
 
   return (
-    <article className={`adminMetricCard ${metric.trendType || 'neutral'}`}>
+    <button className={`adminMetricCard ${metric.trendType || 'neutral'}`} type="button" onClick={onClick}>
       <div className="adminMetricIcon"><Icon size={24} /></div>
       <div>
         <p>{metric.label}</p>
@@ -222,7 +227,7 @@ function MetricCard({ metric }) {
         <span>{metric.trend}</span>
         <small>{metric.detail}</small>
       </div>
-    </article>
+    </button>
   );
 }
 
@@ -492,6 +497,13 @@ function formatDateTime(value) {
   return date.toLocaleString();
 }
 
+function isWithinDaysValue(value, days) {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return Date.now() - date.getTime() <= days * 24 * 60 * 60 * 1000;
+}
+
 function formatFileSize(value) {
   const bytes = Number(value);
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB';
@@ -591,6 +603,11 @@ function AdminOperationsCenter() {
   const [globalSearch, setGlobalSearch] = useState('');
   const [globalSearchResults, setGlobalSearchResults] = useState({ articles: [], chunks: [] });
   const [articleEditor, setArticleEditor] = useState({ id: null, title: '', category: '', content: '' });
+  const [aiLogs, setAiLogs] = useState([]);
+  const [knowledgeGaps, setKnowledgeGaps] = useState([]);
+  const [tickets, setTickets] = useState([]);
+  const [profile, setProfile] = useState(null);
+  const [metricContext, setMetricContext] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const user = useMemo(() => {
     try {
@@ -655,6 +672,75 @@ function AdminOperationsCenter() {
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
     }
+  };
+
+  const openAiLogs = async (context = 'questions') => {
+    openModal('aiLogs');
+    setMetricContext(context);
+    setActionStatus({ type: 'loading', text: 'Loading real AI question records...' });
+    try {
+      const result = await getAiQuestionLogs();
+      setAiLogs(result ?? []);
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setAiLogs([]);
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const openTickets = async () => {
+    openModal('ticketList');
+    setActionStatus({ type: 'loading', text: 'Loading real ticket queue...' });
+    try {
+      const result = await getTickets();
+      setTickets(result ?? []);
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setTickets([]);
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const openNotifications = async () => {
+    openModal('notifications');
+    setActionStatus({ type: 'loading', text: 'Loading real admin notifications...' });
+    try {
+      const [gapResults, ticketResults] = await Promise.all([getKnowledgeGaps(), getTickets()]);
+      setKnowledgeGaps(gapResults ?? []);
+      setTickets(ticketResults ?? []);
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setKnowledgeGaps([]);
+      setTickets([]);
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const openProfile = async () => {
+    openModal('profile');
+    setActionStatus({ type: 'loading', text: 'Loading account details...' });
+    try {
+      const result = await getCurrentUser();
+      setProfile(result ?? user);
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setProfile(user);
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const handleLogout = async () => {
+    setActionStatus({ type: 'loading', text: 'Signing out...' });
+    try {
+      await logoutCurrentUser();
+    } catch {
+      // Clear the local session even when the backend token is already expired.
+    }
+    localStorage.removeItem('aegiscloud_token');
+    localStorage.removeItem('aegiscloud_user');
+    localStorage.removeItem('aegiscloud_entry');
+    window.history.replaceState({}, '', '/');
+    window.location.reload();
   };
 
   const openDocumentLibrary = async () => {
@@ -793,6 +879,18 @@ function AdminOperationsCenter() {
       'Model Settings': () => scrollToSection('model-search-controls'),
     };
     actions[label]?.();
+  };
+
+  const handleMetricClick = (metricKey) => {
+    const actions = {
+      totalKnowledgeArticles: openArticleLibrary,
+      runbookDocuments: openDocumentLibrary,
+      knowledgeCoverage: () => openModal('coverageDetail'),
+      questionsAnswered7d: () => openAiLogs('questions'),
+      avgAnswerConfidence: () => openAiLogs('confidence'),
+      openTickets,
+    };
+    actions[metricKey]?.();
   };
 
   const submitArticleUpload = async (event) => {
@@ -1107,11 +1205,197 @@ function AdminOperationsCenter() {
       );
     }
 
+    if (activeModal === 'coverageDetail') {
+      const categories = data.knowledgeCore?.categories ?? [];
+      return (
+        <AdminModal title="Knowledge Coverage Detail" onClose={closeModal}>
+          <div className="topDetailPanel">
+            <p className="topDetailLead">Coverage is calculated from real published articles and active uploaded documents across the core CloudOps domains.</p>
+            <div className="coverageDetailGrid">
+              {categories.map((category) => (
+                <article key={category.category}>
+                  <strong>{category.category}</strong>
+                  <span>{category.articleCount ?? 0} articles · {category.documentCount ?? 0} documents</span>
+                  <div><i style={{ width: `${category.coveragePercent ?? 0}%` }} /></div>
+                  <b>{category.coveragePercent ?? 0}%</b>
+                </article>
+              ))}
+            </div>
+          </div>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'aiLogs') {
+      const filteredLogs = metricContext === 'questions'
+        ? aiLogs.filter((log) => isWithinDaysValue(log.createdTime, 7))
+        : aiLogs;
+      return (
+        <AdminModal title={metricContext === 'confidence' ? 'Answer Confidence Sources' : 'Questions Answered In 7 Days'} onClose={closeModal}>
+          <div className="topDetailPanel">
+            <p className="topDetailLead">
+              {metricContext === 'confidence'
+                ? 'Confidence is derived from the ratio of answers grounded in ARTICLE or DOCUMENT sources.'
+                : 'This list is loaded from the real AI question log table.'}
+            </p>
+            {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+            <div className="topRecordList">
+              {filteredLogs.length ? filteredLogs.map((log) => (
+                <article key={log.id}>
+                  <strong>{log.question}</strong>
+                  <span>{statusText(log.sourceType)} · {formatDateTime(log.createdTime)}</span>
+                  <p>{log.answer}</p>
+                </article>
+              )) : <EmptyState text="No matching AI records yet." />}
+            </div>
+          </div>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'ticketList') {
+      const openTicketRows = tickets.filter((ticket) => ['OPEN', 'IN_PROGRESS'].includes(ticket.status));
+      return (
+        <AdminModal title="Open Ticket Queue" onClose={closeModal}>
+          <div className="topDetailPanel">
+            <p className="topDetailLead">Open tickets are loaded from the real ticket queue and update as tickets are created or resolved.</p>
+            {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+            <div className="topRecordList">
+              {openTicketRows.length ? openTicketRows.map((ticket) => (
+                <article key={ticket.id}>
+                  <strong>{ticket.title}</strong>
+                  <span>{ticket.priority} · {ticket.status} · {formatDateTime(ticket.createdTime)}</span>
+                  <p>{ticket.description}</p>
+                </article>
+              )) : <EmptyState text="No open tickets." />}
+            </div>
+          </div>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'notifications') {
+      const openTicketRows = tickets.filter((ticket) => ['OPEN', 'IN_PROGRESS'].includes(ticket.status));
+      return (
+        <AdminModal title="Admin Notifications" onClose={closeModal}>
+          <div className="topDetailPanel">
+            <p className="topDetailLead">Notifications are generated from real knowledge gaps and open support tickets.</p>
+            {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+            <div className="notificationGroups">
+              <section>
+                <h3>Knowledge Gaps</h3>
+                {knowledgeGaps.length ? knowledgeGaps.map((gap) => (
+                  <button type="button" key={gap.logId} onClick={() => scrollToSection('knowledge-gap-loop')}>
+                    <strong>{gap.question}</strong>
+                    <span>{formatDateTime(gap.createdTime)}</span>
+                  </button>
+                )) : <EmptyState text="No knowledge gaps." />}
+              </section>
+              <section>
+                <h3>Open Tickets</h3>
+                {openTicketRows.length ? openTicketRows.map((ticket) => (
+                  <button type="button" key={ticket.id} onClick={() => scrollToSection('ticket-escalation')}>
+                    <strong>{ticket.title}</strong>
+                    <span>{ticket.priority} · {ticket.status}</span>
+                  </button>
+                )) : <EmptyState text="No open tickets." />}
+              </section>
+            </div>
+          </div>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'profile') {
+      const account = profile || user || {};
+      return (
+        <AdminModal title="Platform Admin Profile" onClose={closeModal}>
+          <div className="profilePanel">
+            {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+            <div className="profileHero">
+              <div><UserRound size={28} /></div>
+              <section>
+                <strong>{account.displayName || account.username || 'Admin'}</strong>
+                <span>{account.email || 'No email on record'}</span>
+              </section>
+            </div>
+            <InfoGroup title="Account" rows={[
+              ['User ID', account.id],
+              ['Username', account.username],
+              ['Role', account.role],
+              ['Status', account.status === 1 ? 'Active' : account.status],
+              ['Created', formatDateTime(account.createdTime)],
+            ]} />
+            <div className="formButtonRow">
+              <button className="adminSubmitButton" type="button" onClick={loadOperationsCenter}>Refresh Dashboard</button>
+              <button className="secondaryAdminButton dangerText" type="button" onClick={handleLogout}>Sign Out</button>
+            </div>
+          </div>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'environmentInfo') {
+      return (
+        <AdminModal title="Environment Status" onClose={closeModal}>
+          <div className="topDetailPanel">
+            <p className="topDetailLead">This panel is computed from the current backend response and active knowledge storage state.</p>
+            <div className="environmentGrid">
+              <InfoGroup title="Environment" rows={[
+                ['Name', data.environment?.name],
+                ['Status', statusText(data.environment?.status)],
+                ['Data Mode', loadState === 'live' ? 'Live backend data' : 'Local fallback structure'],
+              ]} />
+              <InfoGroup title="Storage Summary" rows={[
+                ['Articles', data.metrics?.find((metric) => metric.key === 'totalKnowledgeArticles')?.value],
+                ['Documents', data.metrics?.find((metric) => metric.key === 'runbookDocuments')?.value],
+                ['Open Tickets', data.metrics?.find((metric) => metric.key === 'openTickets')?.value],
+              ]} />
+            </div>
+            <div className="serviceHealthBar detail">
+              {(data.serviceHealth ?? []).map((service) => (
+                <button className={statusClass(service.status)} type="button" key={service.name}>
+                  <span />
+                  <strong>{service.name}</strong>
+                  <b>{statusText(service.status)}</b>
+                </button>
+              ))}
+            </div>
+          </div>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'modelStatus') {
+      const profile = data.modelSearchControls?.modelProfile ?? {};
+      const retrieval = data.modelSearchControls?.retrievalStrategy ?? {};
+      const web = data.modelSearchControls?.webSearchSettings ?? {};
+      return (
+        <AdminModal title="LLM Gateway Status" onClose={closeModal}>
+          <div className="topDetailPanel">
+            <p className="topDetailLead">This is the real current model configuration state returned by the backend. Not configured means no model gateway has been connected yet.</p>
+            <div className="environmentGrid">
+              <InfoGroup title="Model Profile" rows={[
+                ['Primary Model', profile.primaryModel],
+                ['Embedding Model', profile.embeddingModel],
+                ['Reranker Model', profile.rerankerModel],
+                ['Status', statusText(profile.status)],
+              ]} />
+              <InfoGroup title="Retrieval" rows={[
+                ['Top-K Documents', retrieval.topKDocuments],
+                ['Top-K Articles', retrieval.topKArticles],
+                ['Reranker Enabled', retrieval.rerankerEnabled ? 'On' : 'Off'],
+                ['Web Threshold', web.webFallbackThreshold],
+              ]} />
+            </div>
+          </div>
+        </AdminModal>
+      );
+    }
+
     const capabilityMessages = {
       webEvidenceUnavailable: ['External Web Evidence', 'Web search, trusted-domain scoring, and evidence review are not configured yet. The queue stays empty until the real web evidence service is implemented.'],
       trustedSourcesUnavailable: ['Trusted Sources', 'Trusted domain management needs a dedicated trusted_sources table and review workflow. No fake trusted domains are created.'],
-      notificationsUnavailable: ['Notifications', 'Notification storage and delivery are not implemented yet. No fake notifications are shown.'],
-      environmentInfo: ['Environment', 'Production is the active local environment label. Environment switching will connect when multi-environment config exists.'],
       documentationUnavailable: ['System Documentation', 'Documentation pages are not implemented yet. This action is reserved for the final help center.'],
     };
 
@@ -1180,8 +1464,11 @@ function AdminOperationsCenter() {
                 <input value={globalSearch} placeholder="Search stored knowledge..." onChange={(event) => setGlobalSearch(event.target.value)} />
                 <button type="submit" aria-label="Search stored knowledge"><Search size={18} /></button>
               </form>
-              <button className="notificationButton" type="button" onClick={() => openModal('notificationsUnavailable')}><Bell size={19} /><i>0</i></button>
-              <button className="adminProfile" type="button" onClick={() => openModal('environmentInfo')}>
+              <button className="notificationButton" type="button" onClick={openNotifications}>
+                <Bell size={19} />
+                <i>{(data.knowledgeGapLoop?.gaps?.length ?? 0) + (data.ticketEscalation?.tickets?.length ?? 0)}</i>
+              </button>
+              <button className="adminProfile" type="button" onClick={openProfile}>
                 <div><UserRound size={18} /></div>
                 <p><strong>{user.displayName || user.username || 'Admin'}</strong><span>Platform Admin</span></p>
                 <ChevronDown size={14} />
@@ -1191,7 +1478,7 @@ function AdminOperationsCenter() {
 
           <div className="serviceHealthBar">
             {(data.serviceHealth ?? []).map((service) => (
-              <button className={statusClass(service.status)} type="button" key={service.name} onClick={() => service.name === 'LLM Gateway' ? openModal('webEvidenceUnavailable') : openModal('environmentInfo')}>
+              <button className={statusClass(service.status)} type="button" key={service.name} onClick={() => service.name === 'LLM Gateway' ? openModal('modelStatus') : openModal('environmentInfo')}>
                 <span />
                 <strong>{service.name}</strong>
                 <b>{statusText(service.status)}</b>
@@ -1205,7 +1492,7 @@ function AdminOperationsCenter() {
         )}
 
         <section className="metricsGrid">
-          {(data.metrics ?? []).map((metric) => <MetricCard metric={metric} key={metric.key} />)}
+          {(data.metrics ?? []).map((metric) => <MetricCard metric={metric} key={metric.key} onClick={() => handleMetricClick(metric.key)} />)}
         </section>
 
         <section className="operationsGrid">
