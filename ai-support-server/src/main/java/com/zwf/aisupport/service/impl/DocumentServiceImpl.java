@@ -2,6 +2,7 @@ package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
+import com.zwf.aisupport.common.util.UploadedTextExtractor;
 import com.zwf.aisupport.entity.DocumentChunk;
 import com.zwf.aisupport.entity.KnowledgeDocument;
 import com.zwf.aisupport.mapper.DocumentChunkMapper;
@@ -14,14 +15,13 @@ import com.zwf.aisupport.vo.KnowledgeDocumentVO;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class DocumentServiceImpl implements DocumentService {
 
-    private static final long MAX_FILE_SIZE = 1024 * 1024;
+    private static final long MAX_FILE_SIZE = 10 * 1024 * 1024;
     private static final int MAX_CHUNK_LENGTH = 800;
 
     private final KnowledgeDocumentMapper knowledgeDocumentMapper;
@@ -40,14 +40,12 @@ public class DocumentServiceImpl implements DocumentService {
             throw new BusinessException("User is not authenticated");
         }
 
-        validateFile(file);
-
-        String content = readTextContent(file);
-        List<String> chunks = splitIntoChunks(content);
+        UploadedTextExtractor.ExtractedText extractedText = UploadedTextExtractor.extract(file, MAX_FILE_SIZE, "document");
+        List<String> chunks = splitIntoChunks(extractedText.content());
 
         KnowledgeDocument document = new KnowledgeDocument();
-        document.setOriginalFilename(file.getOriginalFilename());
-        document.setContentType(file.getContentType());
+        document.setOriginalFilename(extractedText.filename());
+        document.setContentType(resolveContentType(file, extractedText.fileType()));
         document.setFileSize(file.getSize());
         document.setCategory(category);
         document.setUploadedBy(currentUserId);
@@ -121,34 +119,6 @@ public class DocumentServiceImpl implements DocumentService {
         // Document category stats help administrators understand how uploaded knowledge is organized.
         return knowledgeDocumentMapper.countActiveDocumentsByCategory();
     }
-    private void validateFile(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new BusinessException("File cannot be empty");
-        }
-
-        if (file.getSize() > MAX_FILE_SIZE) {
-            throw new BusinessException("File size cannot exceed 1MB");
-        }
-
-        String filename = file.getOriginalFilename();
-        if (filename == null || filename.isBlank()) {
-            throw new BusinessException("Filename cannot be blank");
-        }
-
-        String lowerFilename = filename.toLowerCase();
-        if (!lowerFilename.endsWith(".txt") && !lowerFilename.endsWith(".md")) {
-            throw new BusinessException("Only .txt and .md files are supported now");
-        }
-    }
-
-    private String readTextContent(MultipartFile file) {
-        try {
-            return new String(file.getBytes(), StandardCharsets.UTF_8);
-        } catch (Exception exception) {
-            throw new BusinessException("Failed to read document content");
-        }
-    }
-
     private List<String> splitIntoChunks(String content) {
         String normalizedContent = content == null ? "" : content.trim();
         if (normalizedContent.isBlank()) {
@@ -188,6 +158,13 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         return chunks;
+    }
+
+    private String resolveContentType(MultipartFile file, String fileType) {
+        if (file.getContentType() != null && !file.getContentType().isBlank()) {
+            return file.getContentType();
+        }
+        return fileType;
     }
 
     private KnowledgeDocumentVO convertToKnowledgeDocumentVO(KnowledgeDocument document) {

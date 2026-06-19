@@ -4,12 +4,15 @@ import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
 import com.zwf.aisupport.dto.KnowledgeArticleUpdateDTO;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.KnowledgeCategoryStatsVO;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 public interface KnowledgeArticleService {
 
     void create(KnowledgeArticleCreateDTO knowledgeArticleCreateDTO);
+
+    KnowledgeArticleVO upload(MultipartFile file, String category, String title);
 
     List<KnowledgeArticleVO> listPublishedArticles();
 

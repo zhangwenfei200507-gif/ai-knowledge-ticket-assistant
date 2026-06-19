@@ -8,6 +8,7 @@ import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.KnowledgeCategoryStatsVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -25,6 +26,14 @@ public class KnowledgeArticleController {
     public Result<Void> create(@Valid @RequestBody KnowledgeArticleCreateDTO knowledgeArticleCreateDTO) {
         knowledgeArticleService.create(knowledgeArticleCreateDTO);
         return Result.success();
+    }
+
+    @PostMapping("/upload")
+    public Result<KnowledgeArticleVO> upload(@RequestParam("file") MultipartFile file,
+                                             @RequestParam(value = "category", required = false) String category,
+                                             @RequestParam(value = "title", required = false) String title) {
+        KnowledgeArticleVO article = knowledgeArticleService.upload(file, category, title);
+        return Result.success(article);
     }
 
     @GetMapping

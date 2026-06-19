@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowRight,
@@ -14,6 +14,7 @@ import {
   User,
 } from 'lucide-react';
 import { login, register, resetPassword } from './api/auth';
+import AdminOperationsCenter from './AdminOperationsCenter';
 import './styles.css';
 
 const emptyForms = {
@@ -35,6 +36,14 @@ const emptyForms = {
     confirmPassword: '',
   },
 };
+
+function getStoredUserRole() {
+  try {
+    return JSON.parse(localStorage.getItem('aegiscloud_user') || '{}')?.role;
+  } catch {
+    return undefined;
+  }
+}
 
 function AuthInput({
   icon: Icon,
@@ -86,11 +95,15 @@ function StatusItem({ icon: Icon, label }) {
 }
 
 function App() {
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const [mode, setMode] = useState('signin');
   const [forms, setForms] = useState(emptyForms);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState({ type: '', text: '' });
+  const hasAdminAccess = currentPath === '/admin'
+    && Boolean(localStorage.getItem('aegiscloud_token'))
+    && getStoredUserRole() === 'ADMIN';
 
   const copy = useMemo(() => {
     if (mode === 'register') {
@@ -132,6 +145,14 @@ function App() {
     setShowPassword(false);
   };
 
+  useEffect(() => {
+    if (currentPath === '/admin' && !hasAdminAccess) {
+      window.history.replaceState({}, '', '/');
+      setCurrentPath('/');
+      setNotice({ type: 'error', text: 'Admin access requires an administrator account.' });
+    }
+  }, [currentPath, hasAdminAccess]);
+
   const submit = async (event) => {
     event.preventDefault();
     setLoading(true);
@@ -159,6 +180,11 @@ function App() {
               ? 'Signed in as ADMIN. Admin console access is ready.'
               : 'Signed in as USER. Workspace access is ready.',
         });
+
+        if (userRole === 'ADMIN') {
+          window.history.pushState({}, '', '/admin');
+          setCurrentPath('/admin');
+        }
       }
 
       if (mode === 'register') {
@@ -206,6 +232,10 @@ function App() {
       {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
     </button>
   );
+
+  if (currentPath === '/admin' && hasAdminAccess) {
+    return <AdminOperationsCenter />;
+  }
 
   return (
     <main className="pageShell">

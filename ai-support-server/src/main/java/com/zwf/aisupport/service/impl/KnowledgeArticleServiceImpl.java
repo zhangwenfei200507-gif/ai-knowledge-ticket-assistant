@@ -2,6 +2,7 @@ package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
+import com.zwf.aisupport.common.util.UploadedTextExtractor;
 import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
 import com.zwf.aisupport.dto.KnowledgeArticleUpdateDTO;
 import com.zwf.aisupport.entity.KnowledgeArticle;
@@ -10,11 +11,14 @@ import com.zwf.aisupport.service.KnowledgeArticleService;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.KnowledgeCategoryStatsVO;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 @Service
 public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
+
+    private static final long MAX_ARTICLE_FILE_SIZE = 10 * 1024 * 1024;
 
     private final KnowledgeArticleMapper knowledgeArticleMapper;
 
@@ -42,6 +46,31 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
         article.setStatus("PUBLISHED");
 
         knowledgeArticleMapper.insert(article);
+    }
+
+    @Override
+    public KnowledgeArticleVO upload(MultipartFile file, String category, String title) {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can upload knowledge articles");
+        }
+
+        Long currentUserId = CurrentUserUtil.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("User is not authenticated");
+        }
+
+        UploadedTextExtractor.ExtractedText extractedText = UploadedTextExtractor.extract(file, MAX_ARTICLE_FILE_SIZE, "article");
+
+        KnowledgeArticle article = new KnowledgeArticle();
+        article.setTitle(UploadedTextExtractor.titleFromFilename(extractedText.filename(), title));
+        article.setContent(extractedText.content());
+        article.setCategory(category);
+        article.setCreatedBy(currentUserId);
+        article.setStatus("PUBLISHED");
+
+        knowledgeArticleMapper.insert(article);
+        return convertToKnowledgeArticleVO(article);
     }
 
     @Override
@@ -134,4 +163,5 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
         // Category stats help administrators understand how the knowledge base is organized.
         return knowledgeArticleMapper.countPublishedArticlesByCategory();
     }
+
 }

@@ -46,7 +46,8 @@ public class SecurityConfig {
                         ).hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST,
                                 "/api/ai/knowledge-gaps/*/article",
-                                "/api/knowledge/articles"
+                                "/api/knowledge/articles",
+                                "/api/knowledge/articles/upload"
                         ).hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/knowledge/articles/*").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH,

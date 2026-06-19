@@ -18,7 +18,10 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -92,17 +95,66 @@ class DocumentServiceImplTest {
         authenticateAsUser();
         MockMultipartFile file = new MockMultipartFile(
                 "file",
-                "guide.pdf",
-                "application/pdf",
+                "guide.exe",
+                "application/octet-stream",
                 "content".getBytes(StandardCharsets.UTF_8)
         );
 
         assertThatThrownBy(() -> documentService.upload(file, "ops"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Only .txt and .md files are supported now");
+                .hasMessage("Only .txt, .md, .pdf and .docx document files are supported");
 
         verify(knowledgeDocumentMapper, never()).insert(any(KnowledgeDocument.class));
         verify(documentChunkMapper, never()).insert(any(DocumentChunk.class));
+    }
+
+    @Test
+    void uploadExtractsDocxTextIntoChunks() throws Exception {
+        authenticateAsUser();
+        doAnswer(invocation -> {
+            KnowledgeDocument document = invocation.getArgument(0);
+            document.setId(88L);
+            return null;
+        }).when(knowledgeDocumentMapper).insert(any(KnowledgeDocument.class));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "incident-runbook.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                createDocxBytes("Redis token validation runbook", "Check Redis health and JWT refresh flow.")
+        );
+
+        KnowledgeDocumentVO result = documentService.upload(file, "auth");
+
+        assertThat(result.getId()).isEqualTo(88L);
+        assertThat(result.getOriginalFilename()).isEqualTo("incident-runbook.docx");
+
+        ArgumentCaptor<DocumentChunk> chunkCaptor = ArgumentCaptor.forClass(DocumentChunk.class);
+        verify(documentChunkMapper).insert(chunkCaptor.capture());
+        assertThat(chunkCaptor.getValue().getContent())
+                .contains("Redis token validation runbook")
+                .contains("Check Redis health and JWT refresh flow.");
+    }
+
+    private byte[] createDocxBytes(String... paragraphs) throws Exception {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        try (ZipOutputStream zipOutputStream = new ZipOutputStream(outputStream)) {
+            zipOutputStream.putNextEntry(new ZipEntry("word/document.xml"));
+            StringBuilder documentXml = new StringBuilder("""
+                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                    <w:body>
+                    """);
+            for (String paragraph : paragraphs) {
+                documentXml.append("<w:p><w:r><w:t>")
+                        .append(paragraph)
+                        .append("</w:t></w:r></w:p>");
+            }
+            documentXml.append("</w:body></w:document>");
+            zipOutputStream.write(documentXml.toString().getBytes(StandardCharsets.UTF_8));
+            zipOutputStream.closeEntry();
+        }
+        return outputStream.toByteArray();
     }
 
     private void authenticateAsUser() {
