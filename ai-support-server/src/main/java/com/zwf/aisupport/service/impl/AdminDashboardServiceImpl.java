@@ -3,6 +3,7 @@ package com.zwf.aisupport.service.impl;
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.entity.AiQuestionLog;
+import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.KnowledgeDocument;
 import com.zwf.aisupport.entity.Ticket;
 import com.zwf.aisupport.mapper.AiQuestionLogMapper;
@@ -102,6 +103,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
         List<AiQuestionLog> logs = aiQuestionLogMapper.findAll();
         List<AiQuestionLog> knowledgeGaps = aiQuestionLogMapper.findKnowledgeGaps();
+        List<KnowledgeArticle> articles = knowledgeArticleMapper.findPublishedArticles();
         List<KnowledgeDocument> documents = knowledgeDocumentMapper.findActiveDocuments();
         List<Ticket> tickets = ticketMapper.findAll();
         List<KnowledgeCategoryStatsVO> articleStats = knowledgeArticleMapper.countPublishedArticlesByCategory();
@@ -111,8 +113,8 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
         vo.setTitle("CloudOps AI Knowledge Operations Center");
         vo.setSubtitle("Operate knowledge. Improve answers. Deliver reliable support.");
         vo.setEnvironment(buildEnvironmentStatus());
-        vo.setServiceHealth(buildServiceHealth());
-        vo.setMetrics(buildMetrics(logs, documents, tickets, articleStats, documentStats));
+        vo.setServiceHealth(buildServiceHealth(articles, documents));
+        vo.setMetrics(buildMetrics(logs, articles, documents, tickets, articleStats, documentStats));
         vo.setKnowledgeCore(buildKnowledgeCore(articleStats, documentStats));
         vo.setIngestionPipeline(buildIngestionPipeline(documents));
         vo.setExternalEvidence(buildExternalEvidence(knowledgeGaps, logs));
@@ -139,10 +141,12 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
         return environment;
     }
 
-    private List<AdminOperationsCenterVO.ServiceHealthVO> buildServiceHealth() {
+    private List<AdminOperationsCenterVO.ServiceHealthVO> buildServiceHealth(List<KnowledgeArticle> articles,
+                                                                             List<KnowledgeDocument> documents) {
+        String searchStatus = articles.isEmpty() && documents.isEmpty() ? "EMPTY" : "HEALTHY";
         return List.of(
                 serviceHealth("API", "HEALTHY"),
-                serviceHealth("Search", "HEALTHY"),
+                serviceHealth("Search", searchStatus),
                 serviceHealth("LLM Gateway", "NOT_CONFIGURED"),
                 serviceHealth("Storage", "HEALTHY")
         );
@@ -156,6 +160,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     }
 
     private List<AdminOperationsCenterVO.MetricCardVO> buildMetrics(List<AiQuestionLog> logs,
+                                                                     List<KnowledgeArticle> articles,
                                                                      List<KnowledgeDocument> documents,
                                                                      List<Ticket> tickets,
                                                                      List<KnowledgeCategoryStatsVO> articleStats,
@@ -164,29 +169,49 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
         long answeredLast7Days = logs.stream()
                 .filter(log -> isWithinDays(log.getCreatedTime(), 7))
                 .count();
-        long articleCount = nullToZero(knowledgeArticleMapper.countPublishedArticles());
+        long articleCount = articles.size();
+        long articlesThisWeek = articles.stream()
+                .filter(article -> isWithinDays(article.getCreatedTime(), 7))
+                .count();
+        long documentsThisWeek = documents.stream()
+                .filter(document -> isWithinDays(document.getCreatedTime(), 7))
+                .count();
         long openTickets = tickets.stream()
                 .filter(ticket -> "OPEN".equals(ticket.getStatus()) || "IN_PROGRESS".equals(ticket.getStatus()))
                 .count();
+        BigDecimal confidence = calculateConfidence(logs);
+        int coverage = calculateKnowledgeCoverage(articleStats, documentStats);
 
         return List.of(
-                metric("totalKnowledgeArticles", "Total Knowledge Articles", String.valueOf(articleCount), trend(articleStats.size(), "this week"), "article"),
-                metric("runbookDocuments", "Runbook Documents", String.valueOf(documents.size()), trend(documents.size(), "this week"), "book"),
-                metric("knowledgeCoverage", "Knowledge Coverage", percentText(calculateKnowledgeCoverage(articleStats, documentStats)), "based on core domains", "coverage"),
-                metric("questionsAnswered7d", "Questions Answered (7D)", String.valueOf(answeredLast7Days), trend(answeredLast7Days, "last 7 days"), "question"),
-                metric("avgAnswerConfidence", "Avg Answer Confidence", calculateConfidence(logs).toPlainString(), "from internal-source ratio", "target"),
-                metric("openTickets", "Open Tickets", String.valueOf(openTickets), trend(openTickets, "active queue"), "ticket")
+                metric("totalKnowledgeArticles", "Total Knowledge Articles", String.valueOf(articleCount), trend(articlesThisWeek, "this week"), trendType(articlesThisWeek), "Published internal articles", "article"),
+                metric("runbookDocuments", "Runbook Documents", String.valueOf(documents.size()), trend(documentsThisWeek, "this week"), trendType(documentsThisWeek), "Active uploaded documents", "book"),
+                metric("knowledgeCoverage", "Knowledge Coverage", percentText(coverage), coverage + "% of core domains covered", coverage == 0 ? "warning" : "positive", "Based on article and document categories", "coverage"),
+                metric("questionsAnswered7d", "Questions Answered (7D)", String.valueOf(answeredLast7Days), trend(answeredLast7Days, "last 7 days"), trendType(answeredLast7Days), "Recorded AI answers in the last 7 days", "question"),
+                metric("avgAnswerConfidence", "Avg Answer Confidence", confidence.toPlainString(), confidence.compareTo(BigDecimal.ZERO) == 0 ? "0 internal-source ratio" : "internal-source ratio", confidence.compareTo(BigDecimal.ZERO) == 0 ? "neutral" : "positive", "Calculated from answered source types", "target"),
+                metric("openTickets", "Open Tickets", String.valueOf(openTickets), trend(openTickets, "active queue"), openTickets == 0 ? "neutral" : "warning", "Open or in-progress support tickets", "ticket")
         );
     }
 
-    private AdminOperationsCenterVO.MetricCardVO metric(String key, String label, String value, String trend, String icon) {
+    private AdminOperationsCenterVO.MetricCardVO metric(String key,
+                                                        String label,
+                                                        String value,
+                                                        String trend,
+                                                        String trendType,
+                                                        String detail,
+                                                        String icon) {
         AdminOperationsCenterVO.MetricCardVO metric = new AdminOperationsCenterVO.MetricCardVO();
         metric.setKey(key);
         metric.setLabel(label);
         metric.setValue(value);
         metric.setTrend(trend);
+        metric.setTrendType(trendType);
+        metric.setDetail(detail);
         metric.setIcon(icon);
         return metric;
+    }
+
+    private String trendType(long value) {
+        return value > 0 ? "positive" : "neutral";
     }
 
     private AdminOperationsCenterVO.KnowledgeCoreVO buildKnowledgeCore(List<KnowledgeCategoryStatsVO> articleStats,

@@ -48,9 +48,13 @@ const requestJson = async (path, options = {}) => {
 
 export const getKnowledgeArticles = () => requestJson('/api/knowledge/articles');
 
+export const searchKnowledgeArticles = (keyword) => requestJson(`/api/knowledge/articles/search?keyword=${encodeURIComponent(keyword)}`);
+
 export const getKnowledgeDocuments = () => requestJson('/api/documents');
 
 export const getDocumentChunks = (documentId) => requestJson(`/api/documents/${documentId}/chunks`);
+
+export const searchDocumentChunks = (keyword) => requestJson(`/api/documents/chunks/search?keyword=${encodeURIComponent(keyword)}`);
 
 export const updateKnowledgeArticle = (id, payload) => requestJson(`/api/knowledge/articles/${id}`, {
   method: 'PUT',

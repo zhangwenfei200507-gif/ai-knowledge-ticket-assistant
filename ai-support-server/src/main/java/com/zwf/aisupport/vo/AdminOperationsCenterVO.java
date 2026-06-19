@@ -41,6 +41,8 @@ public class AdminOperationsCenterVO {
         private String label;
         private String value;
         private String trend;
+        private String trendType;
+        private String detail;
         private String icon;
     }
 

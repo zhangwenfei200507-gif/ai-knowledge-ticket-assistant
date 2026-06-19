@@ -782,18 +782,24 @@ button {
   padding: 24px 22px 18px;
 }
 
+.adminTopSection {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
 .adminTopbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 24px;
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(560px, auto);
+  align-items: start;
+  gap: 22px;
 }
 
 .adminTopbar h1 {
-  margin: 0;
+  max-width: 520px;
+  margin: 4px 0 0;
   color: #080d10;
-  font-size: 26px;
+  font-size: 27px;
   line-height: 1.1;
   letter-spacing: 0;
 }
@@ -804,10 +810,26 @@ button {
   font-size: 13px;
 }
 
-.topbarControls {
-  display: flex;
+.adminEyebrow {
+  display: inline-flex;
   align-items: center;
-  gap: 14px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid rgba(13, 104, 77, 0.16);
+  border-radius: 999px;
+  color: #096446;
+  background: rgba(235, 248, 240, 0.8);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.topbarControls {
+  display: grid;
+  grid-template-columns: auto minmax(260px, 330px) 42px auto;
+  align-items: center;
+  justify-content: end;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -833,52 +855,78 @@ button {
 }
 
 .environmentPill span,
-.serviceHealthBar p span {
+.serviceHealthBar button span {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: #1aa66a;
 }
 
-.serviceHealthBar {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.serviceHealthBar p {
-  display: grid;
-  grid-template-columns: 8px auto;
-  column-gap: 6px;
-  row-gap: 1px;
-  align-items: center;
-  margin: 0;
-  color: #2a3834;
-  font-size: 12px;
-}
-
-.serviceHealthBar p span {
-  grid-row: span 2;
-}
-
-.serviceHealthBar p span.warning {
+.environmentPill.neutral span,
+.serviceHealthBar button.neutral span {
   background: #c58b22;
 }
 
+.environmentPill.warning span,
+.serviceHealthBar button.warning span {
+  background: #d44b40;
+}
+
+.serviceHealthBar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.serviceHealthBar button {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: 6px;
+  row-gap: 2px;
+  align-items: center;
+  min-height: 46px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #e0e4dd;
+  border-radius: 9px;
+  color: #2a3834;
+  background: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+  text-align: left;
+}
+
+.serviceHealthBar button span {
+  grid-row: span 2;
+}
+
+.serviceHealthBar button strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .serviceHealthBar b {
-  color: #1d9c63;
+  color: #0d8d58;
   font-size: 11px;
   font-weight: 700;
 }
 
+.serviceHealthBar button.neutral b {
+  color: #9b6a14;
+}
+
+.serviceHealthBar button.warning b {
+  color: #b33b31;
+}
+
 .adminSearch {
-  width: 250px;
-  flex: 0 0 250px;
+  width: 100%;
   height: 38px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
+  gap: 4px;
+  padding: 0 5px 0 12px;
   border-radius: 7px;
 }
 
@@ -890,6 +938,21 @@ button {
   background: transparent;
   color: #14211d;
   font-size: 12px;
+}
+
+.adminSearch button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: #0d3d32;
+  background: transparent;
+}
+
+.adminSearch button:hover {
+  background: #edf5ef;
 }
 
 .notificationButton {
@@ -924,6 +987,7 @@ button {
   gap: 9px;
   padding: 0 10px;
   border-radius: 9px;
+  text-align: left;
 }
 
 .adminProfile > div {
@@ -983,12 +1047,17 @@ button {
 }
 
 .adminMetricCard {
-  display: flex;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
   align-items: center;
-  gap: 16px;
-  min-height: 100px;
-  padding: 20px 18px;
+  gap: 14px;
+  min-height: 118px;
+  padding: 18px 16px;
   border-radius: 9px;
+}
+
+.adminMetricCard.warning {
+  border-color: #ead3ab;
 }
 
 .adminMetricIcon {
@@ -1022,9 +1091,25 @@ button {
 }
 
 .adminMetricCard span {
-  margin-top: 8px;
+  margin-top: 7px;
   color: #28945e;
   font-size: 11px;
+}
+
+.adminMetricCard.neutral span {
+  color: #7b837e;
+}
+
+.adminMetricCard.warning span {
+  color: #a36f18;
+}
+
+.adminMetricCard small {
+  display: block;
+  margin-top: 4px;
+  color: #747d79;
+  font-size: 10px;
+  line-height: 1.3;
 }
 
 .operationsGrid {
@@ -1737,6 +1822,111 @@ button {
   line-height: 1.6;
 }
 
+.globalSearchModal {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.globalSearchForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: 10px;
+}
+
+.globalSearchForm input {
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #d8ddd8;
+  border-radius: 7px;
+  color: #14211d;
+  background: #fff;
+  outline: 0;
+}
+
+.globalSearchForm input:focus {
+  border-color: #13845b;
+  box-shadow: 0 0 0 4px rgba(19, 132, 91, 0.1);
+}
+
+.globalSearchForm button {
+  height: 42px;
+  border: 1px solid #07533d;
+  border-radius: 7px;
+  color: #fff;
+  background: linear-gradient(92deg, #06764f, #064232);
+  font-weight: 800;
+}
+
+.globalSearchSummary {
+  color: #68736e;
+  font-size: 12px;
+}
+
+.globalSearchResults {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.globalSearchResults section {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-height: 260px;
+}
+
+.globalSearchResults h3 {
+  margin: 0 0 3px;
+  color: #0a1714;
+  font-size: 13px;
+}
+
+.globalSearchResults button {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid #e3e7e1;
+  border-radius: 8px;
+  color: #15231f;
+  background: #fff;
+  text-align: left;
+}
+
+.globalSearchResults button:hover {
+  border-color: rgba(8, 112, 78, 0.45);
+  background: #f0f8f3;
+}
+
+.globalSearchResults strong,
+.globalSearchResults span,
+.globalSearchResults p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.globalSearchResults strong {
+  color: #071512;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.globalSearchResults span {
+  color: #0b7654;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.globalSearchResults p {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  margin: 0;
+  color: #5d6964;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .knowledgeLibrary {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
@@ -1956,6 +2146,10 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .globalSearchResults {
+    grid-template-columns: 1fr;
+  }
+
   .libraryList {
     max-height: 260px;
     overflow: auto;
@@ -1963,15 +2157,17 @@ button {
     border-bottom: 1px solid #eceee9;
   }
 
+  .adminTopbar {
+    grid-template-columns: 1fr;
+  }
+
   .topbarControls {
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    grid-template-columns: auto minmax(260px, 1fr) 42px auto;
+    justify-content: stretch;
   }
 
   .serviceHealthBar {
-    order: 3;
-    width: 100%;
-    justify-content: flex-end;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1989,10 +2185,17 @@ button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .adminTopbar,
+  .adminTopbar {
+    grid-template-columns: 1fr;
+  }
+
   .topbarControls {
+    grid-template-columns: 1fr;
     align-items: stretch;
-    flex-direction: column;
+  }
+
+  .serviceHealthBar {
+    grid-template-columns: 1fr;
   }
 
   .adminSearch {

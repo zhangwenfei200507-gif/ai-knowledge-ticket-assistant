@@ -40,6 +40,8 @@ import {
   getKnowledgeArticles,
   getKnowledgeDocuments,
   getOperationsCenter,
+  searchDocumentChunks,
+  searchKnowledgeArticles,
   updateKnowledgeArticle,
   uploadKnowledgeArticle,
   uploadKnowledgeDocument,
@@ -56,12 +58,12 @@ const fallbackData = {
     { name: 'Storage', status: 'UNKNOWN' },
   ],
   metrics: [
-    { key: 'totalKnowledgeArticles', label: 'Total Knowledge Articles', value: '0', trend: '+ 0 this week', icon: 'article' },
-    { key: 'runbookDocuments', label: 'Runbook Documents', value: '0', trend: '+ 0 this week', icon: 'book' },
-    { key: 'knowledgeCoverage', label: 'Knowledge Coverage', value: '0%', trend: 'based on core domains', icon: 'coverage' },
-    { key: 'questionsAnswered7d', label: 'Questions Answered (7D)', value: '0', trend: '+ 0 last 7 days', icon: 'question' },
-    { key: 'avgAnswerConfidence', label: 'Avg Answer Confidence', value: '0.00', trend: 'from internal-source ratio', icon: 'target' },
-    { key: 'openTickets', label: 'Open Tickets', value: '0', trend: '+ 0 active queue', icon: 'ticket' },
+    { key: 'totalKnowledgeArticles', label: 'Total Knowledge Articles', value: '0', trend: '+ 0 this week', trendType: 'neutral', detail: 'Published internal articles', icon: 'article' },
+    { key: 'runbookDocuments', label: 'Runbook Documents', value: '0', trend: '+ 0 this week', trendType: 'neutral', detail: 'Active uploaded documents', icon: 'book' },
+    { key: 'knowledgeCoverage', label: 'Knowledge Coverage', value: '0%', trend: '0% of core domains covered', trendType: 'warning', detail: 'Based on article and document categories', icon: 'coverage' },
+    { key: 'questionsAnswered7d', label: 'Questions Answered (7D)', value: '0', trend: '+ 0 last 7 days', trendType: 'neutral', detail: 'Recorded AI answers in the last 7 days', icon: 'question' },
+    { key: 'avgAnswerConfidence', label: 'Avg Answer Confidence', value: '0.00', trend: '0 internal-source ratio', trendType: 'neutral', detail: 'Calculated from answered source types', icon: 'target' },
+    { key: 'openTickets', label: 'Open Tickets', value: '0', trend: '+ 0 active queue', trendType: 'neutral', detail: 'Open or in-progress support tickets', icon: 'ticket' },
   ],
   knowledgeCore: {
     categories: [
@@ -172,6 +174,13 @@ function statusText(status) {
   return status.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function statusClass(status) {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'healthy') return 'healthy';
+  if (normalized === 'empty' || normalized === 'not_configured') return 'neutral';
+  return 'warning';
+}
+
 function numberValue(value) {
   if (value === null || value === undefined || value === '') return 0;
   return Number(value);
@@ -205,12 +214,13 @@ function MetricCard({ metric }) {
   const Icon = metricIconMap[metric.icon] || Gauge;
 
   return (
-    <article className="adminMetricCard">
+    <article className={`adminMetricCard ${metric.trendType || 'neutral'}`}>
       <div className="adminMetricIcon"><Icon size={24} /></div>
       <div>
         <p>{metric.label}</p>
         <strong>{metric.value}</strong>
         <span>{metric.trend}</span>
+        <small>{metric.detail}</small>
       </div>
     </article>
   );
@@ -578,6 +588,8 @@ function AdminOperationsCenter() {
   const [selectedChunks, setSelectedChunks] = useState([]);
   const [articleSearch, setArticleSearch] = useState('');
   const [documentSearch, setDocumentSearch] = useState('');
+  const [globalSearch, setGlobalSearch] = useState('');
+  const [globalSearchResults, setGlobalSearchResults] = useState({ articles: [], chunks: [] });
   const [articleEditor, setArticleEditor] = useState({ id: null, title: '', category: '', content: '' });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const user = useMemo(() => {
@@ -675,6 +687,67 @@ function AdminOperationsCenter() {
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
     }
+  };
+
+  const submitGlobalSearch = async (event) => {
+    event.preventDefault();
+    const keyword = globalSearch.trim();
+    if (!keyword) {
+      setActionStatus({ type: 'error', text: 'Enter a keyword to search stored knowledge.' });
+      openModal('globalSearch');
+      return;
+    }
+
+    openModal('globalSearch');
+    setActionStatus({ type: 'loading', text: 'Searching articles and uploaded document chunks...' });
+    try {
+      const [articleResults, chunkResults] = await Promise.all([
+        searchKnowledgeArticles(keyword),
+        searchDocumentChunks(keyword),
+      ]);
+      setGlobalSearchResults({
+        articles: articleResults ?? [],
+        chunks: chunkResults ?? [],
+      });
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setGlobalSearchResults({ articles: [], chunks: [] });
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const openSearchArticle = (article) => {
+    setArticles([article]);
+    setSelectedArticle(article);
+    setArticleSearch('');
+    setActionStatus({ type: '', text: '' });
+    setActiveModal('articleLibrary');
+  };
+
+  const openSearchChunk = (chunk) => {
+    setDocuments([{
+      id: chunk.documentId,
+      originalFilename: chunk.originalFilename,
+      category: chunk.category,
+      fileSize: 0,
+      status: 'ACTIVE',
+    }]);
+    setSelectedDocument({
+      id: chunk.documentId,
+      originalFilename: chunk.originalFilename,
+      category: chunk.category,
+      fileSize: 0,
+      status: 'ACTIVE',
+    });
+    setSelectedChunks([{
+      id: chunk.chunkId,
+      documentId: chunk.documentId,
+      chunkIndex: chunk.chunkIndex,
+      content: chunk.content,
+    }]);
+    setDocumentSearch('');
+    setActionStatus({ type: '', text: '' });
+    setActiveModal('documentLibrary');
   };
 
   const openArticleEditor = (article) => {
@@ -897,6 +970,44 @@ function AdminOperationsCenter() {
       );
     }
 
+    if (activeModal === 'globalSearch') {
+      const totalResults = (globalSearchResults.articles?.length ?? 0) + (globalSearchResults.chunks?.length ?? 0);
+      return (
+        <AdminModal title="Search Stored Knowledge" onClose={closeModal}>
+          <div className="globalSearchModal">
+            <form className="globalSearchForm" onSubmit={submitGlobalSearch}>
+              <input value={globalSearch} placeholder="Search articles and document chunks" onChange={(event) => setGlobalSearch(event.target.value)} autoFocus />
+              <button type="submit">Search</button>
+            </form>
+            {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+            <div className="globalSearchSummary">{totalResults} results from stored internal knowledge</div>
+            <div className="globalSearchResults">
+              <section>
+                <h3>Articles</h3>
+                {globalSearchResults.articles?.length ? globalSearchResults.articles.map((article) => (
+                  <button type="button" key={article.id} onClick={() => openSearchArticle(article)}>
+                    <strong>{article.title}</strong>
+                    <span>{article.category || 'Uncategorized'}</span>
+                    <p>{article.content}</p>
+                  </button>
+                )) : <EmptyState text="No matching articles." />}
+              </section>
+              <section>
+                <h3>Document Chunks</h3>
+                {globalSearchResults.chunks?.length ? globalSearchResults.chunks.map((chunk) => (
+                  <button type="button" key={chunk.chunkId} onClick={() => openSearchChunk(chunk)}>
+                    <strong>{chunk.originalFilename} · Chunk {chunk.chunkIndex}</strong>
+                    <span>{chunk.category || 'Uncategorized'}</span>
+                    <p>{chunk.content}</p>
+                  </button>
+                )) : <EmptyState text="No matching document chunks." />}
+              </section>
+            </div>
+          </div>
+        </AdminModal>
+      );
+    }
+
     if (activeModal === 'editArticle') {
       return (
         <AdminModal title="Edit Knowledge Article" onClose={() => setActiveModal('articleLibrary')}>
@@ -1054,28 +1165,38 @@ function AdminOperationsCenter() {
       </aside>
 
       <main className="adminMain">
-        <header className="adminTopbar">
-          <div>
-            <h1>{data.title}</h1>
-            <p>{data.subtitle}</p>
+        <header className="adminTopSection">
+          <div className="adminTopbar">
+            <div className="adminTitleBlock">
+              <span className="adminEyebrow">Command Center</span>
+              <h1>{data.title}</h1>
+              <p>{data.subtitle}</p>
+            </div>
+            <div className="topbarControls">
+              <button className={`environmentPill ${statusClass(data.environment?.status)}`} type="button" onClick={() => openModal('environmentInfo')}>
+                <span />{data.environment?.name ?? 'Production'}<ChevronDown size={14} />
+              </button>
+              <form className="adminSearch" onSubmit={submitGlobalSearch}>
+                <input value={globalSearch} placeholder="Search stored knowledge..." onChange={(event) => setGlobalSearch(event.target.value)} />
+                <button type="submit" aria-label="Search stored knowledge"><Search size={18} /></button>
+              </form>
+              <button className="notificationButton" type="button" onClick={() => openModal('notificationsUnavailable')}><Bell size={19} /><i>0</i></button>
+              <button className="adminProfile" type="button" onClick={() => openModal('environmentInfo')}>
+                <div><UserRound size={18} /></div>
+                <p><strong>{user.displayName || user.username || 'Admin'}</strong><span>Platform Admin</span></p>
+                <ChevronDown size={14} />
+              </button>
+            </div>
           </div>
-          <div className="topbarControls">
-            <button className="environmentPill" type="button" onClick={() => openModal('environmentInfo')}><span />{data.environment?.name ?? 'Production'}<ChevronDown size={14} /></button>
-            <div className="serviceHealthBar">
-              {(data.serviceHealth ?? []).map((service) => (
-                <p key={service.name}><span className={service.status === 'HEALTHY' ? '' : 'warning'} />{service.name}<b>{statusText(service.status)}</b></p>
-              ))}
-            </div>
-            <label className="adminSearch">
-              <input placeholder="Search knowledge, tickets..." onFocus={() => openModal('ask')} readOnly />
-              <Search size={18} />
-            </label>
-            <button className="notificationButton" type="button" onClick={() => openModal('notificationsUnavailable')}><Bell size={19} /><i>0</i></button>
-            <div className="adminProfile">
-              <div><UserRound size={18} /></div>
-              <p><strong>{user.displayName || 'Admin'}</strong><span>Platform Admin</span></p>
-              <ChevronDown size={14} />
-            </div>
+
+          <div className="serviceHealthBar">
+            {(data.serviceHealth ?? []).map((service) => (
+              <button className={statusClass(service.status)} type="button" key={service.name} onClick={() => service.name === 'LLM Gateway' ? openModal('webEvidenceUnavailable') : openModal('environmentInfo')}>
+                <span />
+                <strong>{service.name}</strong>
+                <b>{statusText(service.status)}</b>
+              </button>
+            ))}
           </div>
         </header>
 
