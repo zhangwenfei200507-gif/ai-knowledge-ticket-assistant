@@ -1,6 +1,6 @@
 # Kubernetes Probes and Resource Pressure Runbook
 
-Category: CloudOps Kubernetes
+Category: Kubernetes
 Primary keywords: kubernetes, probes, liveness, readiness, startup, resource requests, limits, eviction, oomkilled, node pressure
 Source references:
 - https://kubernetes.io/docs/concepts/workloads/pods/probes/
@@ -73,4 +73,3 @@ Prevention controls
 - Review probes during every deployment change.
 - Monitor restarts, readiness failures, OOMKilled events, and evictions.
 - Keep dashboards separated for application health and infrastructure health.
-

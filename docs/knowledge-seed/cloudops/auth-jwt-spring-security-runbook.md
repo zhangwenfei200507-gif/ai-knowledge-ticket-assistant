@@ -1,6 +1,6 @@
 # Auth / JWT Runbook for Spring Security APIs
 
-Category: CloudOps Auth
+Category: Auth / JWT
 Primary keywords: login, jwt, bearer token, authorization, 401, 403, refresh token, session, Spring Security
 Source references:
 - https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/index.html
@@ -73,4 +73,3 @@ Escalate immediately when
 Resolution notes
 
 For a role change, the clean fix is to update the role in the database, require a fresh login, and verify the new token is used. Do not bypass endpoint authorization in the frontend. The backend must remain the source of truth for protected operations.
-

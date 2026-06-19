@@ -1,6 +1,6 @@
 # CloudOps Incident Response and Escalation SOP
 
-Category: CloudOps SOP
+Category: Incident SOP
 Primary keywords: incident, outage, escalation, priority, p1, p2, postmortem, commander, communication, ticket
 Source references:
 - https://sre.google/resources/practices-and-processes/incident-management-guide/
@@ -73,4 +73,3 @@ Prevention controls
 - Keep runbooks near the systems they describe.
 - Track unanswered AI questions as knowledge gaps.
 - Keep ownership clear for authentication, database, cache, container runtime, Kubernetes, and AI retrieval.
-

@@ -1,6 +1,6 @@
 # Ticket Triage and Customer Communication Playbook
 
-Category: CloudOps Support
+Category: Ticket Rules
 Primary keywords: ticket, triage, priority, customer communication, support, escalation, p1, p2, p3, owner, sla
 Source references:
 - https://sre.google/resources/practices-and-processes/incident-management-guide/
@@ -73,4 +73,3 @@ Escalation triggers
 Knowledge follow-up
 
 Every ticket closed with a reusable answer should produce an article or document update. The best knowledge item includes symptom, diagnosis, safe checks, fix, rollback, owner, and escalation criteria.
-

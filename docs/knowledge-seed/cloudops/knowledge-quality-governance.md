@@ -1,6 +1,6 @@
 # AI Knowledge Quality Governance for CloudOps Support
 
-Category: CloudOps Knowledge
+Category: Customer Templates
 Primary keywords: ai, knowledge base, document, article, source, citation, confidence, gap, feedback, governance
 Source references:
 - https://sre.google/resources/practices-and-processes/incident-management-guide/
@@ -63,4 +63,3 @@ When the system cannot find a reliable answer, it should recommend creating a ti
 Long-term goal
 
 The assistant should become a grounded CloudOps copilot: it can answer from internal documents, show sources, expose knowledge gaps, and help administrators continuously improve the knowledge base.
-

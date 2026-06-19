@@ -1,6 +1,6 @@
 # Document Ingestion and Retrieval Governance
 
-Category: CloudOps Knowledge
+Category: Customer Templates
 Primary keywords: document upload, ingestion, chunk, retrieval, source, citation, article, knowledge base, pdf, docx, markdown
 Source references:
 - https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/
@@ -67,4 +67,3 @@ When AI answers are marked not useful, administrators should inspect the selecte
 Long-term target
 
 The system should behave like a grounded operations assistant: answer from internal knowledge first, show source candidates, expose missing knowledge, and let administrators continuously turn real support work into better retrieval content.
-

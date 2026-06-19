@@ -1,6 +1,6 @@
 # Redis Cache Outage and Latency Runbook
 
-Category: CloudOps Cache
+Category: Redis Cache
 Primary keywords: redis, cache, token, session, latency, memory, eviction, maxmemory, persistence, slowlog
 Source references:
 - https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/latency/
@@ -82,4 +82,3 @@ Prevention controls
 - Set `maxmemory` deliberately and choose an eviction policy that matches the workload.
 - Do not use Redis as the only durable source for critical records.
 - Keep session/token behavior documented so support can explain user impact during outages.
-

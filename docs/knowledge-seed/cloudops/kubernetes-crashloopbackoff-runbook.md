@@ -1,6 +1,6 @@
 # Kubernetes CrashLoopBackOff Runbook
 
-Category: CloudOps Kubernetes
+Category: Kubernetes
 Primary keywords: kubernetes, k8s, pod, crashloopbackoff, logs, events, deployment, restart, image, configmap, secret
 Source references:
 - https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/
@@ -69,4 +69,3 @@ Prevention controls
 - Avoid making liveness probes depend on optional downstream services.
 - Keep resource requests and limits realistic.
 - Add deployment smoke tests after release.
-

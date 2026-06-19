@@ -57,6 +57,37 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
             "Customer Templates", "template"
     );
 
+    private static final Map<String, String> CATEGORY_ALIASES = Map.ofEntries(
+            Map.entry("cloudops auth", "Auth / JWT"),
+            Map.entry("auth", "Auth / JWT"),
+            Map.entry("jwt", "Auth / JWT"),
+            Map.entry("authentication", "Auth / JWT"),
+            Map.entry("cloudops cache", "Redis Cache"),
+            Map.entry("cache", "Redis Cache"),
+            Map.entry("redis", "Redis Cache"),
+            Map.entry("cloudops database", "PostgreSQL"),
+            Map.entry("database", "PostgreSQL"),
+            Map.entry("postgres", "PostgreSQL"),
+            Map.entry("postgresql", "PostgreSQL"),
+            Map.entry("cloudops runtime", "Docker"),
+            Map.entry("runtime", "Docker"),
+            Map.entry("container", "Docker"),
+            Map.entry("docker", "Docker"),
+            Map.entry("cloudops kubernetes", "Kubernetes"),
+            Map.entry("k8s", "Kubernetes"),
+            Map.entry("kubernetes", "Kubernetes"),
+            Map.entry("cloudops sop", "Incident SOP"),
+            Map.entry("incident", "Incident SOP"),
+            Map.entry("incident sop", "Incident SOP"),
+            Map.entry("cloudops support", "Ticket Rules"),
+            Map.entry("support", "Ticket Rules"),
+            Map.entry("ticket", "Ticket Rules"),
+            Map.entry("ticket rules", "Ticket Rules"),
+            Map.entry("cloudops knowledge", "Customer Templates"),
+            Map.entry("knowledge", "Customer Templates"),
+            Map.entry("customer templates", "Customer Templates")
+    );
+
     private final TicketMapper ticketMapper;
     private final KnowledgeArticleMapper knowledgeArticleMapper;
     private final AiQuestionLogMapper aiQuestionLogMapper;
@@ -217,9 +248,17 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     private AdminOperationsCenterVO.KnowledgeCoreVO buildKnowledgeCore(List<KnowledgeCategoryStatsVO> articleStats,
                                                                         List<DocumentCategoryStatsVO> documentStats) {
         Map<String, Long> articleCountByCategory = articleStats.stream()
-                .collect(Collectors.toMap(KnowledgeCategoryStatsVO::getCategory, KnowledgeCategoryStatsVO::getArticleCount));
+                .collect(Collectors.toMap(
+                        stat -> canonicalCategory(stat.getCategory()),
+                        KnowledgeCategoryStatsVO::getArticleCount,
+                        Long::sum
+                ));
         Map<String, Long> documentCountByCategory = documentStats.stream()
-                .collect(Collectors.toMap(DocumentCategoryStatsVO::getCategory, DocumentCategoryStatsVO::getDocumentCount));
+                .collect(Collectors.toMap(
+                        stat -> canonicalCategory(stat.getCategory()),
+                        DocumentCategoryStatsVO::getDocumentCount,
+                        Long::sum
+                ));
 
         List<AdminOperationsCenterVO.KnowledgeCategoryCardVO> categories = CORE_CATEGORIES.stream()
                 .map(category -> {
@@ -465,13 +504,24 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     private int calculateKnowledgeCoverage(List<KnowledgeCategoryStatsVO> articleStats,
                                            List<DocumentCategoryStatsVO> documentStats) {
         List<String> coveredCategories = new ArrayList<>();
-        articleStats.forEach(stat -> coveredCategories.add(stat.getCategory()));
-        documentStats.forEach(stat -> coveredCategories.add(stat.getCategory()));
+        articleStats.forEach(stat -> coveredCategories.add(canonicalCategory(stat.getCategory())));
+        documentStats.forEach(stat -> coveredCategories.add(canonicalCategory(stat.getCategory())));
 
         long coveredCoreCategories = CORE_CATEGORIES.stream()
                 .filter(coveredCategories::contains)
                 .count();
         return percent(coveredCoreCategories, CORE_CATEGORIES.size());
+    }
+
+    private String canonicalCategory(String category) {
+        if (category == null || category.isBlank()) {
+            return "Uncategorized";
+        }
+        String trimmed = category.trim();
+        if (CORE_CATEGORIES.contains(trimmed)) {
+            return trimmed;
+        }
+        return CATEGORY_ALIASES.getOrDefault(trimmed.toLowerCase(Locale.ROOT), trimmed);
     }
 
     private String inferIntent(String question) {

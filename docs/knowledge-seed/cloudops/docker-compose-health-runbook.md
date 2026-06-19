@@ -1,6 +1,6 @@
 # Docker Compose Service Health Runbook
 
-Category: CloudOps Runtime
+Category: Docker
 Primary keywords: docker, compose, container, healthcheck, restart, network, volume, logs, service unhealthy
 Source references:
 - https://docs.docker.com/reference/compose-file/
@@ -67,4 +67,3 @@ Prevention controls
 - Keep environment variables documented.
 - Separate local development Compose settings from production settings.
 - Monitor restart count, health state, and application readiness endpoint.
-

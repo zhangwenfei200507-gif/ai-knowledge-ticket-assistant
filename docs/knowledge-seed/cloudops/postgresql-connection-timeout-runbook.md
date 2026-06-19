@@ -1,6 +1,6 @@
 # PostgreSQL Connection and Timeout Runbook
 
-Category: CloudOps Database
+Category: PostgreSQL
 Primary keywords: postgresql, postgres, database, connection timeout, max_connections, statement_timeout, idle transaction, lock, slow query
 Source references:
 - https://www.postgresql.org/docs/current/runtime-config-connection.html
@@ -83,4 +83,3 @@ Prevention controls
 - Add timeout policies for long-running statements and idle transactions.
 - Monitor connection count, locks, slow queries, deadlocks, and disk usage.
 - Keep backup and restore procedures tested before production incidents.
-
