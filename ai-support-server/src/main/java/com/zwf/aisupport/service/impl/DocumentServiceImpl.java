@@ -4,8 +4,10 @@ import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.common.util.UploadedTextExtractor;
 import com.zwf.aisupport.entity.DocumentChunk;
+import com.zwf.aisupport.entity.DocumentKnowledgeCandidate;
 import com.zwf.aisupport.entity.KnowledgeDocument;
 import com.zwf.aisupport.mapper.DocumentChunkMapper;
+import com.zwf.aisupport.mapper.DocumentKnowledgeCandidateMapper;
 import com.zwf.aisupport.mapper.KnowledgeDocumentMapper;
 import com.zwf.aisupport.service.DocumentService;
 import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
@@ -15,22 +17,29 @@ import com.zwf.aisupport.vo.KnowledgeDocumentVO;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class DocumentServiceImpl implements DocumentService {
 
     private static final long MAX_FILE_SIZE = 10 * 1024 * 1024;
     private static final int MAX_CHUNK_LENGTH = 800;
+    private static final int MAX_LEARNING_CANDIDATES_PER_DOCUMENT = 3;
 
     private final KnowledgeDocumentMapper knowledgeDocumentMapper;
     private final DocumentChunkMapper documentChunkMapper;
+    private final DocumentKnowledgeCandidateMapper candidateMapper;
 
     public DocumentServiceImpl(KnowledgeDocumentMapper knowledgeDocumentMapper,
-                               DocumentChunkMapper documentChunkMapper) {
+                               DocumentChunkMapper documentChunkMapper,
+                               DocumentKnowledgeCandidateMapper candidateMapper) {
         this.knowledgeDocumentMapper = knowledgeDocumentMapper;
         this.documentChunkMapper = documentChunkMapper;
+        this.candidateMapper = candidateMapper;
     }
 
     @Override
@@ -54,13 +63,16 @@ public class DocumentServiceImpl implements DocumentService {
         // Save document metadata first so chunks can reference the generated document id.
         knowledgeDocumentMapper.insert(document);
 
+        List<DocumentChunk> savedChunks = new ArrayList<>();
         for (int i = 0; i < chunks.size(); i++) {
             DocumentChunk chunk = new DocumentChunk();
             chunk.setDocumentId(document.getId());
             chunk.setChunkIndex(i);
             chunk.setContent(chunks.get(i));
             documentChunkMapper.insert(chunk);
+            savedChunks.add(chunk);
         }
+        createLearningCandidates(document, savedChunks, currentUserId);
 
         return convertToKnowledgeDocumentVO(document);
     }
@@ -93,6 +105,168 @@ public class DocumentServiceImpl implements DocumentService {
 
         // Search document chunks first by keyword before adding semantic retrieval later.
         return documentChunkMapper.searchChunks(keyword.trim());
+    }
+
+    private void createLearningCandidates(KnowledgeDocument document, List<DocumentChunk> chunks, Long currentUserId) {
+        chunks.stream()
+                .map(chunk -> new CandidateDraft(chunk, scoreLearningValue(document, chunk)))
+                .filter(draft -> draft.score() >= 7)
+                .sorted(Comparator.comparingInt(CandidateDraft::score).reversed())
+                .limit(MAX_LEARNING_CANDIDATES_PER_DOCUMENT)
+                .forEach(draft -> candidateMapper.insert(buildCandidate(document, draft.chunk(), draft.score(), currentUserId)));
+    }
+
+    private DocumentKnowledgeCandidate buildCandidate(KnowledgeDocument document,
+                                                      DocumentChunk chunk,
+                                                      int score,
+                                                      Long currentUserId) {
+        String category = inferCategory(document.getCategory(), document.getOriginalFilename() + " " + chunk.getContent());
+        DocumentKnowledgeCandidate candidate = new DocumentKnowledgeCandidate();
+        candidate.setDocumentId(document.getId());
+        candidate.setChunkId(chunk.getId());
+        candidate.setTitle(buildCandidateTitle(document.getOriginalFilename(), category, chunk.getContent()));
+        candidate.setContent(buildCandidateContent(document, chunk, category));
+        candidate.setCategory(category);
+        candidate.setImportanceScore(new BigDecimal(score).movePointLeft(1).min(new BigDecimal("0.99")));
+        candidate.setStatus("NEEDS_REVIEW");
+        candidate.setCreatedBy(currentUserId);
+        return candidate;
+    }
+
+    private String buildCandidateTitle(String filename, String category, String content) {
+        String topic = firstUsefulSentence(content);
+        if (topic.length() > 70) {
+            topic = topic.substring(0, 67).trim() + "...";
+        }
+        return limit("Document Insight: " + category + " - " + topic, 180);
+    }
+
+    private String buildCandidateContent(KnowledgeDocument document, DocumentChunk chunk, String category) {
+        List<String> points = extractOperationalPoints(chunk.getContent());
+        StringBuilder builder = new StringBuilder();
+        builder.append("# ").append(buildCandidateTitle(document.getOriginalFilename(), category, chunk.getContent())).append("\n\n")
+                .append("Category: ").append(category).append("\n")
+                .append("Source document: ").append(document.getOriginalFilename()).append("\n")
+                .append("Source chunk: ").append(chunk.getChunkIndex()).append("\n\n")
+                .append("Key operational knowledge:\n");
+
+        for (String point : points) {
+            builder.append("- ").append(point).append("\n");
+        }
+
+        builder.append("\nReview checklist:\n")
+                .append("- Confirm this applies to the current AegisCloud environment.\n")
+                .append("- Add internal commands, dashboards, owners, or escalation paths before publishing.\n")
+                .append("- Remove generic or outdated guidance that should not become trusted knowledge.\n");
+
+        return builder.toString().trim();
+    }
+
+    private List<String> extractOperationalPoints(String content) {
+        List<String> points = new ArrayList<>();
+        for (String rawSentence : content.split("(?<=[.!?。！？])\\s+|\\R+")) {
+            String sentence = normalizeLine(rawSentence);
+            if (isOperationalSentence(sentence) && !points.contains(sentence)) {
+                points.add(limit(sentence, 220));
+            }
+            if (points.size() >= 5) {
+                return points;
+            }
+        }
+
+        if (!points.isEmpty()) {
+            return points;
+        }
+        return List.of(limit(normalizeLine(content), 220));
+    }
+
+    private int scoreLearningValue(KnowledgeDocument document, DocumentChunk chunk) {
+        String text = normalizeSearchText(document.getCategory() + " " + document.getOriginalFilename() + " " + chunk.getContent());
+        int score = 0;
+        score += countMatches(text, "production", "incident", "outage", "down", "failure", "error", "timeout", "latency") * 3;
+        score += countMatches(text, "verify", "check", "diagnose", "troubleshoot", "rollback", "restart", "configure") * 2;
+        score += countMatches(text, "redis", "postgres", "postgresql", "docker", "kubernetes", "jwt", "token", "cache", "database") * 2;
+        score += countMatches(text, "command", "sql", "log", "metric", "dashboard", "alert", "sla", "owner") * 2;
+        if (chunk.getContent() != null && chunk.getContent().length() >= 180) {
+            score += 2;
+        }
+        if (chunk.getContent() != null && chunk.getContent().length() >= 400) {
+            score += 1;
+        }
+        return score;
+    }
+
+    private boolean isOperationalSentence(String sentence) {
+        String normalized = normalizeSearchText(sentence);
+        return sentence.length() >= 24
+                && containsAny(normalized,
+                "check", "verify", "confirm", "diagnose", "configure", "restart", "rollback",
+                "redis", "postgres", "postgresql", "docker", "kubernetes", "jwt", "token",
+                "production", "incident", "error", "timeout", "log", "metric", "alert", "sla");
+    }
+
+    private String firstUsefulSentence(String content) {
+        for (String rawSentence : content.split("(?<=[.!?。！？])\\s+|\\R+")) {
+            String sentence = normalizeLine(rawSentence);
+            if (sentence.length() >= 18) {
+                return sentence;
+            }
+        }
+        return "Uploaded document knowledge";
+    }
+
+    private String inferCategory(String fallbackCategory, String text) {
+        String normalized = normalizeSearchText(text);
+        if (containsAny(normalized, "jwt", "token", "login", "auth", "password", "session")) return "Auth / JWT";
+        if (containsAny(normalized, "redis", "cache")) return "Redis Cache";
+        if (containsAny(normalized, "postgres", "postgresql", "database", "sql")) return "PostgreSQL";
+        if (containsAny(normalized, "docker", "container", "compose")) return "Docker";
+        if (containsAny(normalized, "kubernetes", "k8s", "pod", "cluster")) return "Kubernetes";
+        if (containsAny(normalized, "incident", "outage", "sev", "rollback")) return "Incident SOP";
+        if (containsAny(normalized, "ticket", "sla", "priority", "escalation")) return "Ticket Rules";
+        if (containsAny(normalized, "customer", "template", "reply")) return "Customer Templates";
+        return fallbackCategory == null || fallbackCategory.isBlank() ? "General" : fallbackCategory;
+    }
+
+    private int countMatches(String text, String... terms) {
+        int score = 0;
+        for (String term : terms) {
+            if (text.contains(term)) {
+                score++;
+            }
+        }
+        return score;
+    }
+
+    private boolean containsAny(String text, String... terms) {
+        for (String term : terms) {
+            if (text.contains(term)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String normalizeSearchText(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeLine(String value) {
+        return value == null ? "" : value
+                .replaceAll("^\\s*[-*•]+\\s*", "")
+                .replaceAll("^\\s*\\d+[.)]\\s*", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private String limit(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength).trim();
+    }
+
+    private record CandidateDraft(DocumentChunk chunk, int score) {
     }
     @Override
     public void archive(Long documentId) {

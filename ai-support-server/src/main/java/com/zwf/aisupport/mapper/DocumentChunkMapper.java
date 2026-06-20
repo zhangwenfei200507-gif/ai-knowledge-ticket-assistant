@@ -4,6 +4,7 @@ import com.zwf.aisupport.entity.DocumentChunk;
 import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -16,6 +17,7 @@ public interface DocumentChunkMapper {
             insert into document_chunks (document_id, chunk_index, content)
             values (#{documentId}, #{chunkIndex}, #{content})
             """)
+    @Options(useGeneratedKeys = true, keyProperty = "id")
     void insert(DocumentChunk chunk);
 
     @Select("""

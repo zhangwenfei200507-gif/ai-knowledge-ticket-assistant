@@ -97,6 +97,16 @@ export const rejectWebEvidence = (id) => requestJson(`/api/admin/web-evidence/${
   method: 'PATCH',
 });
 
+export const getDocumentKnowledgeCandidates = () => requestJson('/api/admin/document-knowledge-candidates');
+
+export const approveDocumentKnowledgeCandidate = (id) => requestJson(`/api/admin/document-knowledge-candidates/${id}/approve`, {
+  method: 'POST',
+});
+
+export const rejectDocumentKnowledgeCandidate = (id) => requestJson(`/api/admin/document-knowledge-candidates/${id}/reject`, {
+  method: 'PATCH',
+});
+
 export const getCurrentUser = () => requestJson('/api/users/me');
 
 export const logoutCurrentUser = () => requestJson('/api/users/logout', {

@@ -33,6 +33,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import {
+  approveDocumentKnowledgeCandidate,
   approveWebEvidence,
   archiveKnowledgeArticle,
   archiveKnowledgeDocument,
@@ -41,6 +42,7 @@ import {
   createArticleFromKnowledgeGap,
   getAiQuestionLogs,
   getCurrentUser,
+  getDocumentKnowledgeCandidates,
   getDocumentChunks,
   getKnowledgeGaps,
   getKnowledgeArticles,
@@ -50,6 +52,7 @@ import {
   getTicketDetail,
   getWebEvidence,
   logoutCurrentUser,
+  rejectDocumentKnowledgeCandidate,
   rejectWebEvidence,
   resolveTicket,
   searchDocumentChunks,
@@ -174,6 +177,7 @@ const navItems = [
   ['command', 'Command Center', Home],
   ['knowledge', 'Knowledge Library', BookOpen],
   ['documents', 'Document Library', FileText],
+  ['documentLearning', 'Document Learning', Target],
   ['webEvidence', 'Web Evidence', Globe2],
   ['ai', 'AI Activity', Bot],
   ['gaps', 'Knowledge Gaps', AlertTriangle],
@@ -749,6 +753,8 @@ function AdminOperationsCenter() {
   const [selectedArticle, setSelectedArticle] = useState(null);
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [selectedChunks, setSelectedChunks] = useState([]);
+  const [documentCandidates, setDocumentCandidates] = useState([]);
+  const [selectedDocumentCandidate, setSelectedDocumentCandidate] = useState(null);
   const [articleSearch, setArticleSearch] = useState('');
   const [documentSearch, setDocumentSearch] = useState('');
   const [globalSearch, setGlobalSearch] = useState('');
@@ -994,6 +1000,23 @@ function AdminOperationsCenter() {
     await loadDocuments();
   };
 
+  const loadDocumentCandidates = async () => {
+    setActionStatus({ type: 'loading', text: 'Loading document learning candidates...' });
+    try {
+      const result = await getDocumentKnowledgeCandidates();
+      const loadedCandidates = result ?? [];
+      setDocumentCandidates(loadedCandidates);
+      setSelectedDocumentCandidate((current) => current && loadedCandidates.find((item) => item.id === current.id)
+        ? loadedCandidates.find((item) => item.id === current.id)
+        : loadedCandidates[0] ?? null);
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setDocumentCandidates([]);
+      setSelectedDocumentCandidate(null);
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
   const viewDocumentChunks = async (document) => {
     setSelectedDocument(document);
     setActionStatus({ type: 'loading', text: 'Loading document chunks...' });
@@ -1109,6 +1132,10 @@ function AdminOperationsCenter() {
       documents: async () => {
         setActivePage('documents');
         await loadDocuments();
+      },
+      documentLearning: async () => {
+        setActivePage('documentLearning');
+        await loadDocumentCandidates();
       },
       webEvidence: async () => {
         setActivePage('webEvidence');
@@ -1229,6 +1256,38 @@ function AdminOperationsCenter() {
       await rejectWebEvidence(evidence.id);
       await loadWebEvidence();
       setActionStatus({ type: 'success', text: 'Evidence rejected and removed from the pending queue.' });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const approveSelectedDocumentCandidate = async (candidate) => {
+    if (!candidate) return;
+    const confirmed = window.confirm(`Publish "${candidate.title}" as an internal knowledge article?`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Publishing document insight as internal knowledge...' });
+    try {
+      const article = await approveDocumentKnowledgeCandidate(candidate.id);
+      await loadDocumentCandidates();
+      setActionStatus({ type: 'success', text: `Published article: ${article.title}` });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const rejectSelectedDocumentCandidate = async (candidate) => {
+    if (!candidate) return;
+    const confirmed = window.confirm(`Reject document insight "${candidate.title}"?`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Rejecting document learning candidate...' });
+    try {
+      await rejectDocumentKnowledgeCandidate(candidate.id);
+      await loadDocumentCandidates();
+      setActionStatus({ type: 'success', text: 'Document insight rejected.' });
       loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -1410,6 +1469,7 @@ Prevention controls:
       setDocumentForm({ category: 'General', file: null });
       setDocuments([]);
       setSelectedChunks([]);
+      await loadDocumentCandidates();
       loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -1698,6 +1758,60 @@ Prevention controls:
     </section>
   );
 
+  const renderDocumentLearningPage = () => {
+    const pendingCount = documentCandidates.filter((candidate) => candidate.status === 'NEEDS_REVIEW').length;
+    return (
+      <section className="adminPageSurface">
+        <div className="adminPageHeader">
+          <div>
+            <span>Document Learning</span>
+            <h2>Knowledge Candidates From Uploaded Files</h2>
+            <p>Review high-value operational knowledge extracted from user and admin uploaded documents before it becomes trusted internal knowledge.</p>
+          </div>
+          <div>
+            <button type="button" onClick={loadDocumentCandidates}>Refresh</button>
+            <button type="button" onClick={() => openModal('uploadDocument')}>Upload Document</button>
+          </div>
+        </div>
+        <div className="knowledgeLibrary embedded">
+          <div className="libraryList">
+            <div className="libraryToolbar">
+              <strong>{pendingCount} Pending</strong>
+              <button type="button" onClick={loadDocumentCandidates}>Reload</button>
+            </div>
+            {actionStatus.text && activePage === 'documentLearning' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+            {documentCandidates.length ? documentCandidates.map((candidate) => (
+              <button
+                className={selectedDocumentCandidate?.id === candidate.id ? 'active' : ''}
+                type="button"
+                key={candidate.id}
+                onClick={() => setSelectedDocumentCandidate(candidate)}
+              >
+                <strong>{candidate.title}</strong>
+                <span>{candidate.category || 'General'} · {statusText(candidate.status)} · {candidate.originalFilename}</span>
+              </button>
+            )) : <EmptyState text="No document learning candidates yet. Upload CloudOps documents to create reviewable insights." />}
+          </div>
+          <KnowledgeReader
+            article={selectedDocumentCandidate && {
+              title: selectedDocumentCandidate.title,
+              category: selectedDocumentCandidate.category,
+              status: selectedDocumentCandidate.status,
+              content: selectedDocumentCandidate.content,
+            }}
+            actions={selectedDocumentCandidate && (
+              <>
+                <button type="button" onClick={() => copyToClipboard(selectedDocumentCandidate.content, 'Document insight copied.')}>Copy</button>
+                <button type="button" onClick={() => approveSelectedDocumentCandidate(selectedDocumentCandidate)}>Approve</button>
+                <button className="danger" type="button" onClick={() => rejectSelectedDocumentCandidate(selectedDocumentCandidate)}>Reject</button>
+              </>
+            )}
+          />
+        </div>
+      </section>
+    );
+  };
+
   const renderAiPage = () => (
     <section className="adminPageSurface">
       <div className="adminPageHeader">
@@ -1787,6 +1901,7 @@ Prevention controls:
   const renderActivePage = () => {
     if (activePage === 'knowledge') return renderKnowledgePage();
     if (activePage === 'documents') return renderDocumentPage();
+    if (activePage === 'documentLearning') return renderDocumentLearningPage();
     if (activePage === 'webEvidence') return renderWebEvidencePage();
     if (activePage === 'ai') return renderAiPage();
     if (activePage === 'gaps') return renderGapsPage();
