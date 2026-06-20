@@ -33,6 +33,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import {
+  approveWebEvidence,
   archiveKnowledgeArticle,
   archiveKnowledgeDocument,
   askAiQuestion,
@@ -44,9 +45,12 @@ import {
   getKnowledgeDocuments,
   getOperationsCenter,
   getTickets,
+  getWebEvidence,
   logoutCurrentUser,
+  rejectWebEvidence,
   searchDocumentChunks,
   searchKnowledgeArticles,
+  searchWebEvidence,
   updateKnowledgeArticle,
   uploadKnowledgeArticle,
   uploadKnowledgeDocument,
@@ -165,6 +169,7 @@ const navItems = [
   ['command', 'Command Center', Home],
   ['knowledge', 'Knowledge Library', BookOpen],
   ['documents', 'Document Library', FileText],
+  ['webEvidence', 'Web Evidence', Globe2],
   ['ai', 'AI Activity', Bot],
   ['gaps', 'Knowledge Gaps', AlertTriangle],
   ['tickets', 'Tickets', GitBranch],
@@ -290,33 +295,130 @@ function IngestionPipeline({ data }) {
   );
 }
 
-function ExternalEvidence({ data }) {
+function ExternalEvidence({ data, onOpen, onView }) {
   const queue = data?.queue ?? [];
   const summary = data?.summary ?? {};
 
   return (
-    <>
+    <div className="webEvidenceSummaryPanel">
       <Table
-        columns={['Query / Topic', 'Top Domain', 'Credibility', 'Status', 'Action']}
-        empty="External web evidence is not configured yet."
+        columns={['Question', 'Domain', 'Credibility', 'Status', 'Action']}
+        empty="No external evidence waiting for review."
         rows={queue.map((item) => [
           item.queryTopic,
           item.topDomain,
           item.credibility,
           <span className="reviewPill">{statusText(item.status)}</span>,
-          <button className="iconOnlyButton" type="button"><Eye size={14} /></button>,
+          <button className="iconOnlyButton" type="button" onClick={() => onView?.(item.evidenceId)}><Eye size={14} /></button>,
         ])}
       />
       <div className="summaryBox">
-        <strong>AI Search Summary <span>(Today)</span></strong>
+        <strong>Web Evidence Summary <span>(All time)</span></strong>
         <div>
           <p><b>{summary.searches ?? 0}</b><span>Searches</span></p>
           <p><b>{summary.usefulEvidence ?? 0}</b><span>Useful Evidence</span></p>
           <p><b>{summary.convertedToArticles ?? 0}</b><span>Converted to Articles</span></p>
           <p><b className="dangerText">{summary.pendingReview ?? 0}</b><span>Pending Review</span></p>
         </div>
+        <button type="button" onClick={onOpen}>Open Web Evidence</button>
       </div>
-    </>
+    </div>
+  );
+}
+
+function WebEvidenceWorkspace({
+  evidence,
+  selectedEvidence,
+  searchValue,
+  actionStatus,
+  onSearchValueChange,
+  onSearch,
+  onRefresh,
+  onSelect,
+  onApprove,
+  onReject,
+}) {
+  const pendingCount = evidence.filter((item) => item.status === 'NEEDS_REVIEW').length;
+  const convertedCount = evidence.filter((item) => item.status === 'CONVERTED').length;
+  const rejectedCount = evidence.filter((item) => item.status === 'REJECTED').length;
+
+  return (
+    <section className="webEvidenceWorkspace">
+      <div className="webEvidenceHero">
+        <div>
+          <span>External Retrieval Loop</span>
+          <h2>Review web evidence before it becomes internal knowledge.</h2>
+          <p>When internal knowledge misses, the assistant can collect external evidence, answer with a WEB source, and place the evidence here for administrator approval.</p>
+        </div>
+        <form className="webEvidenceSearch" onSubmit={onSearch}>
+          <input value={searchValue} placeholder="Search external evidence for a CloudOps question..." onChange={(event) => onSearchValueChange(event.target.value)} />
+          <button type="submit"><Search size={16} />Search Web</button>
+        </form>
+      </div>
+
+      <div className="webEvidenceStats">
+        <article><strong>{formatCount(evidence.length)}</strong><span>Total Evidence</span></article>
+        <article><strong>{formatCount(pendingCount)}</strong><span>Needs Review</span></article>
+        <article><strong>{formatCount(convertedCount)}</strong><span>Converted</span></article>
+        <article><strong>{formatCount(rejectedCount)}</strong><span>Rejected</span></article>
+      </div>
+
+      {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+
+      <div className="webEvidenceReviewGrid">
+        <div className="webEvidenceQueue">
+          <div className="libraryToolbar">
+            <strong>{evidence.length} Evidence Records</strong>
+            <button type="button" onClick={onRefresh}>Refresh</button>
+          </div>
+          {evidence.length ? evidence.map((item) => (
+            <button className={selectedEvidence?.id === item.id ? 'active' : ''} type="button" key={item.id} onClick={() => onSelect(item)}>
+              <strong>{item.title || item.question}</strong>
+              <span>{item.domain || 'Unknown domain'} · {statusText(item.status)} · {item.category || 'General'}</span>
+              <p>{item.question}</p>
+            </button>
+          )) : <EmptyState text="No external evidence yet. Ask an unknown question or run a manual web search." />}
+        </div>
+
+        <article className="webEvidenceDetail">
+          {selectedEvidence ? (
+            <>
+              <div className="knowledgeReaderHeader">
+                <span>WEB EVIDENCE</span>
+                <strong>{selectedEvidence.title || selectedEvidence.question}</strong>
+                <small>{selectedEvidence.domain || 'Unknown domain'} · {statusText(selectedEvidence.status)} · {formatDateTime(selectedEvidence.createdTime)}</small>
+                <div className="readerActions">
+                  {selectedEvidence.url && <button type="button" onClick={() => window.open(selectedEvidence.url, '_blank', 'noopener,noreferrer')}>Open Source</button>}
+                  <button type="button" onClick={() => navigator.clipboard.writeText(selectedEvidence.suggestedArticleContent || selectedEvidence.extractedContent || '')}>Copy Evidence</button>
+                  <button type="button" disabled={selectedEvidence.status !== 'NEEDS_REVIEW'} onClick={() => onApprove(selectedEvidence)}>Approve to Article</button>
+                  <button className="danger" type="button" disabled={selectedEvidence.status !== 'NEEDS_REVIEW'} onClick={() => onReject(selectedEvidence)}>Reject</button>
+                </div>
+              </div>
+
+              <div className="webEvidenceMeta">
+                <InfoGroup title="Source" rows={[
+                  ['Question', selectedEvidence.question],
+                  ['Query', selectedEvidence.query],
+                  ['Domain', selectedEvidence.domain],
+                  ['Credibility', selectedEvidence.credibilityScore],
+                ]} />
+                <InfoGroup title="Review" rows={[
+                  ['Status', statusText(selectedEvidence.status)],
+                  ['Category', selectedEvidence.category],
+                  ['Converted Article', selectedEvidence.convertedArticleId],
+                  ['Reviewed', formatDateTime(selectedEvidence.reviewedTime)],
+                ]} />
+              </div>
+
+              <div className="webEvidenceArticlePreview">
+                <h3>Suggested Internal Article</h3>
+                <KnowledgeContentBlock content={selectedEvidence.suggestedArticleContent || selectedEvidence.extractedContent} />
+              </div>
+            </>
+          ) : <EmptyState text="Select a web evidence record to review its source and suggested article." />}
+        </article>
+      </div>
+    </section>
   );
 }
 
@@ -507,10 +609,11 @@ function formatFileSize(value) {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
-function buildNotificationKeys(gaps = [], tickets = []) {
+function buildNotificationKeys(gaps = [], tickets = [], evidence = []) {
   const gapKeys = gaps.map((gap) => `gap:${gap.logId ?? gap.id ?? gap.question}`);
   const ticketKeys = tickets.map((ticket) => `ticket:${ticket.ticketId ?? ticket.id ?? ticket.title}`);
-  return [...gapKeys, ...ticketKeys].filter(Boolean);
+  const evidenceKeys = evidence.map((item) => `evidence:${item.evidenceId ?? item.id ?? item.queryTopic ?? item.question}`);
+  return [...gapKeys, ...ticketKeys, ...evidenceKeys].filter(Boolean);
 }
 
 function KnowledgeContentBlock({ content }) {
@@ -638,6 +741,9 @@ function AdminOperationsCenter() {
   const [aiLogs, setAiLogs] = useState([]);
   const [knowledgeGaps, setKnowledgeGaps] = useState([]);
   const [tickets, setTickets] = useState([]);
+  const [webEvidence, setWebEvidence] = useState([]);
+  const [selectedEvidence, setSelectedEvidence] = useState(null);
+  const [webEvidenceSearch, setWebEvidenceSearch] = useState('');
   const [profile, setProfile] = useState(null);
   const [metricContext, setMetricContext] = useState(null);
   const [activePage, setActivePage] = useState('command');
@@ -694,8 +800,9 @@ function AdminOperationsCenter() {
 
   const dashboardNotificationKeys = useMemo(() => buildNotificationKeys(
     data.knowledgeGapLoop?.gaps ?? [],
-    data.ticketEscalation?.tickets ?? []
-  ), [data.knowledgeGapLoop?.gaps, data.ticketEscalation?.tickets]);
+    data.ticketEscalation?.tickets ?? [],
+    data.externalEvidence?.queue ?? []
+  ), [data.knowledgeGapLoop?.gaps, data.ticketEscalation?.tickets, data.externalEvidence?.queue]);
 
   const unreadNotificationCount = useMemo(
     () => dashboardNotificationKeys.filter((key) => !readNotificationKeys.includes(key)).length,
@@ -769,18 +876,38 @@ function AdminOperationsCenter() {
     await loadTickets();
   };
 
+  const loadWebEvidence = async () => {
+    setActionStatus({ type: 'loading', text: 'Loading external web evidence queue...' });
+    try {
+      const result = await getWebEvidence();
+      const loadedEvidence = result ?? [];
+      setWebEvidence(loadedEvidence);
+      setSelectedEvidence((current) => current && loadedEvidence.find((item) => item.id === current.id)
+        ? loadedEvidence.find((item) => item.id === current.id)
+        : loadedEvidence[0] ?? null);
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setWebEvidence([]);
+      setSelectedEvidence(null);
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
   const openNotifications = async () => {
     openModal('notifications');
     setActionStatus({ type: 'loading', text: 'Loading real admin notifications...' });
     try {
-      const [gapResults, ticketResults] = await Promise.all([getKnowledgeGaps(), getTickets()]);
+      const [gapResults, ticketResults, evidenceResults] = await Promise.all([getKnowledgeGaps(), getTickets(), getWebEvidence()]);
       setKnowledgeGaps(gapResults ?? []);
       setTickets(ticketResults ?? []);
-      markNotificationsRead(buildNotificationKeys(gapResults ?? [], ticketResults ?? []));
+      setWebEvidence(evidenceResults ?? []);
+      setSelectedEvidence((evidenceResults ?? [])[0] ?? null);
+      markNotificationsRead(buildNotificationKeys(gapResults ?? [], ticketResults ?? [], (evidenceResults ?? []).filter((item) => item.status === 'NEEDS_REVIEW')));
       setActionStatus({ type: '', text: '' });
     } catch (error) {
       setKnowledgeGaps([]);
       setTickets([]);
+      setWebEvidence([]);
       setActionStatus({ type: 'error', text: error.message });
     }
   };
@@ -952,6 +1079,10 @@ function AdminOperationsCenter() {
         setActivePage('documents');
         await loadDocuments();
       },
+      webEvidence: async () => {
+        setActivePage('webEvidence');
+        await loadWebEvidence();
+      },
       ai: async () => {
         setActivePage('ai');
         await loadAiLogs();
@@ -999,6 +1130,78 @@ function AdminOperationsCenter() {
       },
     };
     actions[metricKey]?.();
+  };
+
+  const openWebEvidencePage = async () => {
+    setActivePage('webEvidence');
+    await loadWebEvidence();
+  };
+
+  const viewWebEvidenceFromSummary = async (evidenceId) => {
+    setActivePage('webEvidence');
+    setActionStatus({ type: 'loading', text: 'Opening external evidence record...' });
+    try {
+      const result = await getWebEvidence();
+      const loadedEvidence = result ?? [];
+      setWebEvidence(loadedEvidence);
+      setSelectedEvidence(loadedEvidence.find((item) => item.id === evidenceId) ?? loadedEvidence[0] ?? null);
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const submitWebEvidenceSearch = async (event) => {
+    event.preventDefault();
+    const question = webEvidenceSearch.trim();
+    if (!question) {
+      setActionStatus({ type: 'error', text: 'Enter a CloudOps question before searching the web.' });
+      return;
+    }
+
+    setActionStatus({ type: 'loading', text: 'Searching the web and saving evidence for review...' });
+    try {
+      const evidence = await searchWebEvidence(question);
+      setWebEvidence((current) => [evidence, ...current.filter((item) => item.id !== evidence.id)]);
+      setSelectedEvidence(evidence);
+      setWebEvidenceSearch('');
+      setActionStatus({ type: 'success', text: 'External evidence saved to the review queue.' });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const approveSelectedEvidence = async (evidence) => {
+    if (!evidence) return;
+    const confirmed = window.confirm(`Convert "${evidence.suggestedArticleTitle || evidence.title}" into a published knowledge article?`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Converting web evidence into an internal knowledge article...' });
+    try {
+      const article = await approveWebEvidence(evidence.id);
+      await loadWebEvidence();
+      setActionStatus({ type: 'success', text: `Published article: ${article.title}` });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const rejectSelectedEvidence = async (evidence) => {
+    if (!evidence) return;
+    const confirmed = window.confirm(`Reject web evidence from "${evidence.domain || 'this source'}"?`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Rejecting external evidence...' });
+    try {
+      await rejectWebEvidence(evidence.id);
+      await loadWebEvidence();
+      setActionStatus({ type: 'success', text: 'Evidence rejected and removed from the pending queue.' });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
   };
 
   const submitArticleUpload = async (event) => {
@@ -1151,6 +1354,16 @@ function AdminOperationsCenter() {
           </div>
         </article>
 
+        <article className="commandPanel web">
+          <span>External Evidence</span>
+          <h3>{data.externalEvidence?.summary?.pendingReview ?? 0} pending review</h3>
+          <p>External evidence is captured when internal knowledge cannot answer and waits for admin approval.</p>
+          <div>
+            <button type="button" onClick={openWebEvidencePage}>Review Evidence</button>
+            <button type="button" onClick={openWebEvidencePage}>Search Web</button>
+          </div>
+        </article>
+
         <article className="commandPanel">
           <span>Knowledge Access</span>
           <h3>Search and manage stored sources.</h3>
@@ -1215,6 +1428,14 @@ function AdminOperationsCenter() {
             ))}
             {!(data.knowledgeGapLoop?.gaps ?? []).length && !(data.ticketEscalation?.tickets ?? []).length && <EmptyState text="No urgent work items." />}
           </div>
+        </article>
+
+        <article className="insightPanel wideInsight">
+          <div className="insightHeader">
+            <span>Web Evidence Loop</span>
+            <button type="button" onClick={openWebEvidencePage}>Open</button>
+          </div>
+          <ExternalEvidence data={data.externalEvidence} onOpen={openWebEvidencePage} onView={viewWebEvidenceFromSummary} />
         </article>
       </section>
     </>
@@ -1332,6 +1553,21 @@ function AdminOperationsCenter() {
     </section>
   );
 
+  const renderWebEvidencePage = () => (
+    <WebEvidenceWorkspace
+      evidence={webEvidence}
+      selectedEvidence={selectedEvidence}
+      searchValue={webEvidenceSearch}
+      actionStatus={activePage === 'webEvidence' ? actionStatus : { type: '', text: '' }}
+      onSearchValueChange={setWebEvidenceSearch}
+      onSearch={submitWebEvidenceSearch}
+      onRefresh={loadWebEvidence}
+      onSelect={setSelectedEvidence}
+      onApprove={approveSelectedEvidence}
+      onReject={rejectSelectedEvidence}
+    />
+  );
+
   const renderGapsPage = () => (
     <section className="adminPageSurface">
       <div className="adminPageHeader">
@@ -1378,6 +1614,7 @@ function AdminOperationsCenter() {
   const renderActivePage = () => {
     if (activePage === 'knowledge') return renderKnowledgePage();
     if (activePage === 'documents') return renderDocumentPage();
+    if (activePage === 'webEvidence') return renderWebEvidencePage();
     if (activePage === 'ai') return renderAiPage();
     if (activePage === 'gaps') return renderGapsPage();
     if (activePage === 'tickets') return renderTicketsPage();
@@ -1668,6 +1905,15 @@ function AdminOperationsCenter() {
                   </button>
                 )) : <EmptyState text="No open tickets." />}
               </section>
+              <section>
+                <h3>Web Evidence</h3>
+                {webEvidence.filter((item) => item.status === 'NEEDS_REVIEW').length ? webEvidence.filter((item) => item.status === 'NEEDS_REVIEW').map((item) => (
+                  <button type="button" key={item.id} onClick={() => { setSelectedEvidence(item); setActivePage('webEvidence'); closeModal(); }}>
+                    <strong>{item.title || item.question}</strong>
+                    <span>{item.domain || 'Unknown domain'} · {statusText(item.status)}</span>
+                  </button>
+                )) : <EmptyState text="No web evidence awaiting review." />}
+              </section>
             </div>
           </div>
         </AdminModal>
@@ -1762,7 +2008,6 @@ function AdminOperationsCenter() {
     }
 
     const capabilityMessages = {
-      webEvidenceUnavailable: ['External Web Evidence', 'Web search, trusted-domain scoring, and evidence review are not configured yet. The queue stays empty until the real web evidence service is implemented.'],
       trustedSourcesUnavailable: ['Trusted Sources', 'Trusted domain management needs a dedicated trusted_sources table and review workflow. No fake trusted domains are created.'],
       documentationUnavailable: ['System Documentation', 'Documentation pages are not implemented yet. This action is reserved for the final help center.'],
     };
@@ -1805,6 +2050,7 @@ function AdminOperationsCenter() {
           </div>
           <button className="primary" type="button" onClick={() => openModal('uploadArticle')}><FileText size={15} />New Article</button>
           <button className="primary" type="button" onClick={() => openModal('uploadDocument')}><Upload size={15} />Upload Document</button>
+          <button className="primary" type="button" onClick={openWebEvidencePage}><Globe2 size={15} />Web Evidence</button>
           <button type="button" onClick={openGlobalSearch}><Search size={15} />Search Knowledge</button>
           <button type="button" onClick={async () => { setActivePage('knowledge'); await loadArticles(); }}><BookOpen size={15} />Manage Articles</button>
           <button type="button" onClick={async () => { setActivePage('documents'); await loadDocuments(); }}><FileText size={15} />Manage Documents</button>

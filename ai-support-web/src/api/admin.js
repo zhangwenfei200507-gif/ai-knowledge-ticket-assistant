@@ -62,6 +62,21 @@ export const getKnowledgeGaps = () => requestJson('/api/ai/knowledge-gaps');
 
 export const getTickets = () => requestJson('/api/tickets');
 
+export const getWebEvidence = () => requestJson('/api/admin/web-evidence');
+
+export const searchWebEvidence = (question) => requestJson('/api/admin/web-evidence/search', {
+  method: 'POST',
+  body: JSON.stringify({ question }),
+});
+
+export const approveWebEvidence = (id) => requestJson(`/api/admin/web-evidence/${id}/approve`, {
+  method: 'POST',
+});
+
+export const rejectWebEvidence = (id) => requestJson(`/api/admin/web-evidence/${id}/reject`, {
+  method: 'PATCH',
+});
+
 export const getCurrentUser = () => requestJson('/api/users/me');
 
 export const logoutCurrentUser = () => requestJson('/api/users/logout', {
