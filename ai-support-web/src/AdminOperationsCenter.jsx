@@ -1356,14 +1356,17 @@ function AdminOperationsCenter() {
 
   const approveSelectedDocumentCandidate = async (candidate) => {
     if (!candidate) return;
-    const confirmed = window.confirm(`Publish "${candidate.title}" as an internal knowledge article?`);
+    const reorganizesExisting = ['REORGANIZE_KNOWLEDGE', 'MERGE_ARTICLE'].includes(candidate.suggestedAction);
+    const confirmed = window.confirm(reorganizesExisting
+      ? `Reorganize "${candidate.suggestedArticleTitle || 'the closest Knowledge Pack'}" with this reviewed knowledge?`
+      : `Create a new Knowledge Pack from "${candidate.title}"?`);
     if (!confirmed) return;
 
-    setActionStatus({ type: 'loading', text: 'Publishing document insight as internal knowledge...' });
+    setActionStatus({ type: 'loading', text: 'Reorganizing durable knowledge...' });
     try {
       const article = await approveDocumentKnowledgeCandidate(candidate.id);
       await loadDocumentCandidates();
-      setActionStatus({ type: 'success', text: `Published article: ${article.title}` });
+      setActionStatus({ type: 'success', text: `Knowledge Pack updated: ${article.title}` });
       loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -1372,14 +1375,14 @@ function AdminOperationsCenter() {
 
   const rejectSelectedDocumentCandidate = async (candidate) => {
     if (!candidate) return;
-    const confirmed = window.confirm(`Reject document insight "${candidate.title}"?`);
+    const confirmed = window.confirm(`Reject knowledge candidate "${candidate.title}"?`);
     if (!confirmed) return;
 
-    setActionStatus({ type: 'loading', text: 'Rejecting document learning candidate...' });
+    setActionStatus({ type: 'loading', text: 'Rejecting knowledge candidate...' });
     try {
       await rejectDocumentKnowledgeCandidate(candidate.id);
       await loadDocumentCandidates();
-      setActionStatus({ type: 'success', text: 'Document insight rejected.' });
+      setActionStatus({ type: 'success', text: 'Knowledge candidate rejected.' });
       loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -1885,13 +1888,14 @@ Prevention controls:
 
   const renderDocumentLearningPage = () => {
     const pendingCount = documentCandidates.filter((candidate) => candidate.status === 'NEEDS_REVIEW').length;
+    const isReorganizeCandidate = (candidate) => ['REORGANIZE_KNOWLEDGE', 'MERGE_ARTICLE'].includes(candidate?.suggestedAction);
     return (
       <section className="adminPageSurface">
         <div className="adminPageHeader">
           <div>
             <span>Knowledge Review</span>
-            <h2>Merge File Insights Into Durable Articles</h2>
-            <p>Review small knowledge points extracted from uploaded files, merge related items into existing articles, or publish a new article only when the topic is truly new.</p>
+            <h2>Reorganize Knowledge Into Durable Packs</h2>
+            <p>Review knowledge extracted from uploaded files, reorganize the closest existing Knowledge Pack first, and create a new pack only when the topic is truly new.</p>
           </div>
           <div>
             <button type="button" onClick={loadDocumentCandidates}>Refresh</button>
@@ -1913,7 +1917,7 @@ Prevention controls:
                 onClick={() => setSelectedDocumentCandidate(candidate)}
               >
                 <strong>{candidate.title}</strong>
-                <span>{candidate.category || 'General'} · {statusText(candidate.status)} · {candidate.suggestedAction === 'MERGE_ARTICLE' ? `Merge into ${candidate.suggestedArticleTitle || 'article'}` : 'New article'} · {candidate.originalFilename}</span>
+                <span>{candidate.category || 'General'} / {statusText(candidate.status)} / {isReorganizeCandidate(candidate) ? `Reorganize ${candidate.suggestedArticleTitle || 'Knowledge Pack'}` : 'New Knowledge Pack'} / {candidate.originalFilename}</span>
               </button>
             )) : <EmptyState text="No knowledge review candidates yet. Ask AI with a CloudOps file to create reviewable insights." />}
             <ReviewPager page={candidatePage} pageCount={candidatePageCount} total={documentCandidates.length} onPageChange={setCandidatePage} />
@@ -1923,14 +1927,14 @@ Prevention controls:
               title: selectedDocumentCandidate.title,
               category: selectedDocumentCandidate.category,
               status: selectedDocumentCandidate.status,
-              content: `${selectedDocumentCandidate.suggestedAction === 'MERGE_ARTICLE'
-                ? `Suggested action: Merge into "${selectedDocumentCandidate.suggestedArticleTitle || `Article #${selectedDocumentCandidate.suggestedArticleId}`}".`
-                : 'Suggested action: Create a new article.'}\n\n${selectedDocumentCandidate.content}`,
+              content: `${isReorganizeCandidate(selectedDocumentCandidate)
+                ? `Suggested action: Reorganize "${selectedDocumentCandidate.suggestedArticleTitle || `Knowledge Pack #${selectedDocumentCandidate.suggestedArticleId}`}".`
+                : 'Suggested action: Create a new Knowledge Pack.'}\n\n${selectedDocumentCandidate.content}`,
             }}
             actions={selectedDocumentCandidate && (
               <>
-                <button type="button" onClick={() => copyToClipboard(selectedDocumentCandidate.content, 'Document insight copied.')}>Copy</button>
-                <button type="button" onClick={() => approveSelectedDocumentCandidate(selectedDocumentCandidate)}>{selectedDocumentCandidate.suggestedAction === 'MERGE_ARTICLE' ? 'Approve Merge' : 'Approve New Article'}</button>
+                <button type="button" onClick={() => copyToClipboard(selectedDocumentCandidate.content, 'Knowledge candidate copied.')}>Copy</button>
+                <button type="button" onClick={() => approveSelectedDocumentCandidate(selectedDocumentCandidate)}>{isReorganizeCandidate(selectedDocumentCandidate) ? 'Approve Reorganization' : 'Approve New Pack'}</button>
                 <button className="danger" type="button" onClick={() => rejectSelectedDocumentCandidate(selectedDocumentCandidate)}>Reject</button>
               </>
             )}
@@ -1939,7 +1943,6 @@ Prevention controls:
       </section>
     );
   };
-
   const renderAiPage = () => (
     <section className="adminPageSurface">
       <div className="adminPageHeader">

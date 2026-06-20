@@ -135,7 +135,7 @@ public class DocumentServiceImpl implements DocumentService {
         candidate.setImportanceScore(new BigDecimal(score).movePointLeft(1).min(new BigDecimal("0.99")));
         SuggestedArticleTarget target = findSuggestedArticleTarget(category, chunk.getContent());
         candidate.setSuggestedArticleId(target.articleId());
-        candidate.setSuggestedAction(target.articleId() == null ? "CREATE_ARTICLE" : "MERGE_ARTICLE");
+        candidate.setSuggestedAction(target.articleId() == null ? "CREATE_KNOWLEDGE_PACK" : "REORGANIZE_KNOWLEDGE");
         candidate.setStatus("NEEDS_REVIEW");
         candidate.setCreatedBy(currentUserId);
         return candidate;
@@ -184,7 +184,7 @@ public class DocumentServiceImpl implements DocumentService {
         if (topic.length() > 70) {
             topic = topic.substring(0, 67).trim() + "...";
         }
-        return limit("Document Insight: " + category + " - " + topic, 180);
+        return limit("Knowledge Candidate: " + category + " - " + topic, 180);
     }
 
     private String buildCandidateContent(KnowledgeDocument document, DocumentChunk chunk, String category) {
@@ -194,16 +194,17 @@ public class DocumentServiceImpl implements DocumentService {
                 .append("Category: ").append(category).append("\n")
                 .append("Source document: ").append(document.getOriginalFilename()).append("\n")
                 .append("Source chunk: ").append(chunk.getChunkIndex()).append("\n\n")
-                .append("Key operational knowledge:\n");
+                .append("Knowledge to reorganize:\n");
 
         for (String point : points) {
             builder.append("- ").append(point).append("\n");
         }
 
-        builder.append("\nReview checklist:\n")
-                .append("- Confirm this applies to the current AegisCloud environment.\n")
-                .append("- Add internal commands, dashboards, owners, or escalation paths before publishing.\n")
-                .append("- Remove generic or outdated guidance that should not become trusted knowledge.\n");
+        builder.append("\nKnowledge architecture checklist:\n")
+                .append("- Place this knowledge in the closest existing Knowledge Pack before creating a new pack.\n")
+                .append("- Rewrite the affected section so the new knowledge is naturally integrated, not appended.\n")
+                .append("- Remove duplicate or low-density wording before publishing.\n")
+                .append("- Reorganize retrieval chunks after the Knowledge Pack changes.\n");
 
         return builder.toString().trim();
     }

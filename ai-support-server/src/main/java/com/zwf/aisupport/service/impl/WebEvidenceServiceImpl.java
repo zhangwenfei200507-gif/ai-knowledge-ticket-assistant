@@ -210,14 +210,14 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
 
                 ## Knowledge Pack Placement
                 - Target Knowledge Pack: %s
-                - Merge policy: update the closest existing Knowledge Pack first; create a new article only if no suitable pack exists.
+                - Reorganization policy: update the closest existing Knowledge Pack first; create a new pack only if no suitable pack exists.
                 - Chunk policy: rebuild retrieval chunks after approval so each chunk contains one independently understandable knowledge point.
 
                 ## Review Checklist
                 - Verify every technical claim against official docs, internal runbooks, or reproducible commands.
                 - Add AegisCloud-specific configuration names, dashboards, owners, escalation paths, and version constraints where relevant.
                 - Remove generic advice that does not apply to the production environment.
-                - Merge duplicate concepts with the existing article instead of appending repeated text.
+                - Integrate duplicate concepts into the existing article instead of appending repeated text.
 
                 ## References
                 - Source type: LLM_GENERATED

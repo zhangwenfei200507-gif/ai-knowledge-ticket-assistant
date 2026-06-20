@@ -19,7 +19,7 @@ Determine which existing Knowledge Pack the new knowledge belongs to.
 
 Analyze the semantic similarity between the new knowledge and the current sections or knowledge points in the target article.
 
-- If it is highly related to an existing knowledge point, modify the original content and naturally merge the new knowledge into it.
+- If it is highly related to an existing knowledge point, modify the original content and naturally integrate the new knowledge into it.
 - Keep the context coherent and the logic consistent.
 - Do not simply append an isolated paragraph.
 - Reorganize the whole section when needed so the structure becomes clearer.
@@ -45,9 +45,9 @@ When updating an existing article:
 
 - Existing content may be edited, not only appended to.
 - Sections may be reorganized.
-- Sections may be moved, merged, or split.
+- Sections may be moved, integrated, or split.
 - Duplicate content must be removed.
-- Semantically similar knowledge points must be merged.
+- Semantically similar knowledge points must be integrated.
 - Outdated information must be updated.
 - Terminology and formatting must remain consistent.
 

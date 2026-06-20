@@ -307,7 +307,7 @@ public class WebSearchClient {
                 Category: %s
 
                 ## Overview
-                This draft captures externally discovered knowledge that may extend the %s Knowledge Pack. It must be reviewed, merged with the closest existing article, and rewritten to match internal terminology before publishing.
+                This draft captures externally discovered knowledge that may extend the %s Knowledge Pack. It must be reviewed, reorganized into the closest existing article, and rewritten to match internal terminology before publishing.
 
                 ## Core Answer
                 %s
@@ -321,7 +321,7 @@ public class WebSearchClient {
                 - If the evidence is only partially related, keep the verified concept and remove assumptions before publishing.
 
                 ## Best Practices
-                - Merge this draft into the closest existing Knowledge Pack instead of creating a duplicate article.
+                - Reorganize this draft into the closest existing Knowledge Pack instead of creating a duplicate pack.
                 - Keep one concept per section and remove repeated definitions.
                 - Rebuild retrieval chunks after approval so each chunk answers one clear question.
 
