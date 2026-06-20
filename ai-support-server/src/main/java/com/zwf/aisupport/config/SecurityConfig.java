@@ -55,6 +55,7 @@ public class SecurityConfig {
                                 "/api/knowledge/articles/*/archive",
                                 "/api/tickets/*/assign"
                         ).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/ai/logs/*").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
                 // Run JWT parsing before Spring Security checks whether the request is authenticated.

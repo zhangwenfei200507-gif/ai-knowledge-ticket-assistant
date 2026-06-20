@@ -58,6 +58,10 @@ export const searchDocumentChunks = (keyword) => requestJson(`/api/documents/chu
 
 export const getAiQuestionLogs = () => requestJson('/api/ai/logs');
 
+export const deleteAiQuestionLog = (id) => requestJson(`/api/ai/logs/${id}`, {
+  method: 'DELETE',
+});
+
 export const getKnowledgeGaps = () => requestJson('/api/ai/knowledge-gaps');
 
 export const createArticleFromKnowledgeGap = (logId, payload) => requestJson(`/api/ai/knowledge-gaps/${logId}/article`, {

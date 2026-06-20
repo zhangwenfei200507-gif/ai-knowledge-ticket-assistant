@@ -40,6 +40,7 @@ import {
   askAiQuestion,
   closeTicket,
   createArticleFromKnowledgeGap,
+  deleteAiQuestionLog,
   getAiQuestionLogs,
   getCurrentUser,
   getDocumentKnowledgeCandidates,
@@ -629,11 +630,12 @@ function formatFileSize(value) {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
-function buildNotificationKeys(gaps = [], tickets = [], evidence = []) {
+function buildNotificationKeys(gaps = [], tickets = [], evidence = [], documentCandidates = []) {
   const gapKeys = gaps.map((gap) => `gap:${gap.logId ?? gap.id ?? gap.question}`);
   const ticketKeys = tickets.map((ticket) => `ticket:${ticket.ticketId ?? ticket.id ?? ticket.title}`);
   const evidenceKeys = evidence.map((item) => `evidence:${item.evidenceId ?? item.id ?? item.queryTopic ?? item.question}`);
-  return [...gapKeys, ...ticketKeys, ...evidenceKeys].filter(Boolean);
+  const documentCandidateKeys = documentCandidates.map((item) => `document-candidate:${item.id ?? item.title}`);
+  return [...gapKeys, ...ticketKeys, ...evidenceKeys, ...documentCandidateKeys].filter(Boolean);
 }
 
 function KnowledgeContentBlock({ content }) {
@@ -769,7 +771,7 @@ function AdminOperationsCenter() {
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [ticketStatus, setTicketStatus] = useState('OPEN');
-  const [notificationSnapshot, setNotificationSnapshot] = useState({ gaps: [], tickets: [], evidence: [] });
+  const [notificationSnapshot, setNotificationSnapshot] = useState({ gaps: [], tickets: [], evidence: [], documentCandidates: [] });
   const [webEvidence, setWebEvidence] = useState([]);
   const [selectedEvidence, setSelectedEvidence] = useState(null);
   const [webEvidenceSearch, setWebEvidenceSearch] = useState('');
@@ -798,6 +800,17 @@ function AdminOperationsCenter() {
       .then((result) => {
         setData(result || fallbackData);
         setLoadState('live');
+        getDocumentKnowledgeCandidates()
+          .then((candidateResult) => {
+            const loadedCandidates = candidateResult ?? [];
+            setDocumentCandidates(loadedCandidates);
+            setSelectedDocumentCandidate((current) => current && loadedCandidates.find((item) => item.id === current.id)
+              ? loadedCandidates.find((item) => item.id === current.id)
+              : current);
+          })
+          .catch(() => {
+            setDocumentCandidates([]);
+          });
       })
       .catch(() => {
         setData(fallbackData);
@@ -830,8 +843,9 @@ function AdminOperationsCenter() {
   const dashboardNotificationKeys = useMemo(() => buildNotificationKeys(
     data.knowledgeGapLoop?.gaps ?? [],
     data.ticketEscalation?.tickets ?? [],
-    data.externalEvidence?.queue ?? []
-  ), [data.knowledgeGapLoop?.gaps, data.ticketEscalation?.tickets, data.externalEvidence?.queue]);
+    data.externalEvidence?.queue ?? [],
+    documentCandidates.filter((candidate) => candidate.status === 'NEEDS_REVIEW')
+  ), [data.knowledgeGapLoop?.gaps, data.ticketEscalation?.tickets, data.externalEvidence?.queue, documentCandidates]);
 
   const unreadNotificationCount = useMemo(
     () => dashboardNotificationKeys.filter((key) => !readNotificationKeys.includes(key)).length,
@@ -929,7 +943,12 @@ function AdminOperationsCenter() {
     openModal('notifications');
     setActionStatus({ type: 'loading', text: 'Loading real admin notifications...' });
     try {
-      const [gapResults, ticketResults, evidenceResults] = await Promise.all([getKnowledgeGaps(), getTickets(), getWebEvidence()]);
+      const [gapResults, ticketResults, evidenceResults, documentCandidateResults] = await Promise.all([
+        getKnowledgeGaps(),
+        getTickets(),
+        getWebEvidence(),
+        getDocumentKnowledgeCandidates(),
+      ]);
       const unreadGaps = (gapResults ?? []).filter((gap) => !readNotificationKeys.includes(buildNotificationKeys([gap], [], [])[0]));
       const unreadTickets = (ticketResults ?? [])
         .filter((ticket) => ['OPEN', 'IN_PROGRESS'].includes(ticket.status))
@@ -937,18 +956,24 @@ function AdminOperationsCenter() {
       const unreadEvidence = (evidenceResults ?? [])
         .filter((item) => item.status === 'NEEDS_REVIEW')
         .filter((item) => !readNotificationKeys.includes(buildNotificationKeys([], [], [item])[0]));
+      const unreadDocumentCandidates = (documentCandidateResults ?? [])
+        .filter((item) => item.status === 'NEEDS_REVIEW')
+        .filter((item) => !readNotificationKeys.includes(buildNotificationKeys([], [], [], [item])[0]));
       setKnowledgeGaps(gapResults ?? []);
       setTickets(ticketResults ?? []);
       setWebEvidence(evidenceResults ?? []);
-      setNotificationSnapshot({ gaps: unreadGaps, tickets: unreadTickets, evidence: unreadEvidence });
+      setDocumentCandidates(documentCandidateResults ?? []);
+      setNotificationSnapshot({ gaps: unreadGaps, tickets: unreadTickets, evidence: unreadEvidence, documentCandidates: unreadDocumentCandidates });
       setSelectedEvidence(unreadEvidence[0] ?? (evidenceResults ?? [])[0] ?? null);
-      markNotificationsRead(buildNotificationKeys(unreadGaps, unreadTickets, unreadEvidence));
+      setSelectedDocumentCandidate(unreadDocumentCandidates[0] ?? (documentCandidateResults ?? [])[0] ?? null);
+      markNotificationsRead(buildNotificationKeys(unreadGaps, unreadTickets, unreadEvidence, unreadDocumentCandidates));
       setActionStatus({ type: '', text: '' });
     } catch (error) {
       setKnowledgeGaps([]);
       setTickets([]);
       setWebEvidence([]);
-      setNotificationSnapshot({ gaps: [], tickets: [], evidence: [] });
+      setDocumentCandidates([]);
+      setNotificationSnapshot({ gaps: [], tickets: [], evidence: [], documentCandidates: [] });
       setActionStatus({ type: 'error', text: error.message });
     }
   };
@@ -1303,6 +1328,28 @@ function AdminOperationsCenter() {
     openModal('aiLogDetail');
   };
 
+  const deleteSelectedAiLog = async (log = selectedAiLog) => {
+    if (!log) return;
+    const confirmed = window.confirm(`Delete AI log for "${log.question}"?`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Deleting AI question log...' });
+    try {
+      await deleteAiQuestionLog(log.id);
+      setAiLogs((current) => current.filter((item) => item.id !== log.id));
+      if (selectedAiLog?.id === log.id) {
+        setSelectedAiLog(null);
+        if (activeModal === 'aiLogDetail') {
+          setActiveModal(null);
+        }
+      }
+      setActionStatus({ type: 'success', text: 'AI question log deleted.' });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
   const openGapDetail = async (gap) => {
     setSelectedGap(gap);
     setGapArticleDraft({
@@ -1589,12 +1636,14 @@ Prevention controls:
         </article>
 
         <article className="commandPanel">
-          <span>Current Queue</span>
-          <h3>{data.knowledgeGapLoop?.gaps?.length ?? 0} gaps · {data.ticketEscalation?.tickets?.length ?? 0} tickets</h3>
-          <p>Work items here come from real AI misses and open support tickets.</p>
+          <span>Review Center</span>
+          <h3>{documentCandidates.filter((candidate) => candidate.status === 'NEEDS_REVIEW').length} file insights · {data.externalEvidence?.summary?.pendingReview ?? 0} web items</h3>
+          <p>Approve useful knowledge discovered from uploaded files, web evidence, model answers, gaps, and support tickets.</p>
           <div>
+            <button type="button" onClick={async () => { setActivePage('documentLearning'); await loadDocumentCandidates(); }}>File Insights</button>
+            <button type="button" onClick={openWebEvidencePage}>Web Review</button>
             <button type="button" onClick={() => setActivePage('gaps')}>Review Gaps</button>
-            <button type="button" onClick={async () => { setActivePage('tickets'); await loadTickets(); }}>Open Tickets</button>
+            <button type="button" onClick={async () => { setActivePage('tickets'); await loadTickets(); }}>Tickets</button>
           </div>
         </article>
 
@@ -1844,6 +1893,7 @@ Prevention controls:
               <strong>{log.question}</strong>
               <span>{statusText(log.sourceType)} · {formatDateTime(log.createdTime)}</span>
               <p>{log.answer}</p>
+              <em onClick={(event) => { event.stopPropagation(); deleteSelectedAiLog(log); }}>Delete</em>
             </button>
           )) : <EmptyState text="No AI question logs loaded yet." />}
         </div>
@@ -2020,6 +2070,7 @@ Prevention controls:
               <button className="adminSubmitButton" type="button" onClick={() => copyToClipboard(selectedAiLog.answer, 'AI answer copied.')}>Copy Answer</button>
               {selectedAiLog.sourceType === 'NONE' && <button className="secondaryAdminButton" type="button" onClick={() => { closeModal(); setActivePage('gaps'); }}>Open Knowledge Gaps</button>}
               {selectedAiLog.sourceType === 'WEB' && <button className="secondaryAdminButton" type="button" onClick={openWebEvidencePage}>Open Web Evidence</button>}
+              <button className="danger" type="button" onClick={() => deleteSelectedAiLog(selectedAiLog)}>Delete Log</button>
             </div>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
           </div>
@@ -2269,11 +2320,12 @@ Prevention controls:
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
             <div className="topRecordList">
               {filteredLogs.length ? filteredLogs.map((log) => (
-                <article key={log.id}>
+                <button className="recordButton" type="button" key={log.id} onClick={() => openAiLogDetail(log)}>
                   <strong>{log.question}</strong>
                   <span>{statusText(log.sourceType)} · {formatDateTime(log.createdTime)}</span>
                   <p>{log.answer}</p>
-                </article>
+                  <em onClick={(event) => { event.stopPropagation(); deleteSelectedAiLog(log); }}>Delete</em>
+                </button>
               )) : <EmptyState text="No matching AI records yet." />}
             </div>
           </div>
@@ -2306,12 +2358,22 @@ Prevention controls:
       const openTicketRows = notificationSnapshot.tickets;
       const unreadGapRows = notificationSnapshot.gaps;
       const unreadEvidenceRows = notificationSnapshot.evidence;
+      const unreadDocumentCandidateRows = notificationSnapshot.documentCandidates;
       return (
         <AdminModal title="Admin Notifications" onClose={closeModal}>
           <div className="topDetailPanel">
-            <p className="topDetailLead">Notifications show only new unread knowledge gaps, open tickets, and web evidence review items.</p>
+            <p className="topDetailLead">Notifications show new unread file insights, web evidence, knowledge gaps, and open support tickets that need administrator action.</p>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
             <div className="notificationGroups">
+              <section>
+                <h3>File Insights</h3>
+                {unreadDocumentCandidateRows.length ? unreadDocumentCandidateRows.map((item) => (
+                  <button type="button" key={item.id} onClick={() => { setSelectedDocumentCandidate(item); setActivePage('documentLearning'); closeModal(); }}>
+                    <strong>{item.title}</strong>
+                    <span>{item.category || 'General'} · {statusText(item.status)}</span>
+                  </button>
+                )) : <EmptyState text="No file insights awaiting review." />}
+              </section>
               <section>
                 <h3>Knowledge Gaps</h3>
                 {unreadGapRows.length ? unreadGapRows.map((gap) => (

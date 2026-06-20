@@ -363,6 +363,22 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 .map(this::convertToAiQuestionLogVO)
                 .toList();
     }
+
+    @Override
+    public void deleteQuestionLog(Long id) {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role)) {
+            throw new BusinessException("Only administrators can delete AI question logs");
+        }
+
+        AiQuestionLog aiQuestionLog = aiQuestionLogMapper.findById(id);
+        if (aiQuestionLog == null) {
+            throw new BusinessException("AI question log not found");
+        }
+
+        aiQuestionLogMapper.deleteById(id);
+    }
+
     @Override
     public void submitQuestionLogFeedback(Long id, AiQuestionLogFeedbackDTO feedbackDTO) {
         Long currentUserId = CurrentUserUtil.getCurrentUserId();

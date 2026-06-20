@@ -51,6 +51,13 @@ public class AiAssistantController {
         List<AiQuestionLogVO> logs = aiAssistantService.listAllQuestionLogs();
         return Result.success(logs);
     }
+
+    @DeleteMapping("/logs/{id}")
+    public Result<Void> deleteQuestionLog(@PathVariable Long id) {
+        aiAssistantService.deleteQuestionLog(id);
+        return Result.success();
+    }
+
     @PatchMapping("/logs/{id}/feedback")
     public Result<Void> submitQuestionLogFeedback(@PathVariable Long id,
                                                   @Valid @RequestBody AiQuestionLogFeedbackDTO feedbackDTO) {

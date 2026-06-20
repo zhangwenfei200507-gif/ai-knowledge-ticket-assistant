@@ -2514,6 +2514,23 @@ button {
   transform: translateY(-1px);
 }
 
+.recordButton em {
+  width: fit-content;
+  margin-top: 2px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: #9d252d;
+  background: #fff0f1;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.recordButton em:hover {
+  color: #fff;
+  background: #c9333d;
+}
+
 .topRecordList p {
   display: -webkit-box;
   -webkit-line-clamp: 3;

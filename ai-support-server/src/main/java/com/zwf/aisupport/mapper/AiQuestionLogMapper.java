@@ -55,6 +55,9 @@ public interface AiQuestionLogMapper {
     @Select("select * from ai_question_logs where id = #{id}")
     AiQuestionLog findById(Long id);
 
+    @Delete("delete from ai_question_logs where id = #{id}")
+    void deleteById(Long id);
+
     @Update("""
             update ai_question_logs
             set feedback = #{feedback},

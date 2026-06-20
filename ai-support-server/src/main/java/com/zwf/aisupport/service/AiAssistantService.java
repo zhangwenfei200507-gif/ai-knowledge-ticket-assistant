@@ -20,6 +20,8 @@ public interface AiAssistantService {
 
     List<AiQuestionLogVO> listAllQuestionLogs();
 
+    void deleteQuestionLog(Long id);
+
     void submitQuestionLogFeedback(Long id, AiQuestionLogFeedbackDTO feedbackDTO);
 
     AiDashboardStatsVO getDashboardStats();
