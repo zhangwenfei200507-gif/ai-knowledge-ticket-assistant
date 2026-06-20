@@ -71,6 +71,9 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
         if ("REJECTED".equals(evidence.getStatus())) {
             throw new BusinessException("Rejected evidence cannot be converted to an article");
         }
+        if (isLowQualityKnowledgeContent(evidence.getSuggestedArticleContent())) {
+            throw new BusinessException("Evidence is not useful enough to publish as internal knowledge");
+        }
 
         KnowledgeArticle article = new KnowledgeArticle();
         article.setTitle(evidence.getSuggestedArticleTitle());
@@ -150,5 +153,12 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
         vo.setCreatedTime(article.getCreatedTime());
         vo.setUpdatedTime(article.getUpdatedTime());
         return vo;
+    }
+
+    private boolean isLowQualityKnowledgeContent(String content) {
+        String normalized = content == null ? "" : content.toLowerCase();
+        return normalized.contains("i could not find a reliable answer")
+                || normalized.contains("add concrete checks, commands, dashboards, or logs")
+                || normalized.contains("add the final reviewed answer here before publishing");
     }
 }

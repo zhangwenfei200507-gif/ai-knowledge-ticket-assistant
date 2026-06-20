@@ -14,6 +14,7 @@ import com.zwf.aisupport.mapper.DocumentChunkMapper;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.service.AiAssistantService;
+import com.zwf.aisupport.service.LlmGatewayService;
 import com.zwf.aisupport.service.WebEvidenceService;
 import com.zwf.aisupport.vo.*;
 import org.springframework.stereotype.Service;
@@ -42,17 +43,20 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private final AiQuestionLogMapper aiQuestionLogMapper;
     private final DocumentChunkMapper documentChunkMapper;
     private final WebEvidenceService webEvidenceService;
+    private final LlmGatewayService llmGatewayService;
 
     public AiAssistantServiceImpl(KnowledgeArticleMapper knowledgeArticleMapper,
                                   TicketMapper ticketMapper,
                                   AiQuestionLogMapper aiQuestionLogMapper,
                                   DocumentChunkMapper documentChunkMapper,
-                                  WebEvidenceService webEvidenceService) {
+                                  WebEvidenceService webEvidenceService,
+                                  LlmGatewayService llmGatewayService) {
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.ticketMapper = ticketMapper;
         this.aiQuestionLogMapper = aiQuestionLogMapper;
         this.documentChunkMapper = documentChunkMapper;
         this.webEvidenceService = webEvidenceService;
+        this.llmGatewayService = llmGatewayService;
     }
 
     @Override
@@ -108,13 +112,13 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 .filter(result -> isReliableInternalSource(result.getContent(), terms, specificTerms, versionTerms))
                 .toList();
         if (!documentResults.isEmpty()) {
-            return buildDocumentBasedAnswer(documentResults);
+            return buildDocumentBasedAnswer(question, documentResults);
         }
 
         // Then use local article relevance scoring. This avoids matching broad stop words or loosely related topics.
         List<KnowledgeArticle> articles = findRelevantArticles(question, terms, specificTerms, versionTerms);
         if (!articles.isEmpty()) {
-            return buildKnowledgeBasedAnswer(articles);
+            return buildKnowledgeBasedAnswer(question, articles);
         }
 
         Long currentUserId = CurrentUserUtil.getCurrentUserId();
@@ -219,6 +223,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         AiQuestionLog aiQuestionLog = aiQuestionLogMapper.findById(logId);
         if (aiQuestionLog == null || aiQuestionLog.getSourceArticleId() != null) {
             throw new BusinessException("Knowledge gap not found");
+        }
+        if (isLowQualityKnowledgeContent(createDTO.getContent())) {
+            throw new BusinessException("Article content is still a placeholder or failed answer. Please replace it with a reviewed, useful solution before publishing.");
         }
 
         KnowledgeArticle article = new KnowledgeArticle();
@@ -344,11 +351,14 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return "MEDIUM";
     }
 
-    private AiAnswerVO buildKnowledgeBasedAnswer(List<KnowledgeArticle> articles) {
+    private AiAnswerVO buildKnowledgeBasedAnswer(String question, List<KnowledgeArticle> articles) {
         KnowledgeArticle article = articles.get(0);
+        List<AiAnswerSourceVO> sources = buildArticleSources(articles);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer("Based on the knowledge base: " + article.getContent());
+        answerVO.setAnswer(llmGatewayService
+                .generateGroundedAnswer(question, "ARTICLE", sources)
+                .orElse("Based on reviewed internal knowledge:\n\n" + article.getContent()));
         answerVO.setSourceType("ARTICLE");
         answerVO.setSourceScore(null);
         answerVO.setSourceArticleId(article.getId());
@@ -359,20 +369,22 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         answerVO.setSourceChunkIndex(null);
         answerVO.setSuggestCreateTicket(false);
         answerVO.setCreatedTicketId(null);
-        answerVO.setSources(buildArticleSources(articles));
+        answerVO.setSources(sources);
         return answerVO;
     }
 
     private AiAnswerVO buildWebEvidenceBasedAnswer(WebEvidence evidence) {
+        List<AiAnswerSourceVO> sources = buildWebEvidenceSources(evidence);
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer("""
-                I could not find a reliable internal article or uploaded document for this question, so I checked external web evidence.
+        answerVO.setAnswer(llmGatewayService
+                .generateGroundedAnswer(evidence.getQuestion(), "WEB", sources)
+                .orElse("""
+                        I could not find a precise internal answer, so I checked external web evidence.
 
-                External evidence from %s:
-                %s
+                        %s
 
-                This evidence has been saved for administrator review. Once approved, it can become internal knowledge for future answers.
-                """.formatted(evidence.getDomain(), evidence.getSuggestedArticleContent()));
+                        This evidence has been saved for administrator review before it becomes internal knowledge.
+                        """.formatted(evidence.getSuggestedArticleContent())));
         answerVO.setSourceType("WEB");
         answerVO.setSourceScore(evidence.getCredibilityScore() == null ? null : evidence.getCredibilityScore().doubleValue());
         answerVO.setSourceArticleId(null);
@@ -387,15 +399,18 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         answerVO.setSourceStatus(evidence.getStatus());
         answerVO.setSuggestCreateTicket(false);
         answerVO.setCreatedTicketId(null);
-        answerVO.setSources(buildWebEvidenceSources(evidence));
+        answerVO.setSources(sources);
         return answerVO;
     }
 
-    private AiAnswerVO buildDocumentBasedAnswer(List<DocumentSearchResultVO> documentResults) {
+    private AiAnswerVO buildDocumentBasedAnswer(String question, List<DocumentSearchResultVO> documentResults) {
         DocumentSearchResultVO documentResult = documentResults.get(0);
+        List<AiAnswerSourceVO> sources = buildDocumentSources(documentResults);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer("Based on the uploaded document " + documentResult.getOriginalFilename() + ": " + documentResult.getContent());
+        answerVO.setAnswer(llmGatewayService
+                .generateGroundedAnswer(question, "DOCUMENT", sources)
+                .orElse("Based on the uploaded document " + documentResult.getOriginalFilename() + ":\n\n" + documentResult.getContent()));
         answerVO.setSourceType("DOCUMENT");
         answerVO.setSourceScore(documentResult.getRelevanceScore());
         answerVO.setSourceArticleId(null);
@@ -406,7 +421,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         answerVO.setSourceChunkIndex(documentResult.getChunkIndex());
         answerVO.setSuggestCreateTicket(false);
         answerVO.setCreatedTicketId(null);
-        answerVO.setSources(buildDocumentSources(documentResults));
+        answerVO.setSources(sources);
         return answerVO;
     }
     private List<KnowledgeArticle> findRelevantArticles(String question,
@@ -418,6 +433,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         }
 
         return knowledgeArticleMapper.findPublishedArticles().stream()
+                .filter(article -> !isLowQualityKnowledgeContent(article.getContent()))
                 .map(article -> new ArticleMatch(article, scoreArticle(article, terms)))
                 .filter(match -> match.score() >= 6)
                 .filter(match -> isReliableInternalSource(combinedArticleText(match.article()), terms, specificTerms, versionTerms))
@@ -507,6 +523,14 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private String safeLower(String value) {
         return value == null ? "" : value.toLowerCase();
+    }
+
+    private boolean isLowQualityKnowledgeContent(String content) {
+        String normalized = safeLower(content);
+        return normalized.contains("i could not find a reliable answer")
+                || normalized.contains("add concrete checks, commands, dashboards, or logs")
+                || normalized.contains("add the final reviewed answer here before publishing")
+                || normalized.contains("document a reliable internal answer for a repeated ai miss");
     }
 
     private record ArticleMatch(KnowledgeArticle article, int score) {

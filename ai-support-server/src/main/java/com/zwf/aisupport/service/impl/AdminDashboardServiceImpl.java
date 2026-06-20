@@ -14,6 +14,7 @@ import com.zwf.aisupport.mapper.KnowledgeDocumentMapper;
 import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.mapper.WebEvidenceMapper;
 import com.zwf.aisupport.service.AdminDashboardService;
+import com.zwf.aisupport.service.LlmGatewayService;
 import com.zwf.aisupport.vo.AdminDashboardOverviewVO;
 import com.zwf.aisupport.vo.AdminOperationsCenterVO;
 import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
@@ -96,19 +97,22 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     private final KnowledgeDocumentMapper knowledgeDocumentMapper;
     private final DocumentChunkMapper documentChunkMapper;
     private final WebEvidenceMapper webEvidenceMapper;
+    private final LlmGatewayService llmGatewayService;
 
     public AdminDashboardServiceImpl(TicketMapper ticketMapper,
                                      KnowledgeArticleMapper knowledgeArticleMapper,
                                      AiQuestionLogMapper aiQuestionLogMapper,
                                      KnowledgeDocumentMapper knowledgeDocumentMapper,
                                      DocumentChunkMapper documentChunkMapper,
-                                     WebEvidenceMapper webEvidenceMapper) {
+                                     WebEvidenceMapper webEvidenceMapper,
+                                     LlmGatewayService llmGatewayService) {
         this.ticketMapper = ticketMapper;
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.aiQuestionLogMapper = aiQuestionLogMapper;
         this.knowledgeDocumentMapper = knowledgeDocumentMapper;
         this.documentChunkMapper = documentChunkMapper;
         this.webEvidenceMapper = webEvidenceMapper;
+        this.llmGatewayService = llmGatewayService;
     }
 
     @Override
@@ -484,10 +488,10 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
     private AdminOperationsCenterVO.ModelSearchControlsVO buildModelSearchControls() {
         AdminOperationsCenterVO.ModelProfileVO modelProfile = new AdminOperationsCenterVO.ModelProfileVO();
-        modelProfile.setPrimaryModel("Not configured");
+        modelProfile.setPrimaryModel(llmGatewayService.isConfigured() ? "OpenAI Responses API" : "Not configured");
         modelProfile.setEmbeddingModel("Not configured");
         modelProfile.setRerankerModel("Not configured");
-        modelProfile.setStatus("NOT_CONFIGURED");
+        modelProfile.setStatus(llmGatewayService.isConfigured() ? "LIVE" : "NOT_CONFIGURED");
 
         AdminOperationsCenterVO.RetrievalStrategyVO retrievalStrategy = new AdminOperationsCenterVO.RetrievalStrategyVO();
         retrievalStrategy.setTopKDocuments(8);
