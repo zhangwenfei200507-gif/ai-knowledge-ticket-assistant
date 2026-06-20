@@ -98,9 +98,11 @@ public class AdminOperationsCenterVO {
 
     @Data
     public static class WebEvidenceQueueItemVO {
-        private Long logId;
+        private Long evidenceId;
         private String queryTopic;
         private String topDomain;
+        private String title;
+        private String url;
         private BigDecimal credibility;
         private String status;
     }

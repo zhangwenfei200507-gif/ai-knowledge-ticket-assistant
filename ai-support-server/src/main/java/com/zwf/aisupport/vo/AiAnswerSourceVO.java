@@ -16,5 +16,10 @@ public class AiAnswerSourceVO {
     private Long sourceChunkId;
     private Integer sourceChunkIndex;
 
+    private Long sourceWebEvidenceId;
+    private String sourceUrl;
+    private String sourceDomain;
+    private String sourceStatus;
+
     private String previewContent;
 }

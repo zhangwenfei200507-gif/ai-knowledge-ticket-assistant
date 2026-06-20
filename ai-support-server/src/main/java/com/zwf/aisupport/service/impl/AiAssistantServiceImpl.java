@@ -8,16 +8,19 @@ import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
 import com.zwf.aisupport.entity.AiQuestionLog;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.Ticket;
+import com.zwf.aisupport.entity.WebEvidence;
 import com.zwf.aisupport.mapper.AiQuestionLogMapper;
 import com.zwf.aisupport.mapper.DocumentChunkMapper;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.service.AiAssistantService;
+import com.zwf.aisupport.service.WebEvidenceService;
 import com.zwf.aisupport.vo.*;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class AiAssistantServiceImpl implements AiAssistantService {
@@ -26,15 +29,18 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private final TicketMapper ticketMapper;
     private final AiQuestionLogMapper aiQuestionLogMapper;
     private final DocumentChunkMapper documentChunkMapper;
+    private final WebEvidenceService webEvidenceService;
 
     public AiAssistantServiceImpl(KnowledgeArticleMapper knowledgeArticleMapper,
                                   TicketMapper ticketMapper,
                                   AiQuestionLogMapper aiQuestionLogMapper,
-                                  DocumentChunkMapper documentChunkMapper) {
+                                  DocumentChunkMapper documentChunkMapper,
+                                  WebEvidenceService webEvidenceService) {
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.ticketMapper = ticketMapper;
         this.aiQuestionLogMapper = aiQuestionLogMapper;
         this.documentChunkMapper = documentChunkMapper;
+        this.webEvidenceService = webEvidenceService;
     }
 
     @Override
@@ -94,6 +100,15 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             return buildKnowledgeBasedAnswer(articles);
         }
 
+        Long currentUserId = CurrentUserUtil.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("User is not authenticated");
+        }
+        Optional<WebEvidence> webEvidence = webEvidenceService.searchAndStoreEvidence(question, currentUserId);
+        if (webEvidence.isPresent()) {
+            return buildWebEvidenceBasedAnswer(webEvidence.get());
+        }
+
         return buildFallbackAnswer();
     }
 
@@ -113,11 +128,18 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         aiQuestionLog.setSourceChunkId(answerVO.getSourceChunkId());
         aiQuestionLog.setSourceChunkIndex(answerVO.getSourceChunkIndex());
         aiQuestionLog.setSourceArticleId(answerVO.getSourceArticleId());
-        aiQuestionLog.setSourceTitle(answerVO.getSourceTitle());
+        aiQuestionLog.setSourceTitle(resolveQuestionLogSourceTitle(answerVO));
         aiQuestionLog.setSuggestCreateTicket(answerVO.getSuggestCreateTicket());
         aiQuestionLog.setCreatedTicketId(answerVO.getCreatedTicketId());
 
         aiQuestionLogMapper.insert(aiQuestionLog);
+    }
+
+    private String resolveQuestionLogSourceTitle(AiAnswerVO answerVO) {
+        if ("WEB".equals(answerVO.getSourceType()) && answerVO.getSourceDomain() != null) {
+            return answerVO.getSourceTitle() + " (" + answerVO.getSourceDomain() + ")";
+        }
+        return answerVO.getSourceTitle();
     }
    @Override
     public List<AiQuestionLogVO> listMyQuestionLogs() {
@@ -324,6 +346,34 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return answerVO;
     }
 
+    private AiAnswerVO buildWebEvidenceBasedAnswer(WebEvidence evidence) {
+        AiAnswerVO answerVO = new AiAnswerVO();
+        answerVO.setAnswer("""
+                I could not find a reliable internal article or uploaded document for this question, so I checked external web evidence.
+
+                External evidence from %s:
+                %s
+
+                This evidence has been saved for administrator review. Once approved, it can become internal knowledge for future answers.
+                """.formatted(evidence.getDomain(), evidence.getSuggestedArticleContent()));
+        answerVO.setSourceType("WEB");
+        answerVO.setSourceScore(evidence.getCredibilityScore() == null ? null : evidence.getCredibilityScore().doubleValue());
+        answerVO.setSourceArticleId(null);
+        answerVO.setSourceTitle(evidence.getTitle());
+        answerVO.setSourceDocumentId(null);
+        answerVO.setSourceDocumentName(null);
+        answerVO.setSourceChunkId(null);
+        answerVO.setSourceChunkIndex(null);
+        answerVO.setSourceWebEvidenceId(evidence.getId());
+        answerVO.setSourceUrl(evidence.getUrl());
+        answerVO.setSourceDomain(evidence.getDomain());
+        answerVO.setSourceStatus(evidence.getStatus());
+        answerVO.setSuggestCreateTicket(false);
+        answerVO.setCreatedTicketId(null);
+        answerVO.setSources(buildWebEvidenceSources(evidence));
+        return answerVO;
+    }
+
     private AiAnswerVO buildDocumentBasedAnswer(List<DocumentSearchResultVO> documentResults) {
         DocumentSearchResultVO documentResult = documentResults.get(0);
 
@@ -368,7 +418,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private AiAnswerVO buildFallbackAnswer() {
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer("I could not find a reliable answer in the uploaded documents or knowledge base. A support ticket can be created for further assistance.");
+        answerVO.setAnswer("I could not find a reliable answer in uploaded documents, internal knowledge articles, or external web evidence. A support ticket can be created for further assistance.");
         answerVO.setSourceType("NONE");
         answerVO.setSourceScore(null);
         answerVO.setSourceArticleId(null);
@@ -377,6 +427,10 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         answerVO.setSourceDocumentName(null);
         answerVO.setSourceChunkId(null);
         answerVO.setSourceChunkIndex(null);
+        answerVO.setSourceWebEvidenceId(null);
+        answerVO.setSourceUrl(null);
+        answerVO.setSourceDomain(null);
+        answerVO.setSourceStatus(null);
         answerVO.setSuggestCreateTicket(true);
         answerVO.setCreatedTicketId(null);
         answerVO.setSources(new ArrayList<>());
@@ -395,6 +449,10 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             source.setSourceDocumentName(result.getOriginalFilename());
             source.setSourceChunkId(result.getChunkId());
             source.setSourceChunkIndex(result.getChunkIndex());
+            source.setSourceWebEvidenceId(null);
+            source.setSourceUrl(null);
+            source.setSourceDomain(null);
+            source.setSourceStatus(null);
             source.setPreviewContent(result.getContent());
             sources.add(source);
         }
@@ -414,10 +472,32 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             source.setSourceDocumentName(null);
             source.setSourceChunkId(null);
             source.setSourceChunkIndex(null);
+            source.setSourceWebEvidenceId(null);
+            source.setSourceUrl(null);
+            source.setSourceDomain(null);
+            source.setSourceStatus(null);
             source.setPreviewContent(article.getContent());
             sources.add(source);
         }
 
         return sources;
+    }
+
+    private List<AiAnswerSourceVO> buildWebEvidenceSources(WebEvidence evidence) {
+        AiAnswerSourceVO source = new AiAnswerSourceVO();
+        source.setSourceType("WEB");
+        source.setSourceScore(evidence.getCredibilityScore() == null ? null : evidence.getCredibilityScore().doubleValue());
+        source.setSourceArticleId(null);
+        source.setSourceTitle(evidence.getTitle());
+        source.setSourceDocumentId(null);
+        source.setSourceDocumentName(null);
+        source.setSourceChunkId(null);
+        source.setSourceChunkIndex(null);
+        source.setSourceWebEvidenceId(evidence.getId());
+        source.setSourceUrl(evidence.getUrl());
+        source.setSourceDomain(evidence.getDomain());
+        source.setSourceStatus(evidence.getStatus());
+        source.setPreviewContent(evidence.getExtractedContent());
+        return List.of(source);
     }
 }

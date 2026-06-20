@@ -18,6 +18,11 @@ public class AiAnswerVO {
     private Long sourceChunkId;
     private Integer sourceChunkIndex;
 
+    private Long sourceWebEvidenceId;
+    private String sourceUrl;
+    private String sourceDomain;
+    private String sourceStatus;
+
     private Boolean suggestCreateTicket;
     private Long createdTicketId;
     private java.util.List<AiAnswerSourceVO> sources;

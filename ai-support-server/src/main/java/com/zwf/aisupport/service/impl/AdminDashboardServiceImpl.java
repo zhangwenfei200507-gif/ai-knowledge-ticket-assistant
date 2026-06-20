@@ -6,11 +6,13 @@ import com.zwf.aisupport.entity.AiQuestionLog;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.KnowledgeDocument;
 import com.zwf.aisupport.entity.Ticket;
+import com.zwf.aisupport.entity.WebEvidence;
 import com.zwf.aisupport.mapper.AiQuestionLogMapper;
 import com.zwf.aisupport.mapper.DocumentChunkMapper;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.KnowledgeDocumentMapper;
 import com.zwf.aisupport.mapper.TicketMapper;
+import com.zwf.aisupport.mapper.WebEvidenceMapper;
 import com.zwf.aisupport.service.AdminDashboardService;
 import com.zwf.aisupport.vo.AdminDashboardOverviewVO;
 import com.zwf.aisupport.vo.AdminOperationsCenterVO;
@@ -93,17 +95,20 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     private final AiQuestionLogMapper aiQuestionLogMapper;
     private final KnowledgeDocumentMapper knowledgeDocumentMapper;
     private final DocumentChunkMapper documentChunkMapper;
+    private final WebEvidenceMapper webEvidenceMapper;
 
     public AdminDashboardServiceImpl(TicketMapper ticketMapper,
                                      KnowledgeArticleMapper knowledgeArticleMapper,
                                      AiQuestionLogMapper aiQuestionLogMapper,
                                      KnowledgeDocumentMapper knowledgeDocumentMapper,
-                                     DocumentChunkMapper documentChunkMapper) {
+                                     DocumentChunkMapper documentChunkMapper,
+                                     WebEvidenceMapper webEvidenceMapper) {
         this.ticketMapper = ticketMapper;
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.aiQuestionLogMapper = aiQuestionLogMapper;
         this.knowledgeDocumentMapper = knowledgeDocumentMapper;
         this.documentChunkMapper = documentChunkMapper;
+        this.webEvidenceMapper = webEvidenceMapper;
     }
 
     @Override
@@ -327,14 +332,31 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
     private AdminOperationsCenterVO.ExternalEvidenceVO buildExternalEvidence(List<AiQuestionLog> knowledgeGaps,
                                                                               List<AiQuestionLog> logs) {
+        List<WebEvidence> pendingEvidence = webEvidenceMapper.findPendingReview();
+
+        List<AdminOperationsCenterVO.WebEvidenceQueueItemVO> queue = pendingEvidence.stream()
+                .limit(5)
+                .map(evidence -> {
+                    AdminOperationsCenterVO.WebEvidenceQueueItemVO item = new AdminOperationsCenterVO.WebEvidenceQueueItemVO();
+                    item.setEvidenceId(evidence.getId());
+                    item.setQueryTopic(evidence.getQuestion());
+                    item.setTopDomain(evidence.getDomain());
+                    item.setTitle(evidence.getTitle());
+                    item.setUrl(evidence.getUrl());
+                    item.setCredibility(evidence.getCredibilityScore());
+                    item.setStatus(evidence.getStatus());
+                    return item;
+                })
+                .toList();
+
         AdminOperationsCenterVO.WebSearchSummaryVO summary = new AdminOperationsCenterVO.WebSearchSummaryVO();
-        summary.setSearches(0L);
-        summary.setUsefulEvidence(0L);
-        summary.setConvertedToArticles(0L);
-        summary.setPendingReview(0L);
+        summary.setSearches(nullToZero(webEvidenceMapper.countAll()));
+        summary.setUsefulEvidence(nullToZero(webEvidenceMapper.countUsefulEvidence()));
+        summary.setConvertedToArticles(nullToZero(webEvidenceMapper.countConvertedToArticles()));
+        summary.setPendingReview(nullToZero(webEvidenceMapper.countPendingReview()));
 
         AdminOperationsCenterVO.ExternalEvidenceVO externalEvidence = new AdminOperationsCenterVO.ExternalEvidenceVO();
-        externalEvidence.setQueue(List.of());
+        externalEvidence.setQueue(queue);
         externalEvidence.setSummary(summary);
         return externalEvidence;
     }
@@ -475,8 +497,8 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
         AdminOperationsCenterVO.WebSearchSettingsVO webSearchSettings = new AdminOperationsCenterVO.WebSearchSettingsVO();
         webSearchSettings.setWebFallbackThreshold(decimal("0.65"));
-        webSearchSettings.setTrustedDomains(0L);
-        webSearchSettings.setMaxWebResults(0);
+        webSearchSettings.setTrustedDomains(nullToZero(webEvidenceMapper.countDistinctDomains()));
+        webSearchSettings.setMaxWebResults(5);
 
         AdminOperationsCenterVO.ModelSearchControlsVO controls = new AdminOperationsCenterVO.ModelSearchControlsVO();
         controls.setModelProfile(modelProfile);
