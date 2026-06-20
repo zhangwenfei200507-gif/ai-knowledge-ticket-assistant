@@ -19,11 +19,23 @@ import com.zwf.aisupport.vo.*;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 @Service
 public class AiAssistantServiceImpl implements AiAssistantService {
+
+    private static final Pattern WORD_SPLIT_PATTERN = Pattern.compile("[^a-z0-9+#./-]+");
+    private static final Set<String> STOP_WORDS = Set.of(
+            "a", "an", "the", "and", "or", "but", "if", "then", "this", "that", "these", "those",
+            "in", "on", "at", "to", "for", "from", "with", "without", "after", "before", "behind",
+            "why", "what", "how", "when", "where", "which", "who", "does", "do", "did", "is", "are",
+            "was", "were", "be", "been", "being", "still", "first", "should", "check", "please",
+            "i", "we", "you", "my", "our", "your", "it", "its", "of", "by", "as", "into", "about"
+    );
 
     private final KnowledgeArticleMapper knowledgeArticleMapper;
     private final TicketMapper ticketMapper;
@@ -86,16 +98,21 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private AiAnswerVO findAnswerFromKnowledgeBase(AiAskDTO aiAskDTO) {
         String question = aiAskDTO.getQuestion().trim();
-        String keyword = extractKeyword(question);
+        List<String> terms = extractSearchTerms(question);
+        List<String> specificTerms = extractSpecificTerms(terms);
+        List<String> versionTerms = extractVersionTerms(terms);
 
         // Search uploaded document chunks with the full user question first.
-        List<DocumentSearchResultVO> documentResults = documentChunkMapper.searchChunks(question);
+        List<DocumentSearchResultVO> documentResults = documentChunkMapper.searchChunks(question)
+                .stream()
+                .filter(result -> isReliableInternalSource(result.getContent(), terms, specificTerms, versionTerms))
+                .toList();
         if (!documentResults.isEmpty()) {
             return buildDocumentBasedAnswer(documentResults);
         }
 
-        // Then fall back to the simplified keyword search for structured knowledge articles.
-        List<KnowledgeArticle> articles = knowledgeArticleMapper.searchPublishedArticles(keyword);
+        // Then use local article relevance scoring. This avoids matching broad stop words or loosely related topics.
+        List<KnowledgeArticle> articles = findRelevantArticles(question, terms, specificTerms, versionTerms);
         if (!articles.isEmpty()) {
             return buildKnowledgeBasedAnswer(articles);
         }
@@ -392,28 +409,107 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         answerVO.setSources(buildDocumentSources(documentResults));
         return answerVO;
     }
-    private String extractKeyword(String question) {
-        String normalizedQuestion = question.trim().toLowerCase();
-
-        if (normalizedQuestion.contains("redis")) {
-            return "redis";
-        }
-        if (normalizedQuestion.contains("password")) {
-            return "password";
-        }
-        if (normalizedQuestion.contains("email")) {
-            return "email";
-        }
-        if (normalizedQuestion.contains("login")) {
-            return "login";
+    private List<KnowledgeArticle> findRelevantArticles(String question,
+                                                        List<String> terms,
+                                                        List<String> specificTerms,
+                                                        List<String> versionTerms) {
+        if (terms.isEmpty()) {
+            return List.of();
         }
 
-        String[] words = normalizedQuestion.split("\\s+");
-        if (words.length > 0) {
-            return words[0];
+        return knowledgeArticleMapper.findPublishedArticles().stream()
+                .map(article -> new ArticleMatch(article, scoreArticle(article, terms)))
+                .filter(match -> match.score() >= 6)
+                .filter(match -> isReliableInternalSource(combinedArticleText(match.article()), terms, specificTerms, versionTerms))
+                .sorted(Comparator.comparingInt(ArticleMatch::score).reversed())
+                .limit(5)
+                .map(ArticleMatch::article)
+                .toList();
+    }
+
+    private List<String> extractSearchTerms(String question) {
+        String normalizedQuestion = question == null ? "" : question.toLowerCase();
+        return WORD_SPLIT_PATTERN.splitAsStream(normalizedQuestion)
+                .map(String::trim)
+                .filter(term -> term.length() >= 3)
+                .filter(term -> !STOP_WORDS.contains(term))
+                .distinct()
+                .limit(12)
+                .toList();
+    }
+
+    private int scoreArticle(KnowledgeArticle article, List<String> terms) {
+        String title = safeLower(article.getTitle());
+        String category = safeLower(article.getCategory());
+        String content = safeLower(article.getContent());
+        int score = 0;
+
+        for (String term : terms) {
+            if (title.contains(term)) {
+                score += 5;
+            }
+            if (category.contains(term)) {
+                score += 3;
+            }
+            if (content.contains(term)) {
+                score += 1;
+            }
         }
 
-        return normalizedQuestion;
+        return score;
+    }
+
+    private List<String> extractSpecificTerms(List<String> terms) {
+        Set<String> broadTerms = Set.of(
+                "kubernetes", "postgresql", "production", "troubleshooting", "document",
+                "article", "knowledge", "platform", "cloudops", "support"
+        );
+        return terms.stream()
+                .filter(term -> !term.matches(".*\\d.*") && term.length() >= 10)
+                .filter(term -> !broadTerms.contains(term))
+                .toList();
+    }
+
+    private List<String> extractVersionTerms(List<String> terms) {
+        return terms.stream()
+                .filter(term -> term.matches(".*\\d.*"))
+                .toList();
+    }
+
+    private boolean isReliableInternalSource(String sourceText,
+                                             List<String> terms,
+                                             List<String> specificTerms,
+                                             List<String> versionTerms) {
+        if (terms.isEmpty()) {
+            return false;
+        }
+
+        String normalizedSource = safeLower(sourceText);
+        long matchedTerms = terms.stream()
+                .filter(normalizedSource::contains)
+                .count();
+        double coverage = (double) matchedTerms / (double) terms.size();
+
+        boolean enoughCoverage = terms.size() <= 3
+                ? matchedTerms >= Math.min(2, terms.size())
+                : coverage >= 0.35 || matchedTerms >= 4;
+        boolean versionsCovered = versionTerms.stream().allMatch(normalizedSource::contains);
+        boolean specificCovered = specificTerms.isEmpty() || specificTerms.stream().anyMatch(normalizedSource::contains);
+
+        return enoughCoverage && versionsCovered && specificCovered;
+    }
+
+    private String combinedArticleText(KnowledgeArticle article) {
+        return safeLower(article.getTitle()) + " "
+                + safeLower(article.getCategory()) + " "
+                + safeLower(article.getContent());
+    }
+
+    private String safeLower(String value) {
+        return value == null ? "" : value.toLowerCase();
+    }
+
+    private record ArticleMatch(KnowledgeArticle article, int score) {
     }
 
     private AiAnswerVO buildFallbackAnswer() {

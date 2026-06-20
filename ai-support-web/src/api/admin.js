@@ -60,7 +60,27 @@ export const getAiQuestionLogs = () => requestJson('/api/ai/logs');
 
 export const getKnowledgeGaps = () => requestJson('/api/ai/knowledge-gaps');
 
+export const createArticleFromKnowledgeGap = (logId, payload) => requestJson(`/api/ai/knowledge-gaps/${logId}/article`, {
+  method: 'POST',
+  body: JSON.stringify(payload),
+});
+
 export const getTickets = () => requestJson('/api/tickets');
+
+export const getTicketDetail = (id) => requestJson(`/api/tickets/${id}`);
+
+export const updateTicketStatus = (id, status) => requestJson(`/api/tickets/${id}/status`, {
+  method: 'PATCH',
+  body: JSON.stringify({ status }),
+});
+
+export const resolveTicket = (id) => requestJson(`/api/tickets/${id}/resolve`, {
+  method: 'PATCH',
+});
+
+export const closeTicket = (id) => requestJson(`/api/tickets/${id}/close`, {
+  method: 'PATCH',
+});
 
 export const getWebEvidence = () => requestJson('/api/admin/web-evidence');
 

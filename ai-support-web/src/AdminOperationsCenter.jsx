@@ -37,6 +37,8 @@ import {
   archiveKnowledgeArticle,
   archiveKnowledgeDocument,
   askAiQuestion,
+  closeTicket,
+  createArticleFromKnowledgeGap,
   getAiQuestionLogs,
   getCurrentUser,
   getDocumentChunks,
@@ -45,13 +47,16 @@ import {
   getKnowledgeDocuments,
   getOperationsCenter,
   getTickets,
+  getTicketDetail,
   getWebEvidence,
   logoutCurrentUser,
   rejectWebEvidence,
+  resolveTicket,
   searchDocumentChunks,
   searchKnowledgeArticles,
   searchWebEvidence,
   updateKnowledgeArticle,
+  updateTicketStatus,
   uploadKnowledgeArticle,
   uploadKnowledgeDocument,
 } from './api/admin';
@@ -467,16 +472,27 @@ function MetricLine({ label, value, danger }) {
   );
 }
 
-function KnowledgeGaps({ data }) {
-  const rows = (data?.gaps ?? []).map((gap) => [
-    gap.question,
-    gap.frequency,
-    gap.category,
-    gap.suggestedArticle,
-    <span className={`priorityPill ${gap.priority?.toLowerCase()}`}>{gap.priority}</span>,
-  ]);
+function KnowledgeGaps({ data, onView }) {
+  const gaps = data?.gaps ?? [];
 
-  return <Table columns={['Question', 'Frequency', 'Category', 'Suggested Article', 'Priority']} rows={rows} empty="No knowledge gaps yet." />;
+  if (!gaps.length) {
+    return <EmptyState text="No knowledge gaps yet." />;
+  }
+
+  return (
+    <div className="actionRecordGrid">
+      {gaps.map((gap) => (
+        <button type="button" key={`${gap.logId}-${gap.question}`} onClick={() => onView(gap)}>
+          <div>
+            <strong>{gap.question}</strong>
+            <span>{gap.category} · Frequency {gap.frequency}</span>
+          </div>
+          <p>{gap.suggestedArticle}</p>
+          <b className={`priorityPill ${gap.priority?.toLowerCase()}`}>{gap.priority}</b>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function Tickets({ data }) {
@@ -739,8 +755,14 @@ function AdminOperationsCenter() {
   const [globalSearchResults, setGlobalSearchResults] = useState({ articles: [], chunks: [] });
   const [articleEditor, setArticleEditor] = useState({ id: null, title: '', category: '', content: '' });
   const [aiLogs, setAiLogs] = useState([]);
+  const [selectedAiLog, setSelectedAiLog] = useState(null);
   const [knowledgeGaps, setKnowledgeGaps] = useState([]);
+  const [selectedGap, setSelectedGap] = useState(null);
+  const [gapArticleDraft, setGapArticleDraft] = useState({ title: '', category: '', content: '' });
   const [tickets, setTickets] = useState([]);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [ticketStatus, setTicketStatus] = useState('OPEN');
+  const [notificationSnapshot, setNotificationSnapshot] = useState({ gaps: [], tickets: [], evidence: [] });
   const [webEvidence, setWebEvidence] = useState([]);
   const [selectedEvidence, setSelectedEvidence] = useState(null);
   const [webEvidenceSearch, setWebEvidenceSearch] = useState('');
@@ -898,16 +920,25 @@ function AdminOperationsCenter() {
     setActionStatus({ type: 'loading', text: 'Loading real admin notifications...' });
     try {
       const [gapResults, ticketResults, evidenceResults] = await Promise.all([getKnowledgeGaps(), getTickets(), getWebEvidence()]);
+      const unreadGaps = (gapResults ?? []).filter((gap) => !readNotificationKeys.includes(buildNotificationKeys([gap], [], [])[0]));
+      const unreadTickets = (ticketResults ?? [])
+        .filter((ticket) => ['OPEN', 'IN_PROGRESS'].includes(ticket.status))
+        .filter((ticket) => !readNotificationKeys.includes(buildNotificationKeys([], [ticket], [])[0]));
+      const unreadEvidence = (evidenceResults ?? [])
+        .filter((item) => item.status === 'NEEDS_REVIEW')
+        .filter((item) => !readNotificationKeys.includes(buildNotificationKeys([], [], [item])[0]));
       setKnowledgeGaps(gapResults ?? []);
       setTickets(ticketResults ?? []);
       setWebEvidence(evidenceResults ?? []);
-      setSelectedEvidence((evidenceResults ?? [])[0] ?? null);
-      markNotificationsRead(buildNotificationKeys(gapResults ?? [], ticketResults ?? [], (evidenceResults ?? []).filter((item) => item.status === 'NEEDS_REVIEW')));
+      setNotificationSnapshot({ gaps: unreadGaps, tickets: unreadTickets, evidence: unreadEvidence });
+      setSelectedEvidence(unreadEvidence[0] ?? (evidenceResults ?? [])[0] ?? null);
+      markNotificationsRead(buildNotificationKeys(unreadGaps, unreadTickets, unreadEvidence));
       setActionStatus({ type: '', text: '' });
     } catch (error) {
       setKnowledgeGaps([]);
       setTickets([]);
       setWebEvidence([]);
+      setNotificationSnapshot({ gaps: [], tickets: [], evidence: [] });
       setActionStatus({ type: 'error', text: error.message });
     }
   };
@@ -1199,6 +1230,148 @@ function AdminOperationsCenter() {
       await loadWebEvidence();
       setActionStatus({ type: 'success', text: 'Evidence rejected and removed from the pending queue.' });
       loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const openAiLogDetail = (log) => {
+    setSelectedAiLog(log);
+    openModal('aiLogDetail');
+  };
+
+  const openGapDetail = async (gap) => {
+    setSelectedGap(gap);
+    setGapArticleDraft({
+      title: gap.suggestedArticle || `${gap.category || 'General'}: ${gap.question}`,
+      category: gap.category || 'General',
+      content: buildGapArticleDraft(gap),
+    });
+    openModal('gapDetail');
+
+    try {
+      const result = await getKnowledgeGaps();
+      const fullGap = (result ?? []).find((item) => item.logId === gap.logId);
+      if (fullGap) {
+        const mergedGap = { ...gap, ...fullGap };
+        setSelectedGap(mergedGap);
+        setGapArticleDraft({
+          title: gap.suggestedArticle || `${gap.category || 'General'}: ${gap.question}`,
+          category: gap.category || 'General',
+          content: buildGapArticleDraft(mergedGap),
+        });
+      }
+    } catch {
+      // Keep the operations-center summary gap if the full gap list cannot be loaded.
+    }
+  };
+
+  const buildGapArticleDraft = (gap) => `# ${gap.suggestedArticle || gap.question}
+
+Category: ${gap.category || 'General'}
+
+Purpose:
+Document a reliable internal answer for a repeated AI miss.
+
+Original question:
+${gap.question}
+
+Observed answer:
+${gap.answer || 'Add the final reviewed answer here before publishing.'}
+
+Resolution steps:
+- Confirm the production context and affected component.
+- Add concrete checks, commands, dashboards, or logs that support teams should use.
+- Define escalation ownership and expected recovery signal.
+
+Prevention controls:
+- Add monitoring, alerting, or runbook links that reduce repeat questions.
+`;
+
+  const submitGapArticle = async (event) => {
+    event.preventDefault();
+    if (!selectedGap) return;
+    if (!gapArticleDraft.title.trim() || !gapArticleDraft.content.trim()) {
+      setActionStatus({ type: 'error', text: 'Title and content are required before publishing.' });
+      return;
+    }
+
+    setActionStatus({ type: 'loading', text: 'Publishing knowledge gap as an internal article...' });
+    try {
+      const article = await createArticleFromKnowledgeGap(selectedGap.logId, {
+        title: gapArticleDraft.title.trim(),
+        category: gapArticleDraft.category.trim() || 'General',
+        content: gapArticleDraft.content.trim(),
+      });
+      setActionStatus({ type: 'success', text: `Published article: ${article.title}` });
+      await loadOperationsCenter();
+      setActiveModal(null);
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const openTicketDetail = async (ticket) => {
+    const ticketId = ticket.id || ticket.ticketId;
+    if (!ticketId) return;
+    setSelectedTicket(ticket);
+    setTicketStatus(ticket.status || 'OPEN');
+    openModal('ticketDetail');
+    setActionStatus({ type: 'loading', text: 'Loading ticket detail...' });
+    try {
+      const detail = await getTicketDetail(ticketId);
+      setSelectedTicket(detail);
+      setTicketStatus(detail.status || 'OPEN');
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const submitTicketStatus = async (event) => {
+    event.preventDefault();
+    if (!selectedTicket) return;
+    setActionStatus({ type: 'loading', text: 'Updating ticket status...' });
+    try {
+      await updateTicketStatus(selectedTicket.id, ticketStatus);
+      const detail = await getTicketDetail(selectedTicket.id);
+      setSelectedTicket(detail);
+      setTicketStatus(detail.status || ticketStatus);
+      await loadTickets();
+      loadOperationsCenter();
+      setActionStatus({ type: 'success', text: 'Ticket status updated.' });
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const resolveSelectedTicket = async () => {
+    if (!selectedTicket) return;
+    setActionStatus({ type: 'loading', text: 'Resolving ticket...' });
+    try {
+      await resolveTicket(selectedTicket.id);
+      const detail = await getTicketDetail(selectedTicket.id);
+      setSelectedTicket(detail);
+      setTicketStatus(detail.status || 'RESOLVED');
+      await loadTickets();
+      loadOperationsCenter();
+      setActionStatus({ type: 'success', text: 'Ticket resolved.' });
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const closeSelectedTicket = async () => {
+    if (!selectedTicket) return;
+    setActionStatus({ type: 'loading', text: 'Closing ticket...' });
+    try {
+      await closeTicket(selectedTicket.id);
+      const detail = await getTicketDetail(selectedTicket.id);
+      setSelectedTicket(detail);
+      setTicketStatus(detail.status || 'CLOSED');
+      await loadTickets();
+      loadOperationsCenter();
+      setActionStatus({ type: 'success', text: 'Ticket closed.' });
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
     }
@@ -1542,11 +1715,11 @@ function AdminOperationsCenter() {
         <ReasoningLayer data={data.reasoningLayer} />
         <div className="topRecordList">
           {aiLogs.length ? aiLogs.map((log) => (
-            <article key={log.id}>
+            <button className="recordButton" type="button" key={log.id} onClick={() => openAiLogDetail(log)}>
               <strong>{log.question}</strong>
               <span>{statusText(log.sourceType)} · {formatDateTime(log.createdTime)}</span>
               <p>{log.answer}</p>
-            </article>
+            </button>
           )) : <EmptyState text="No AI question logs loaded yet." />}
         </div>
       </div>
@@ -1580,7 +1753,7 @@ function AdminOperationsCenter() {
           <button type="button" onClick={loadOperationsCenter}>Refresh</button>
         </div>
       </div>
-      <KnowledgeGaps data={data.knowledgeGapLoop} />
+      <KnowledgeGaps data={data.knowledgeGapLoop} onView={openGapDetail} />
     </section>
   );
 
@@ -1600,11 +1773,11 @@ function AdminOperationsCenter() {
         </div>
         <div className="topRecordList full">
           {openTicketRows.length ? openTicketRows.map((ticket) => (
-            <article key={ticket.id || ticket.title}>
+            <button className="recordButton" type="button" key={ticket.id || ticket.ticketId || ticket.title} onClick={() => openTicketDetail(ticket)}>
               <strong>{ticket.title}</strong>
               <span>{ticket.priority} · {ticket.status || ticket.owner || 'Open'} · {formatDateTime(ticket.createdTime)}</span>
               <p>{ticket.description || `Owner: ${ticket.owner || 'Unassigned'} · SLA: ${ticket.sla || '-'}`}</p>
-            </article>
+            </button>
           )) : <EmptyState text="No open tickets." />}
         </div>
       </section>
@@ -1669,6 +1842,106 @@ function AdminOperationsCenter() {
             <button className="adminSubmitButton" type="submit">Ask and Record</button>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
           </form>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'aiLogDetail' && selectedAiLog) {
+      return (
+        <AdminModal title="AI Answer Detail" onClose={closeModal}>
+          <div className="detailWorkspace">
+            <div className="detailHero">
+              <span>{statusText(selectedAiLog.sourceType)} Source</span>
+              <h3>{selectedAiLog.question}</h3>
+              <p>{formatDateTime(selectedAiLog.createdTime)}</p>
+            </div>
+            <InfoGroup title="Grounding" rows={[
+              ['Source Type', statusText(selectedAiLog.sourceType)],
+              ['Article', selectedAiLog.sourceTitle],
+              ['Document', selectedAiLog.sourceDocumentName],
+              ['Chunk', selectedAiLog.sourceChunkIndex],
+              ['Created Ticket', selectedAiLog.createdTicketId],
+            ]} />
+            <div className="detailReadableBlock">
+              <h3>Answer</h3>
+              <KnowledgeContentBlock content={selectedAiLog.answer} />
+            </div>
+            <div className="formButtonRow">
+              <button className="adminSubmitButton" type="button" onClick={() => copyToClipboard(selectedAiLog.answer, 'AI answer copied.')}>Copy Answer</button>
+              {selectedAiLog.sourceType === 'NONE' && <button className="secondaryAdminButton" type="button" onClick={() => { closeModal(); setActivePage('gaps'); }}>Open Knowledge Gaps</button>}
+              {selectedAiLog.sourceType === 'WEB' && <button className="secondaryAdminButton" type="button" onClick={openWebEvidencePage}>Open Web Evidence</button>}
+            </div>
+            {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+          </div>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'gapDetail' && selectedGap) {
+      return (
+        <AdminModal title="Review Knowledge Gap" onClose={closeModal}>
+          <form className="adminActionForm wide" onSubmit={submitGapArticle}>
+            <div className="detailHero">
+              <span>{selectedGap.priority || 'Review'} Priority</span>
+              <h3>{selectedGap.question}</h3>
+              <p>{selectedGap.category || 'General'} · Frequency {selectedGap.frequency ?? 1}</p>
+            </div>
+            <Field label="Article title">
+              <input value={gapArticleDraft.title} onChange={(event) => setGapArticleDraft((current) => ({ ...current, title: event.target.value }))} />
+            </Field>
+            <Field label="Category">
+              <input value={gapArticleDraft.category} onChange={(event) => setGapArticleDraft((current) => ({ ...current, category: event.target.value }))} />
+            </Field>
+            <Field label="Reviewed article content">
+              <textarea value={gapArticleDraft.content} rows={16} onChange={(event) => setGapArticleDraft((current) => ({ ...current, content: event.target.value }))} />
+            </Field>
+            <div className="formButtonRow">
+              <button className="adminSubmitButton" type="submit">Publish Article</button>
+              <button className="secondaryAdminButton" type="button" onClick={() => copyToClipboard(gapArticleDraft.content, 'Draft article copied.')}>Copy Draft</button>
+            </div>
+            {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+          </form>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'ticketDetail' && selectedTicket) {
+      return (
+        <AdminModal title="Ticket Detail" onClose={closeModal}>
+          <div className="detailWorkspace">
+            <div className="detailHero">
+              <span>{selectedTicket.priority || 'MEDIUM'} Priority</span>
+              <h3>{selectedTicket.title}</h3>
+              <p>{statusText(selectedTicket.status)} · Created {formatDateTime(selectedTicket.createdTime)}</p>
+            </div>
+            <InfoGroup title="Ownership" rows={[
+              ['Ticket ID', selectedTicket.id],
+              ['Created By', selectedTicket.createdBy],
+              ['Assigned To', selectedTicket.assignedTo],
+              ['Updated', formatDateTime(selectedTicket.updatedTime)],
+            ]} />
+            <div className="detailReadableBlock">
+              <h3>Description</h3>
+              <KnowledgeContentBlock content={selectedTicket.description || 'No description.'} />
+            </div>
+            <form className="inlineStatusForm" onSubmit={submitTicketStatus}>
+              <label>
+                <span>Status</span>
+                <select value={ticketStatus} onChange={(event) => setTicketStatus(event.target.value)}>
+                  <option value="OPEN">Open</option>
+                  <option value="IN_PROGRESS">In Progress</option>
+                  <option value="RESOLVED">Resolved</option>
+                  <option value="CLOSED">Closed</option>
+                </select>
+              </label>
+              <button className="adminSubmitButton" type="submit">Save Status</button>
+            </form>
+            <div className="formButtonRow">
+              <button className="secondaryAdminButton" type="button" onClick={resolveSelectedTicket}>Resolve</button>
+              <button className="secondaryAdminButton dangerText" type="button" onClick={closeSelectedTicket}>Close</button>
+            </div>
+            {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+          </div>
         </AdminModal>
       );
     }
@@ -1880,17 +2153,19 @@ function AdminOperationsCenter() {
     }
 
     if (activeModal === 'notifications') {
-      const openTicketRows = tickets.filter((ticket) => ['OPEN', 'IN_PROGRESS'].includes(ticket.status));
+      const openTicketRows = notificationSnapshot.tickets;
+      const unreadGapRows = notificationSnapshot.gaps;
+      const unreadEvidenceRows = notificationSnapshot.evidence;
       return (
         <AdminModal title="Admin Notifications" onClose={closeModal}>
           <div className="topDetailPanel">
-            <p className="topDetailLead">Notifications are generated from real knowledge gaps and open support tickets.</p>
+            <p className="topDetailLead">Notifications show only new unread knowledge gaps, open tickets, and web evidence review items.</p>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
             <div className="notificationGroups">
               <section>
                 <h3>Knowledge Gaps</h3>
-                {knowledgeGaps.length ? knowledgeGaps.map((gap) => (
-                  <button type="button" key={gap.logId} onClick={() => { setActivePage('gaps'); closeModal(); }}>
+                {unreadGapRows.length ? unreadGapRows.map((gap) => (
+                  <button type="button" key={gap.logId} onClick={() => openGapDetail(gap)}>
                     <strong>{gap.question}</strong>
                     <span>{formatDateTime(gap.createdTime)}</span>
                   </button>
@@ -1899,7 +2174,7 @@ function AdminOperationsCenter() {
               <section>
                 <h3>Open Tickets</h3>
                 {openTicketRows.length ? openTicketRows.map((ticket) => (
-                  <button type="button" key={ticket.id} onClick={() => { setActivePage('tickets'); closeModal(); }}>
+                  <button type="button" key={ticket.id} onClick={() => openTicketDetail(ticket)}>
                     <strong>{ticket.title}</strong>
                     <span>{ticket.priority} · {ticket.status}</span>
                   </button>
@@ -1907,7 +2182,7 @@ function AdminOperationsCenter() {
               </section>
               <section>
                 <h3>Web Evidence</h3>
-                {webEvidence.filter((item) => item.status === 'NEEDS_REVIEW').length ? webEvidence.filter((item) => item.status === 'NEEDS_REVIEW').map((item) => (
+                {unreadEvidenceRows.length ? unreadEvidenceRows.map((item) => (
                   <button type="button" key={item.id} onClick={() => { setSelectedEvidence(item); setActivePage('webEvidence'); closeModal(); }}>
                     <strong>{item.title || item.question}</strong>
                     <span>{item.domain || 'Unknown domain'} · {statusText(item.status)}</span>

@@ -84,13 +84,14 @@ public class TicketServiceImpl implements TicketService {
         if (currentUserId == null) {
             throw new BusinessException("User is not authenticated");
         }
+        String role = CurrentUserUtil.getCurrentUserRole();
 
         Ticket ticket = ticketMapper.findById(id);
-        if (ticket == null || !currentUserId.equals(ticket.getCreatedBy())) {
+        if (ticket == null || (!"ADMIN".equals(role) && !currentUserId.equals(ticket.getCreatedBy()) && !currentUserId.equals(ticket.getAssignedTo()))) {
             throw new BusinessException("Ticket not found");
         }
 
-        // Return only tickets owned by the current user.
+        // Admins can inspect any ticket; users can inspect tickets they created or own.
         return convertToTicketVO(ticket);
     }
     @Override
@@ -99,9 +100,10 @@ public class TicketServiceImpl implements TicketService {
         if (currentUserId == null) {
             throw new BusinessException("User is not authenticated");
         }
+        String role = CurrentUserUtil.getCurrentUserRole();
 
         Ticket ticket = ticketMapper.findById(id);
-        if (ticket == null || !currentUserId.equals(ticket.getCreatedBy())) {
+        if (ticket == null || (!"ADMIN".equals(role) && !currentUserId.equals(ticket.getCreatedBy()) && !currentUserId.equals(ticket.getAssignedTo()))) {
             throw new BusinessException("Ticket not found");
         }
 
@@ -110,7 +112,7 @@ public class TicketServiceImpl implements TicketService {
             throw new BusinessException("Invalid ticket status");
         }
 
-        // Only the owner can change status in the current learning-stage workflow.
+        // Admins can operate the support queue; users can update tickets they created or own.
         ticketMapper.updateStatus(id, status);
     }
     @Override
@@ -170,12 +172,13 @@ public class TicketServiceImpl implements TicketService {
             throw new BusinessException("Ticket not found");
         }
 
-        if (!currentUserId.equals(ticket.getAssignedTo())) {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role) && !currentUserId.equals(ticket.getAssignedTo())) {
             throw new BusinessException("Only the assigned user can resolve this ticket");
         }
 
-        if (!"IN_PROGRESS".equals(ticket.getStatus())) {
-            throw new BusinessException("Only in-progress tickets can be resolved");
+        if (!"IN_PROGRESS".equals(ticket.getStatus()) && !"OPEN".equals(ticket.getStatus())) {
+            throw new BusinessException("Only open or in-progress tickets can be resolved");
         }
 
         // The assigned support user marks the ticket as resolved after handling it.
@@ -193,7 +196,8 @@ public class TicketServiceImpl implements TicketService {
             throw new BusinessException("Ticket not found");
         }
 
-        if (!currentUserId.equals(ticket.getCreatedBy())) {
+        String role = CurrentUserUtil.getCurrentUserRole();
+        if (!"ADMIN".equals(role) && !currentUserId.equals(ticket.getCreatedBy())) {
             throw new BusinessException("Only the creator can close this ticket");
         }
 
