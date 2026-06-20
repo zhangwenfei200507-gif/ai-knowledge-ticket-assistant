@@ -81,6 +81,16 @@ public interface WebEvidenceMapper {
     void markRejected(@Param("id") Long id,
                       @Param("reviewedBy") Long reviewedBy);
 
+    @Update("""
+        update web_evidence
+        set suggested_article_title = #{suggestedArticleTitle},
+            suggested_article_content = #{suggestedArticleContent}
+        where id = #{id}
+        """)
+    void updateSuggestedArticle(@Param("id") Long id,
+                                @Param("suggestedArticleTitle") String suggestedArticleTitle,
+                                @Param("suggestedArticleContent") String suggestedArticleContent);
+
     @Select("select count(*) from web_evidence")
     Long countAll();
 

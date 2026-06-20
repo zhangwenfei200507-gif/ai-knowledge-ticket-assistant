@@ -356,9 +356,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<AiAnswerSourceVO> sources = buildArticleSources(articles);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(llmGatewayService
-                .generateGroundedAnswer(question, "ARTICLE", sources)
-                .orElse("Based on reviewed internal knowledge:\n\n" + article.getContent()));
+        answerVO.setAnswer("Based on reviewed internal knowledge:\n\n" + article.getContent());
         answerVO.setSourceType("ARTICLE");
         answerVO.setSourceScore(null);
         answerVO.setSourceArticleId(article.getId());
@@ -375,32 +373,87 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private AiAnswerVO buildWebEvidenceBasedAnswer(WebEvidence evidence) {
         List<AiAnswerSourceVO> sources = buildWebEvidenceSources(evidence);
+        Optional<String> llmAnswer = llmGatewayService.generateGroundedAnswer(evidence.getQuestion(), "WEB", sources);
+        WebEvidence finalEvidence = llmAnswer
+                .map(answer -> webEvidenceService.updateSuggestedArticle(
+                        evidence.getId(),
+                        buildReviewedWebArticleTitle(evidence),
+                        buildReviewedWebArticleContent(evidence, answer)
+                ))
+                .orElse(evidence);
+        List<AiAnswerSourceVO> finalSources = buildWebEvidenceSources(finalEvidence);
+
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(llmGatewayService
-                .generateGroundedAnswer(evidence.getQuestion(), "WEB", sources)
+        answerVO.setAnswer(llmAnswer
                 .orElse("""
                         I could not find a precise internal answer, so I checked external web evidence.
 
                         %s
 
                         This evidence has been saved for administrator review before it becomes internal knowledge.
-                        """.formatted(evidence.getSuggestedArticleContent())));
+                        """.formatted(finalEvidence.getSuggestedArticleContent())));
         answerVO.setSourceType("WEB");
-        answerVO.setSourceScore(evidence.getCredibilityScore() == null ? null : evidence.getCredibilityScore().doubleValue());
+        answerVO.setSourceScore(finalEvidence.getCredibilityScore() == null ? null : finalEvidence.getCredibilityScore().doubleValue());
         answerVO.setSourceArticleId(null);
-        answerVO.setSourceTitle(evidence.getTitle());
+        answerVO.setSourceTitle(finalEvidence.getTitle());
         answerVO.setSourceDocumentId(null);
         answerVO.setSourceDocumentName(null);
         answerVO.setSourceChunkId(null);
         answerVO.setSourceChunkIndex(null);
-        answerVO.setSourceWebEvidenceId(evidence.getId());
-        answerVO.setSourceUrl(evidence.getUrl());
-        answerVO.setSourceDomain(evidence.getDomain());
-        answerVO.setSourceStatus(evidence.getStatus());
+        answerVO.setSourceWebEvidenceId(finalEvidence.getId());
+        answerVO.setSourceUrl(finalEvidence.getUrl());
+        answerVO.setSourceDomain(finalEvidence.getDomain());
+        answerVO.setSourceStatus(finalEvidence.getStatus());
         answerVO.setSuggestCreateTicket(false);
         answerVO.setCreatedTicketId(null);
-        answerVO.setSources(sources);
+        answerVO.setSources(finalSources);
         return answerVO;
+    }
+
+    private String buildReviewedWebArticleTitle(WebEvidence evidence) {
+        String question = evidence.getQuestion() == null ? "External Web Evidence" : evidence.getQuestion().trim();
+        if (question.length() > 120) {
+            question = question.substring(0, 117).trim() + "...";
+        }
+        return "Reviewed Web Answer: " + question;
+    }
+
+    private String buildReviewedWebArticleContent(WebEvidence evidence, String answer) {
+        String evidenceSummary = evidence.getExtractedContent();
+        if (evidenceSummary == null || evidenceSummary.isBlank()) {
+            evidenceSummary = evidence.getSuggestedArticleContent();
+        }
+
+        return """
+                # %s
+
+                Category: %s
+                Source references: %s
+
+                Purpose:
+                Preserve the model-generated answer and the web evidence collected for this question so an administrator can review it once and promote it into internal knowledge without spending another model call.
+
+                Original question:
+                %s
+
+                Model-generated answer:
+                %s
+
+                Web evidence summary:
+                %s
+
+                Review checklist:
+                - Verify the source URL is relevant and trustworthy.
+                - Remove any platform-specific claim that does not apply to AegisCloud.
+                - Add internal runbook links, commands, dashboards, or owners before publishing.
+                """.formatted(
+                buildReviewedWebArticleTitle(evidence),
+                evidence.getCategory() == null ? "General" : evidence.getCategory(),
+                evidence.getUrl() == null ? "-" : evidence.getUrl(),
+                evidence.getQuestion() == null ? "-" : evidence.getQuestion(),
+                answer == null ? "-" : answer,
+                evidenceSummary == null ? "-" : evidenceSummary
+        );
     }
 
     private AiAnswerVO buildDocumentBasedAnswer(String question, List<DocumentSearchResultVO> documentResults) {
@@ -408,9 +461,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<AiAnswerSourceVO> sources = buildDocumentSources(documentResults);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(llmGatewayService
-                .generateGroundedAnswer(question, "DOCUMENT", sources)
-                .orElse("Based on the uploaded document " + documentResult.getOriginalFilename() + ":\n\n" + documentResult.getContent()));
+        answerVO.setAnswer("Based on the uploaded document " + documentResult.getOriginalFilename() + ":\n\n" + documentResult.getContent());
         answerVO.setSourceType("DOCUMENT");
         answerVO.setSourceScore(documentResult.getRelevanceScore());
         answerVO.setSourceArticleId(null);

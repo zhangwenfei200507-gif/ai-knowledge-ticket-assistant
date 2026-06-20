@@ -12,6 +12,8 @@ public interface WebEvidenceService {
 
     Optional<WebEvidence> searchAndStoreEvidence(String question, Long userId);
 
+    WebEvidence updateSuggestedArticle(Long id, String suggestedArticleTitle, String suggestedArticleContent);
+
     WebEvidenceVO searchManually(WebEvidenceSearchDTO searchDTO);
 
     List<WebEvidenceVO> listAll();

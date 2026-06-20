@@ -41,6 +41,22 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
     }
 
     @Override
+    public WebEvidence updateSuggestedArticle(Long id, String suggestedArticleTitle, String suggestedArticleContent) {
+        WebEvidence evidence = requireEvidence(id);
+        webEvidenceMapper.updateSuggestedArticle(
+                id,
+                suggestedArticleTitle == null || suggestedArticleTitle.isBlank()
+                        ? evidence.getSuggestedArticleTitle()
+                        : suggestedArticleTitle,
+                suggestedArticleContent == null || suggestedArticleContent.isBlank()
+                        ? evidence.getSuggestedArticleContent()
+                        : suggestedArticleContent
+        );
+        WebEvidence updated = webEvidenceMapper.findById(id);
+        return updated == null ? evidence : updated;
+    }
+
+    @Override
     public WebEvidenceVO searchManually(WebEvidenceSearchDTO searchDTO) {
         ensureAdmin();
         Long currentUserId = requireCurrentUserId();
