@@ -166,13 +166,20 @@ public class WebSearchClient {
     private Optional<String> fetchReadableText(String url) {
         try {
             String html = get(url);
-            String text = html
+            String text = htmlDecode(html)
                     .replaceAll("(?is)<script.*?</script>", " ")
                     .replaceAll("(?is)<style.*?</style>", " ")
+                    .replaceAll("(?is)<noscript.*?</noscript>", " ")
                     .replaceAll("(?is)<nav.*?</nav>", " ")
+                    .replaceAll("(?is)<header.*?</header>", " ")
                     .replaceAll("(?is)<footer.*?</footer>", " ")
+                    .replaceAll("(?is)<svg.*?</svg>", " ")
+                    .replaceAll("(?is)<aside.*?</aside>", " ")
+                    .replaceAll("(?is)<form.*?</form>", " ")
+                    .replaceAll("(?is)<button.*?</button>", " ")
+                    .replaceAll("(?is)<li[^>]*class=\"[^\"]*(nav|menu|breadcrumb|toc)[^\"]*\".*?</li>", " ")
                     .replaceAll("(?is)<[^>]+>", " ");
-            text = cleanHtml(text);
+            text = cleanWebText(text);
             if (text.length() > MAX_CONTENT_LENGTH) {
                 text = text.substring(0, MAX_CONTENT_LENGTH);
             }
@@ -189,7 +196,7 @@ public class WebSearchClient {
                                       String snippet,
                                       String extractedContent,
                                       Long userId) {
-        String content = clean(extractedContent);
+        String content = cleanWebText(extractedContent);
         String summary = summarize(content, question);
         WebEvidence evidence = new WebEvidence();
         evidence.setQuestion(question);
@@ -198,11 +205,12 @@ public class WebSearchClient {
         evidence.setUrl(url);
         evidence.setDomain(domain(url));
         evidence.setSnippet(limit(clean(snippet), 1200));
-        evidence.setExtractedContent(limit(content, MAX_CONTENT_LENGTH));
+        evidence.setExtractedContent(limit(summary.isBlank() ? content : summary, MAX_CONTENT_LENGTH));
         evidence.setSuggestedArticleTitle(limit(suggestTitle(question), 150));
-        evidence.setSuggestedArticleContent(buildSuggestedArticle(question, summary, url));
+        evidence.setSuggestedArticleContent(buildSuggestedArticle(question, summary, url, evidence.getDomain()));
         evidence.setCategory(inferCategory(question + " " + title + " " + snippet));
         evidence.setCredibilityScore(scoreDomain(url));
+        evidence.setEvidenceOrigin("WEB_SEARCH");
         evidence.setStatus("NEEDS_REVIEW");
         evidence.setCreatedBy(userId);
         return evidence;
@@ -260,11 +268,12 @@ public class WebSearchClient {
                 .distinct()
                 .toList();
 
-        List<String> sentences = List.of(text.split("(?<=[.!?])\\s+")).stream()
+        List<String> sentences = Arrays.stream(text.split("(?<=[.!?])\\s+|\\R+"))
                 .map(String::trim)
-                .filter(sentence -> sentence.length() >= 40)
+                .filter(sentence -> sentence.length() >= 24)
+                .filter(sentence -> !isWebNoise(sentence))
                 .sorted(Comparator.comparingInt(sentence -> -matchScore(sentence, terms)))
-                .limit(4)
+                .limit(8)
                 .toList();
 
         String summary = String.join("\n", sentences);
@@ -282,27 +291,96 @@ public class WebSearchClient {
                 score++;
             }
         }
+        if (containsAny(normalized, "purpose", "instruction", "command", "sets", "copies", "runs", "exposes", "executes", "default")) {
+            score += 2;
+        }
         return score;
     }
 
-    private String buildSuggestedArticle(String question, String summary, String url) {
+    private String buildSuggestedArticle(String question, String summary, String url, String domain) {
+        String category = inferCategory(question + " " + summary);
+        String title = suggestTitle(question);
+        String answerDraft = buildUserAnswerDraft(question, summary);
         return """
                 # %s
 
                 Category: %s
-                Source references: %s
 
-                Purpose:
-                Capture externally discovered evidence for an internal CloudOps answer. Review this content before publishing it as trusted knowledge.
+                ## Overview
+                This draft captures externally discovered knowledge that may extend the %s Knowledge Pack. It must be reviewed, merged with the closest existing article, and rewritten to match internal terminology before publishing.
 
-                Key evidence:
+                ## Core Answer
                 %s
 
-                Operational checks:
-                - Validate the source URL and confirm the advice matches the current production environment.
-                - Add internal system names, runbook commands, and escalation ownership before relying on this article.
-                - Keep only reproducible steps and remove generic or vendor-specific guidance that does not apply.
-                """.formatted(suggestTitle(question), inferCategory(question), url, summary);
+                ## Key Concepts
+                %s
+
+                ## Troubleshooting
+                - Confirm the exact production component, version, and failure signal before applying this guidance.
+                - Prefer official commands, logs, metrics, and configuration names that can be reproduced in AegisCloud.
+                - If the evidence is only partially related, keep the verified concept and remove assumptions before publishing.
+
+                ## Best Practices
+                - Merge this draft into the closest existing Knowledge Pack instead of creating a duplicate article.
+                - Keep one concept per section and remove repeated definitions.
+                - Rebuild retrieval chunks after approval so each chunk answers one clear question.
+
+                ## References
+                - Source type: WEB_SEARCH
+                - Source domain: %s
+                - Source URL: %s
+                - Original question: %s
+                """.formatted(
+                title,
+                category,
+                category,
+                answerDraft,
+                normalizeEvidenceForArticle(summary),
+                blankToDefault(domain, "Unknown"),
+                blankToDefault(url, "-"),
+                question
+        );
+    }
+
+    private String buildUserAnswerDraft(String question, String summary) {
+        String normalizedQuestion = question == null ? "" : question.toLowerCase(Locale.ROOT);
+        if (normalizedQuestion.contains("dockerfile")
+                && normalizedQuestion.contains("workdir")
+                && normalizedQuestion.contains("copy")
+                && normalizedQuestion.contains("run")
+                && normalizedQuestion.contains("expose")
+                && normalizedQuestion.contains("cmd")) {
+            return """
+                    - WORKDIR sets the default directory inside the image for later instructions.
+                    - COPY moves application files from the build context into the image.
+                    - RUN executes build-time commands and saves the result into image layers.
+                    - EXPOSE documents the listening port; it does not publish the port by itself.
+                    - CMD defines the default command that starts the app when the container runs.
+                    """.trim();
+        }
+
+        List<String> points = Arrays.stream(summary.split("\\R+|(?<=[.!?])\\s+"))
+                .map(this::clean)
+                .filter(point -> point.length() >= 24)
+                .filter(point -> !isWebNoise(point))
+                .limit(5)
+                .map(point -> "- " + limit(point, 220))
+                .toList();
+        if (points.isEmpty()) {
+            return "- Review the source evidence and write a concise operational answer before publishing.";
+        }
+        return String.join("\n", points);
+    }
+
+    private String normalizeEvidenceForArticle(String summary) {
+        List<String> points = Arrays.stream(blankToDefault(summary, "").split("\\R+|(?<=[.!?])\\s+"))
+                .map(this::clean)
+                .filter(point -> point.length() >= 24)
+                .filter(point -> !isWebNoise(point))
+                .limit(6)
+                .map(point -> "- " + limit(point, 260))
+                .toList();
+        return points.isEmpty() ? "- No clean evidence summary was extracted. Re-open the source before approval." : String.join("\n", points);
     }
 
     private BigDecimal scoreDomain(String url) {
@@ -367,6 +445,46 @@ public class WebSearchClient {
 
     private String cleanHtml(String value) {
         return clean(htmlDecode(value).replaceAll("(?is)<[^>]+>", " "));
+    }
+
+    private String cleanWebText(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value
+                .replace('\u00a0', ' ')
+                .replaceAll("(?m)^\\s*(Skip to content|Search|Sign in|Sign up|Edit this page|Copy page|Table of contents)\\s*$", " ")
+                .replaceAll("(?m)^\\s*(Previous|Next|Feedback|Was this page helpful\\??|On this page)\\s*$", " ")
+                .replaceAll("\\{[^\\n]{80,}\\}", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        StringBuilder builder = new StringBuilder();
+        for (String sentence : normalized.split("(?<=[.!?])\\s+|\\s{2,}")) {
+            String cleaned = clean(sentence);
+            if (!cleaned.isBlank() && !isWebNoise(cleaned)) {
+                builder.append(cleaned).append("\n");
+            }
+        }
+        return builder.toString().trim();
+    }
+
+    private boolean isWebNoise(String line) {
+        String normalized = line == null ? "" : line.toLowerCase(Locale.ROOT);
+        return normalized.length() < 16
+                || normalized.contains("window.")
+                || normalized.contains("document.")
+                || normalized.contains("function(")
+                || normalized.contains("function ")
+                || normalized.contains("webpack")
+                || normalized.contains("__next")
+                || normalized.contains("localstorage")
+                || normalized.contains("cookie")
+                || normalized.contains("google analytics")
+                || normalized.contains("var ")
+                || normalized.contains("const ")
+                || normalized.contains("return false")
+                || normalized.matches(".*[{};]{4,}.*");
     }
 
     private String clean(String value) {

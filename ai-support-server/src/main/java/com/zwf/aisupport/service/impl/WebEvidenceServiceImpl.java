@@ -12,6 +12,7 @@ import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.WebEvidenceVO;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -38,6 +39,28 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
             WebEvidence reloaded = webEvidenceMapper.findById(savedEvidence.getId());
             return reloaded == null ? savedEvidence : reloaded;
         });
+    }
+
+    @Override
+    public WebEvidence storeModelGeneratedEvidence(String question, String answer, Long userId) {
+        WebEvidence evidence = new WebEvidence();
+        evidence.setQuestion(question);
+        evidence.setQuery(question);
+        evidence.setTitle(limit("Model Answer: " + question, 300));
+        evidence.setUrl(null);
+        evidence.setDomain("OpenAI model");
+        evidence.setSnippet(limit(answer, 1200));
+        evidence.setExtractedContent(answer);
+        evidence.setSuggestedArticleTitle(limit("Reviewed Model Answer: " + question, 150));
+        evidence.setSuggestedArticleContent(buildModelSuggestedArticle(question, answer));
+        evidence.setCategory(inferCategory(question + " " + answer));
+        evidence.setCredibilityScore(new BigDecimal("0.70"));
+        evidence.setEvidenceOrigin("LLM_GENERATED");
+        evidence.setStatus("NEEDS_REVIEW");
+        evidence.setCreatedBy(userId);
+        webEvidenceMapper.insert(evidence);
+        WebEvidence reloaded = webEvidenceMapper.findById(evidence.getId());
+        return reloaded == null ? evidence : reloaded;
     }
 
     @Override
@@ -149,6 +172,7 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
         vo.setSuggestedArticleContent(evidence.getSuggestedArticleContent());
         vo.setCategory(evidence.getCategory());
         vo.setCredibilityScore(evidence.getCredibilityScore());
+        vo.setEvidenceOrigin(evidence.getEvidenceOrigin());
         vo.setStatus(evidence.getStatus());
         vo.setCreatedBy(evidence.getCreatedBy());
         vo.setReviewedBy(evidence.getReviewedBy());
@@ -169,6 +193,83 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
         vo.setCreatedTime(article.getCreatedTime());
         vo.setUpdatedTime(article.getUpdatedTime());
         return vo;
+    }
+
+    private String buildModelSuggestedArticle(String question, String answer) {
+        String category = inferCategory(question + " " + answer);
+        return """
+                # Reviewed Model Answer: %s
+
+                Category: %s
+
+                ## Overview
+                This draft captures a model-generated fallback after internal knowledge and web search did not produce reliable evidence. It must be verified against official documentation or internal runbooks before it can become trusted knowledge.
+
+                ## Core Answer
+                %s
+
+                ## Knowledge Pack Placement
+                - Target Knowledge Pack: %s
+                - Merge policy: update the closest existing Knowledge Pack first; create a new article only if no suitable pack exists.
+                - Chunk policy: rebuild retrieval chunks after approval so each chunk contains one independently understandable knowledge point.
+
+                ## Review Checklist
+                - Verify every technical claim against official docs, internal runbooks, or reproducible commands.
+                - Add AegisCloud-specific configuration names, dashboards, owners, escalation paths, and version constraints where relevant.
+                - Remove generic advice that does not apply to the production environment.
+                - Merge duplicate concepts with the existing article instead of appending repeated text.
+
+                ## References
+                - Source type: LLM_GENERATED
+                - Source reference: OpenAI model fallback
+                - Original question: %s
+                """.formatted(limit(question, 120), category, normalizeArticleBullets(answer), category, question);
+    }
+
+    private String normalizeArticleBullets(String answer) {
+        if (answer == null || answer.isBlank()) {
+            return "- Add the reviewed technical answer before publishing.";
+        }
+        List<String> points = answer.lines()
+                .map(String::trim)
+                .filter(line -> line.length() >= 12)
+                .map(line -> line.replaceAll("^[-*]\\s*", ""))
+                .limit(6)
+                .map(line -> "- " + limit(line, 260))
+                .toList();
+        if (points.isEmpty()) {
+            return "- " + limit(answer.replaceAll("\\s+", " ").trim(), 260);
+        }
+        return String.join("\n", points);
+    }
+
+    private String inferCategory(String text) {
+        String normalized = text == null ? "" : text.toLowerCase();
+        if (containsAny(normalized, "jwt", "token", "login", "auth", "password", "session")) return "Auth / JWT";
+        if (containsAny(normalized, "redis", "cache")) return "Redis Cache";
+        if (containsAny(normalized, "postgres", "postgresql", "database", "sql")) return "PostgreSQL";
+        if (containsAny(normalized, "docker", "container", "compose")) return "Docker";
+        if (containsAny(normalized, "kubernetes", "k8s", "pod", "cluster")) return "Kubernetes";
+        if (containsAny(normalized, "incident", "outage", "sev", "rollback")) return "Incident SOP";
+        if (containsAny(normalized, "ticket", "sla", "priority", "escalation")) return "Ticket Rules";
+        if (containsAny(normalized, "customer", "template", "reply")) return "Customer Templates";
+        return "General";
+    }
+
+    private boolean containsAny(String text, String... terms) {
+        for (String term : terms) {
+            if (text.contains(term)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String limit(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength).trim();
     }
 
     private boolean isLowQualityKnowledgeContent(String content) {

@@ -21,6 +21,7 @@ public interface WebEvidenceMapper {
             suggested_article_content,
             category,
             credibility_score,
+            evidence_origin,
             status,
             created_by
         )
@@ -36,6 +37,7 @@ public interface WebEvidenceMapper {
             #{suggestedArticleContent},
             #{category},
             #{credibilityScore},
+            #{evidenceOrigin},
             #{status},
             #{createdBy}
         )

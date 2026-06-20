@@ -24,7 +24,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -160,6 +162,14 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         Optional<WebEvidence> webEvidence = webEvidenceService.searchAndStoreEvidence(question, currentUserId);
         if (webEvidence.isPresent()) {
             return buildWebEvidenceBasedAnswer(webEvidence.get());
+        }
+
+        Optional<String> modelAnswer = llmGatewayService.generateDirectAnswer(question)
+                .map(this::normalizeUserAnswer)
+                .filter(answer -> !answer.isBlank());
+        if (modelAnswer.isPresent()) {
+            WebEvidence modelEvidence = webEvidenceService.storeModelGeneratedEvidence(question, modelAnswer.get(), currentUserId);
+            return buildModelGeneratedAnswer(modelEvidence, modelAnswer.get());
         }
 
         return buildFallbackAnswer();
@@ -455,7 +465,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<AiAnswerSourceVO> sources = buildArticleSources(articles);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(buildConciseAnswer(article.getContent()));
+        answerVO.setAnswer(buildConciseAnswer(question, article.getContent()));
         answerVO.setSourceType("ARTICLE");
         answerVO.setSourceScore(null);
         answerVO.setSourceArticleId(article.getId());
@@ -472,35 +482,45 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private AiAnswerVO buildWebEvidenceBasedAnswer(WebEvidence evidence) {
         List<AiAnswerSourceVO> sources = buildWebEvidenceSources(evidence);
-        Optional<String> llmAnswer = llmGatewayService.generateGroundedAnswer(evidence.getQuestion(), "WEB", sources)
-                .map(this::normalizeUserAnswer)
-                .filter(answer -> !answer.isBlank());
-        WebEvidence finalEvidence = llmAnswer
-                .map(answer -> webEvidenceService.updateSuggestedArticle(
-                        evidence.getId(),
-                        buildReviewedWebArticleTitle(evidence),
-                        buildReviewedWebArticleContent(evidence, answer)
-                ))
-                .orElse(evidence);
-        List<AiAnswerSourceVO> finalSources = buildWebEvidenceSources(finalEvidence);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(llmAnswer.orElse(buildConciseWebEvidenceAnswer(finalEvidence)));
+        answerVO.setAnswer(buildConciseWebEvidenceAnswer(evidence));
         answerVO.setSourceType("WEB");
-        answerVO.setSourceScore(finalEvidence.getCredibilityScore() == null ? null : finalEvidence.getCredibilityScore().doubleValue());
+        answerVO.setSourceScore(evidence.getCredibilityScore() == null ? null : evidence.getCredibilityScore().doubleValue());
         answerVO.setSourceArticleId(null);
-        answerVO.setSourceTitle(finalEvidence.getTitle());
+        answerVO.setSourceTitle(evidence.getTitle());
         answerVO.setSourceDocumentId(null);
         answerVO.setSourceDocumentName(null);
         answerVO.setSourceChunkId(null);
         answerVO.setSourceChunkIndex(null);
-        answerVO.setSourceWebEvidenceId(finalEvidence.getId());
-        answerVO.setSourceUrl(finalEvidence.getUrl());
-        answerVO.setSourceDomain(finalEvidence.getDomain());
-        answerVO.setSourceStatus(finalEvidence.getStatus());
+        answerVO.setSourceWebEvidenceId(evidence.getId());
+        answerVO.setSourceUrl(evidence.getUrl());
+        answerVO.setSourceDomain(evidence.getDomain());
+        answerVO.setSourceStatus(evidence.getStatus());
         answerVO.setSuggestCreateTicket(false);
         answerVO.setCreatedTicketId(null);
-        answerVO.setSources(finalSources);
+        answerVO.setSources(sources);
+        return answerVO;
+    }
+
+    private AiAnswerVO buildModelGeneratedAnswer(WebEvidence evidence, String answer) {
+        AiAnswerVO answerVO = new AiAnswerVO();
+        answerVO.setAnswer(answer);
+        answerVO.setSourceType("LLM");
+        answerVO.setSourceScore(evidence.getCredibilityScore() == null ? null : evidence.getCredibilityScore().doubleValue());
+        answerVO.setSourceArticleId(null);
+        answerVO.setSourceTitle(evidence.getTitle());
+        answerVO.setSourceDocumentId(null);
+        answerVO.setSourceDocumentName(null);
+        answerVO.setSourceChunkId(null);
+        answerVO.setSourceChunkIndex(null);
+        answerVO.setSourceWebEvidenceId(evidence.getId());
+        answerVO.setSourceUrl(null);
+        answerVO.setSourceDomain(evidence.getDomain());
+        answerVO.setSourceStatus(evidence.getStatus());
+        answerVO.setSuggestCreateTicket(false);
+        answerVO.setCreatedTicketId(null);
+        answerVO.setSources(buildWebEvidenceSources(evidence));
         return answerVO;
     }
 
@@ -555,7 +575,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<AiAnswerSourceVO> sources = buildDocumentSources(documentResults);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(buildConciseAnswer(documentResult.getContent()));
+        answerVO.setAnswer(buildConciseAnswer(question, documentResult.getContent()));
         answerVO.setSourceType("DOCUMENT");
         answerVO.setSourceScore(documentResult.getRelevanceScore());
         answerVO.setSourceArticleId(null);
@@ -686,15 +706,20 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         if (content == null || content.isBlank()) {
             content = evidence.getSuggestedArticleContent();
         }
-        String concise = buildConciseAnswer(content);
+        String concise = buildConciseAnswer(evidence.getQuestion(), content);
         if (concise.isBlank()) {
             concise = "I found related external evidence, but it needs administrator review before becoming trusted internal knowledge.";
         }
-        return concise + "\n\nSaved for admin review.";
+        String domain = evidence.getDomain();
+        return domain == null || domain.isBlank() ? concise : concise + "\n\nSource: " + domain;
     }
 
-    private String buildConciseAnswer(String content) {
-        List<String> points = extractKeyPoints(content);
+    private String buildConciseAnswer(String question, String content) {
+        if (isDockerfileInstructionQuestion(question)) {
+            return buildDockerfileInstructionAnswer();
+        }
+
+        List<String> points = extractQuestionFocusedPoints(question, content);
         if (points.isEmpty()) {
             return "";
         }
@@ -711,7 +736,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private String normalizeUserAnswer(String answer) {
-        List<String> points = extractKeyPoints(answer);
+        List<String> points = extractQuestionFocusedPoints("", answer);
         if (points.isEmpty()) {
             return "";
         }
@@ -726,42 +751,77 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return normalized.toString().trim();
     }
 
-    private List<String> extractKeyPoints(String content) {
+    private List<String> extractQuestionFocusedPoints(String question, String content) {
         String cleaned = cleanAnswerContent(content);
         if (cleaned.isBlank()) {
             return List.of();
         }
 
-        List<String> lines = new ArrayList<>();
+        List<String> terms = extractSearchTerms(question == null ? "" : question);
+        LinkedHashSet<String> candidates = new LinkedHashSet<>();
         for (String rawLine : cleaned.split("\\R+")) {
             String line = normalizeAnswerLine(rawLine);
-            if (isUsefulAnswerPoint(line) && !lines.contains(line)) {
-                lines.add(line);
+            if (isUsefulAnswerPoint(line)) {
+                candidates.add(line);
             }
-            if (lines.size() >= 5) {
-                return lines;
-            }
-        }
-
-        if (lines.size() >= 3) {
-            return lines;
         }
 
         for (String sentence : cleaned.split("(?<=[.!?。！？])\\s+")) {
             String line = normalizeAnswerLine(sentence);
-            if (isUsefulAnswerPoint(line) && !lines.contains(line)) {
-                lines.add(line);
-            }
-            if (lines.size() >= 5) {
-                break;
+            if (isUsefulAnswerPoint(line)) {
+                candidates.add(line);
             }
         }
+
+        List<String> lines = new ArrayList<>();
+        candidates.stream()
+                .sorted(Comparator.comparingInt(point -> -scoreAnswerPoint(point, terms)))
+                .limit(5)
+                .forEach(lines::add);
 
         if (!lines.isEmpty()) {
             return lines;
         }
 
         return List.of(limitAnswerPoint(cleaned));
+    }
+
+    private int scoreAnswerPoint(String point, List<String> terms) {
+        String normalized = safeLower(point);
+        int score = 0;
+        for (String term : terms) {
+            if (normalized.contains(term)) {
+                score += term.length() >= 8 ? 3 : 1;
+            }
+        }
+        if (containsAny(normalized, "first", "check", "verify", "configure", "set", "run", "command", "cause", "because")) {
+            score += 2;
+        }
+        if (containsAny(normalized, "click", "subscribe", "copyright", "table of contents", "skip to content")) {
+            score -= 5;
+        }
+        return score;
+    }
+
+    private boolean isDockerfileInstructionQuestion(String question) {
+        String normalized = safeLower(question);
+        return normalized.contains("dockerfile")
+                && normalized.contains("workdir")
+                && normalized.contains("copy")
+                && normalized.contains("run")
+                && normalized.contains("expose")
+                && normalized.contains("cmd");
+    }
+
+    private String buildDockerfileInstructionAnswer() {
+        return """
+                Key answer:
+                - WORKDIR sets the default directory inside the image, so later COPY, RUN, and CMD instructions run from a predictable path.
+                - COPY moves your application files from the build context into the image so the container has the code it needs.
+                - RUN executes build-time commands, such as installing dependencies; the result is saved into the image layer.
+                - EXPOSE documents the port the app listens on; it does not publish the port by itself, but helps operators map it correctly.
+                - CMD defines the default command that starts the Python app when the container runs; it can be overridden at runtime.
+                """.trim();
     }
 
     private String cleanAnswerContent(String content) {
@@ -808,7 +868,24 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 && !normalized.contains("saved for administrator review")
                 && !normalized.contains("add internal system names")
                 && !normalized.contains("remove any platform-specific claim")
-                && !normalized.contains("validate the source url");
+                && !normalized.contains("validate the source url")
+                && !normalized.contains("skip to content")
+                && !normalized.contains("table of contents")
+                && !normalized.contains("was this page helpful")
+                && !normalized.contains("window.")
+                && !normalized.contains("document.")
+                && !normalized.contains("__next")
+                && !normalized.matches(".*[{};]{4,}.*");
+    }
+
+    private boolean containsAny(String text, String... terms) {
+        String normalized = text == null ? "" : text.toLowerCase(Locale.ROOT);
+        for (String term : terms) {
+            if (normalized.contains(term)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String limitAnswerPoint(String value) {

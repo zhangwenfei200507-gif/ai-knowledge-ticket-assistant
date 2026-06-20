@@ -20,6 +20,7 @@ public class WebEvidence {
     private String suggestedArticleContent;
     private String category;
     private BigDecimal credibilityScore;
+    private String evidenceOrigin;
     private String status;
     private Long createdBy;
     private Long reviewedBy;

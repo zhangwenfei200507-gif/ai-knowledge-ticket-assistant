@@ -78,6 +78,48 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
     }
 
     @Override
+    public Optional<String> generateDirectAnswer(String question) {
+        if (!isConfigured() || question == null || question.isBlank()) {
+            return Optional.empty();
+        }
+
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("model", model);
+            payload.put("instructions", """
+                    You are AegisCloud, a CloudOps AI knowledge assistant.
+                    Internal knowledge and external web search did not find a reliable answer.
+                    Use general CloudOps, Linux, Kubernetes, Docker, Redis, PostgreSQL, Spring Security, and authentication knowledge to provide a careful fallback answer.
+                    Do not invent AegisCloud-specific hostnames, dashboards, owners, secrets, service names, or production facts.
+                    Keep the user-facing answer short and decisive: 3 to 5 bullets maximum.
+                    If uncertain, explicitly say what must be verified.
+                    """);
+            payload.put("input", "User question:\n" + question);
+
+            HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/responses"))
+                    .timeout(Duration.ofSeconds(45))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload), StandardCharsets.UTF_8))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() >= 400) {
+                return Optional.empty();
+            }
+
+            JsonNode root = objectMapper.readTree(response.body());
+            String outputText = root.path("output_text").asText("");
+            if (!outputText.isBlank()) {
+                return Optional.of(outputText.trim());
+            }
+            return extractOutputText(root).filter(text -> !text.isBlank()).map(String::trim);
+        } catch (Exception ignored) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
     public boolean isConfigured() {
         return apiKey != null && !apiKey.isBlank() && baseUrl != null && !baseUrl.isBlank() && model != null && !model.isBlank();
     }

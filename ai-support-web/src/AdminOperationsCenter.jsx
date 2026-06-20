@@ -186,9 +186,13 @@ const navItems = [
 ];
 
 const LIBRARY_PAGE_SIZE = 8;
+const REVIEW_PAGE_SIZE = 6;
 
 function statusText(status) {
   if (!status) return 'Unknown';
+  const normalized = String(status).toUpperCase();
+  if (normalized === 'WEB_SEARCH') return 'Web Search';
+  if (normalized === 'LLM_GENERATED') return 'Model Fallback';
   return status.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
@@ -232,6 +236,32 @@ function LibraryPager({ page, pageCount, total, onPageChange }) {
   if (total <= LIBRARY_PAGE_SIZE) return null;
   return (
     <div className="libraryPager">
+      <button type="button" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>Prev</button>
+      <span>{page} / {pageCount} · {total} total</span>
+      <button type="button" disabled={page >= pageCount} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>Next</button>
+    </div>
+  );
+}
+
+function usePagedItems(items, pageSize = REVIEW_PAGE_SIZE) {
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil((items?.length ?? 0) / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pagedItems = (items ?? []).slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  useEffect(() => {
+    if (page > pageCount) {
+      setPage(pageCount);
+    }
+  }, [page, pageCount]);
+
+  return { page: safePage, pageCount, pagedItems, setPage };
+}
+
+function ReviewPager({ page, pageCount, total, onPageChange }) {
+  if (total <= REVIEW_PAGE_SIZE) return null;
+  return (
+    <div className="libraryPager reviewPager">
       <button type="button" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>Prev</button>
       <span>{page} / {pageCount} · {total} total</span>
       <button type="button" disabled={page >= pageCount} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>Next</button>
@@ -364,6 +394,7 @@ function WebEvidenceWorkspace({
   const pendingCount = evidence.filter((item) => item.status === 'NEEDS_REVIEW').length;
   const convertedCount = evidence.filter((item) => item.status === 'CONVERTED').length;
   const rejectedCount = evidence.filter((item) => item.status === 'REJECTED').length;
+  const { page, pageCount, pagedItems, setPage } = usePagedItems(evidence);
 
   return (
     <section className="webEvidenceWorkspace">
@@ -394,13 +425,14 @@ function WebEvidenceWorkspace({
             <strong>{evidence.length} Evidence Records</strong>
             <button type="button" onClick={onRefresh}>Refresh</button>
           </div>
-          {evidence.length ? evidence.map((item) => (
+          {pagedItems.length ? pagedItems.map((item) => (
             <button className={selectedEvidence?.id === item.id ? 'active' : ''} type="button" key={item.id} onClick={() => onSelect(item)}>
               <strong>{item.title || item.question}</strong>
-              <span>{item.domain || 'Unknown domain'} · {statusText(item.status)} · {item.category || 'General'}</span>
+              <span>{item.domain || 'Unknown domain'} · {statusText(item.status)} · {statusText(item.evidenceOrigin || 'WEB_SEARCH')} · {item.category || 'General'}</span>
               <p>{item.question}</p>
             </button>
           )) : <EmptyState text="No external evidence yet. Ask an unknown question or run a manual web search." />}
+          <ReviewPager page={page} pageCount={pageCount} total={evidence.length} onPageChange={setPage} />
         </div>
 
         <article className="webEvidenceDetail">
@@ -420,6 +452,7 @@ function WebEvidenceWorkspace({
 
               <div className="webEvidenceMeta">
                 <InfoGroup title="Source" rows={[
+                  ['Evidence Origin', statusText(selectedEvidence.evidenceOrigin || 'WEB_SEARCH')],
                   ['Question', selectedEvidence.question],
                   ['Query', selectedEvidence.query],
                   ['Domain', selectedEvidence.domain],
@@ -775,6 +808,9 @@ function AdminOperationsCenter() {
   const [documentSearch, setDocumentSearch] = useState('');
   const [articlePage, setArticlePage] = useState(1);
   const [documentPage, setDocumentPage] = useState(1);
+  const [candidatePage, setCandidatePage] = useState(1);
+  const [aiLogPage, setAiLogPage] = useState(1);
+  const [ticketPage, setTicketPage] = useState(1);
   const [globalSearch, setGlobalSearch] = useState('');
   const [globalSearchResults, setGlobalSearchResults] = useState({ articles: [], chunks: [] });
   const [articleEditor, setArticleEditor] = useState({ id: null, title: '', category: '', content: '' });
@@ -859,6 +895,10 @@ function AdminOperationsCenter() {
   const documentPageCount = Math.max(1, Math.ceil(filteredDocuments.length / LIBRARY_PAGE_SIZE));
   const pagedArticles = filteredArticles.slice((articlePage - 1) * LIBRARY_PAGE_SIZE, articlePage * LIBRARY_PAGE_SIZE);
   const pagedDocuments = filteredDocuments.slice((documentPage - 1) * LIBRARY_PAGE_SIZE, documentPage * LIBRARY_PAGE_SIZE);
+  const candidatePageCount = Math.max(1, Math.ceil(documentCandidates.length / REVIEW_PAGE_SIZE));
+  const pagedDocumentCandidates = documentCandidates.slice((candidatePage - 1) * REVIEW_PAGE_SIZE, candidatePage * REVIEW_PAGE_SIZE);
+  const aiLogPageCount = Math.max(1, Math.ceil(aiLogs.length / REVIEW_PAGE_SIZE));
+  const pagedAiLogs = aiLogs.slice((aiLogPage - 1) * REVIEW_PAGE_SIZE, aiLogPage * REVIEW_PAGE_SIZE);
 
   const dashboardNotificationKeys = useMemo(() => buildNotificationKeys(
     data.knowledgeGapLoop?.gaps ?? [],
@@ -912,6 +952,7 @@ function AdminOperationsCenter() {
     try {
       const result = await getAiQuestionLogs();
       setAiLogs(result ?? []);
+      setAiLogPage(1);
       setActionStatus({ type: '', text: '' });
     } catch (error) {
       setAiLogs([]);
@@ -930,6 +971,7 @@ function AdminOperationsCenter() {
     try {
       const result = await getTickets();
       setTickets(result ?? []);
+      setTicketPage(1);
       setActionStatus({ type: '', text: '' });
     } catch (error) {
       setTickets([]);
@@ -1055,6 +1097,7 @@ function AdminOperationsCenter() {
       const result = await getDocumentKnowledgeCandidates();
       const loadedCandidates = result ?? [];
       setDocumentCandidates(loadedCandidates);
+      setCandidatePage(1);
       setSelectedDocumentCandidate((current) => current && loadedCandidates.find((item) => item.id === current.id)
         ? loadedCandidates.find((item) => item.id === current.id)
         : loadedCandidates[0] ?? null);
@@ -1862,7 +1905,7 @@ Prevention controls:
               <button type="button" onClick={loadDocumentCandidates}>Reload</button>
             </div>
             {actionStatus.text && activePage === 'documentLearning' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
-            {documentCandidates.length ? documentCandidates.map((candidate) => (
+            {pagedDocumentCandidates.length ? pagedDocumentCandidates.map((candidate) => (
               <button
                 className={selectedDocumentCandidate?.id === candidate.id ? 'active' : ''}
                 type="button"
@@ -1873,6 +1916,7 @@ Prevention controls:
                 <span>{candidate.category || 'General'} · {statusText(candidate.status)} · {candidate.suggestedAction === 'MERGE_ARTICLE' ? `Merge into ${candidate.suggestedArticleTitle || 'article'}` : 'New article'} · {candidate.originalFilename}</span>
               </button>
             )) : <EmptyState text="No knowledge review candidates yet. Ask AI with a CloudOps file to create reviewable insights." />}
+            <ReviewPager page={candidatePage} pageCount={candidatePageCount} total={documentCandidates.length} onPageChange={setCandidatePage} />
           </div>
           <KnowledgeReader
             article={selectedDocumentCandidate && {
@@ -1912,7 +1956,7 @@ Prevention controls:
       <div className="pageSplitGrid">
         <ReasoningLayer data={data.reasoningLayer} />
         <div className="topRecordList">
-          {aiLogs.length ? aiLogs.map((log) => (
+          {pagedAiLogs.length ? pagedAiLogs.map((log) => (
             <button className="recordButton" type="button" key={log.id} onClick={() => openAiLogDetail(log)}>
               <strong>{log.question}</strong>
               <span>{statusText(log.sourceType)} · {formatDateTime(log.createdTime)}</span>
@@ -1920,6 +1964,7 @@ Prevention controls:
               <em onClick={(event) => { event.stopPropagation(); deleteSelectedAiLog(log); }}>Delete</em>
             </button>
           )) : <EmptyState text="No AI question logs loaded yet." />}
+          <ReviewPager page={aiLogPage} pageCount={aiLogPageCount} total={aiLogs.length} onPageChange={setAiLogPage} />
         </div>
       </div>
     </section>
@@ -1958,6 +2003,8 @@ Prevention controls:
 
   const renderTicketsPage = () => {
     const openTicketRows = tickets.length ? tickets : (data.ticketEscalation?.tickets ?? []);
+    const ticketPageCount = Math.max(1, Math.ceil(openTicketRows.length / REVIEW_PAGE_SIZE));
+    const pagedTickets = openTicketRows.slice((ticketPage - 1) * REVIEW_PAGE_SIZE, ticketPage * REVIEW_PAGE_SIZE);
     return (
       <section className="adminPageSurface">
         <div className="adminPageHeader">
@@ -1971,13 +2018,14 @@ Prevention controls:
           </div>
         </div>
         <div className="topRecordList full">
-          {openTicketRows.length ? openTicketRows.map((ticket) => (
+          {pagedTickets.length ? pagedTickets.map((ticket) => (
             <button className="recordButton" type="button" key={ticket.id || ticket.ticketId || ticket.title} onClick={() => openTicketDetail(ticket)}>
               <strong>{ticket.title}</strong>
               <span>{ticket.priority} · {ticket.status || ticket.owner || 'Open'} · {formatDateTime(ticket.createdTime)}</span>
               <p>{ticket.description || `Owner: ${ticket.owner || 'Unassigned'} · SLA: ${ticket.sla || '-'}`}</p>
             </button>
           )) : <EmptyState text="No open tickets." />}
+          <ReviewPager page={ticketPage} pageCount={ticketPageCount} total={openTicketRows.length} onPageChange={setTicketPage} />
         </div>
       </section>
     );
@@ -2335,6 +2383,8 @@ Prevention controls:
       const filteredLogs = metricContext === 'questions'
         ? aiLogs.filter((log) => isWithinDaysValue(log.createdTime, 7))
         : aiLogs;
+      const modalAiLogPageCount = Math.max(1, Math.ceil(filteredLogs.length / REVIEW_PAGE_SIZE));
+      const modalPagedLogs = filteredLogs.slice((aiLogPage - 1) * REVIEW_PAGE_SIZE, aiLogPage * REVIEW_PAGE_SIZE);
       return (
         <AdminModal title={metricContext === 'confidence' ? 'Answer Confidence Sources' : 'Questions Answered In 7 Days'} onClose={closeModal}>
           <div className="topDetailPanel">
@@ -2345,7 +2395,7 @@ Prevention controls:
             </p>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
             <div className="topRecordList">
-              {filteredLogs.length ? filteredLogs.map((log) => (
+              {modalPagedLogs.length ? modalPagedLogs.map((log) => (
                 <button className="recordButton" type="button" key={log.id} onClick={() => openAiLogDetail(log)}>
                   <strong>{log.question}</strong>
                   <span>{statusText(log.sourceType)} · {formatDateTime(log.createdTime)}</span>
@@ -2353,6 +2403,7 @@ Prevention controls:
                   <em onClick={(event) => { event.stopPropagation(); deleteSelectedAiLog(log); }}>Delete</em>
                 </button>
               )) : <EmptyState text="No matching AI records yet." />}
+              <ReviewPager page={aiLogPage} pageCount={modalAiLogPageCount} total={filteredLogs.length} onPageChange={setAiLogPage} />
             </div>
           </div>
         </AdminModal>
@@ -2361,19 +2412,22 @@ Prevention controls:
 
     if (activeModal === 'ticketList') {
       const openTicketRows = tickets.filter((ticket) => ['OPEN', 'IN_PROGRESS'].includes(ticket.status));
+      const modalTicketPageCount = Math.max(1, Math.ceil(openTicketRows.length / REVIEW_PAGE_SIZE));
+      const modalPagedTickets = openTicketRows.slice((ticketPage - 1) * REVIEW_PAGE_SIZE, ticketPage * REVIEW_PAGE_SIZE);
       return (
         <AdminModal title="Open Ticket Queue" onClose={closeModal}>
           <div className="topDetailPanel">
             <p className="topDetailLead">Open tickets are loaded from the real ticket queue and update as tickets are created or resolved.</p>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
             <div className="topRecordList">
-              {openTicketRows.length ? openTicketRows.map((ticket) => (
-                <article key={ticket.id}>
+              {modalPagedTickets.length ? modalPagedTickets.map((ticket) => (
+                <button className="recordButton" type="button" key={ticket.id} onClick={() => openTicketDetail(ticket)}>
                   <strong>{ticket.title}</strong>
                   <span>{ticket.priority} · {ticket.status} · {formatDateTime(ticket.createdTime)}</span>
                   <p>{ticket.description}</p>
-                </article>
+                </button>
               )) : <EmptyState text="No open tickets." />}
+              <ReviewPager page={ticketPage} pageCount={modalTicketPageCount} total={openTicketRows.length} onPageChange={setTicketPage} />
             </div>
           </div>
         </AdminModal>

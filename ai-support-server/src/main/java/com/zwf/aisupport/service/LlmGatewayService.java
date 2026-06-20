@@ -9,5 +9,7 @@ public interface LlmGatewayService {
 
     Optional<String> generateGroundedAnswer(String question, String sourceType, List<AiAnswerSourceVO> sources);
 
+    Optional<String> generateDirectAnswer(String question);
+
     boolean isConfigured();
 }
