@@ -356,7 +356,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<AiAnswerSourceVO> sources = buildArticleSources(articles);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer("Based on reviewed internal knowledge:\n\n" + article.getContent());
+        answerVO.setAnswer(buildConciseAnswer(article.getContent()));
         answerVO.setSourceType("ARTICLE");
         answerVO.setSourceScore(null);
         answerVO.setSourceArticleId(article.getId());
@@ -373,7 +373,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private AiAnswerVO buildWebEvidenceBasedAnswer(WebEvidence evidence) {
         List<AiAnswerSourceVO> sources = buildWebEvidenceSources(evidence);
-        Optional<String> llmAnswer = llmGatewayService.generateGroundedAnswer(evidence.getQuestion(), "WEB", sources);
+        Optional<String> llmAnswer = llmGatewayService.generateGroundedAnswer(evidence.getQuestion(), "WEB", sources)
+                .map(this::normalizeUserAnswer)
+                .filter(answer -> !answer.isBlank());
         WebEvidence finalEvidence = llmAnswer
                 .map(answer -> webEvidenceService.updateSuggestedArticle(
                         evidence.getId(),
@@ -384,14 +386,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<AiAnswerSourceVO> finalSources = buildWebEvidenceSources(finalEvidence);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(llmAnswer
-                .orElse("""
-                        I could not find a precise internal answer, so I checked external web evidence.
-
-                        %s
-
-                        This evidence has been saved for administrator review before it becomes internal knowledge.
-                        """.formatted(finalEvidence.getSuggestedArticleContent())));
+        answerVO.setAnswer(llmAnswer.orElse(buildConciseWebEvidenceAnswer(finalEvidence)));
         answerVO.setSourceType("WEB");
         answerVO.setSourceScore(finalEvidence.getCredibilityScore() == null ? null : finalEvidence.getCredibilityScore().doubleValue());
         answerVO.setSourceArticleId(null);
@@ -461,7 +456,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<AiAnswerSourceVO> sources = buildDocumentSources(documentResults);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer("Based on the uploaded document " + documentResult.getOriginalFilename() + ":\n\n" + documentResult.getContent());
+        answerVO.setAnswer(buildConciseAnswer(documentResult.getContent()));
         answerVO.setSourceType("DOCUMENT");
         answerVO.setSourceScore(documentResult.getRelevanceScore());
         answerVO.setSourceArticleId(null);
@@ -587,9 +582,150 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private record ArticleMatch(KnowledgeArticle article, int score) {
     }
 
+    private String buildConciseWebEvidenceAnswer(WebEvidence evidence) {
+        String content = evidence.getExtractedContent();
+        if (content == null || content.isBlank()) {
+            content = evidence.getSuggestedArticleContent();
+        }
+        String concise = buildConciseAnswer(content);
+        if (concise.isBlank()) {
+            concise = "I found related external evidence, but it needs administrator review before becoming trusted internal knowledge.";
+        }
+        return concise + "\n\nSaved for admin review.";
+    }
+
+    private String buildConciseAnswer(String content) {
+        List<String> points = extractKeyPoints(content);
+        if (points.isEmpty()) {
+            return "";
+        }
+
+        if (points.size() == 1) {
+            return points.get(0);
+        }
+
+        StringBuilder answer = new StringBuilder("Key answer:\n");
+        points.stream()
+                .limit(5)
+                .forEach(point -> answer.append("- ").append(point).append("\n"));
+        return answer.toString().trim();
+    }
+
+    private String normalizeUserAnswer(String answer) {
+        List<String> points = extractKeyPoints(answer);
+        if (points.isEmpty()) {
+            return "";
+        }
+        if (points.size() <= 2) {
+            return String.join("\n", points);
+        }
+
+        StringBuilder normalized = new StringBuilder("Key answer:\n");
+        points.stream()
+                .limit(5)
+                .forEach(point -> normalized.append("- ").append(point).append("\n"));
+        return normalized.toString().trim();
+    }
+
+    private List<String> extractKeyPoints(String content) {
+        String cleaned = cleanAnswerContent(content);
+        if (cleaned.isBlank()) {
+            return List.of();
+        }
+
+        List<String> lines = new ArrayList<>();
+        for (String rawLine : cleaned.split("\\R+")) {
+            String line = normalizeAnswerLine(rawLine);
+            if (isUsefulAnswerPoint(line) && !lines.contains(line)) {
+                lines.add(line);
+            }
+            if (lines.size() >= 5) {
+                return lines;
+            }
+        }
+
+        if (lines.size() >= 3) {
+            return lines;
+        }
+
+        for (String sentence : cleaned.split("(?<=[.!?。！？])\\s+")) {
+            String line = normalizeAnswerLine(sentence);
+            if (isUsefulAnswerPoint(line) && !lines.contains(line)) {
+                lines.add(line);
+            }
+            if (lines.size() >= 5) {
+                break;
+            }
+        }
+
+        if (!lines.isEmpty()) {
+            return lines;
+        }
+
+        return List.of(limitAnswerPoint(cleaned));
+    }
+
+    private String cleanAnswerContent(String content) {
+        if (content == null) {
+            return "";
+        }
+        return content
+                .replace('\u00a0', ' ')
+                .replaceAll("(?im)^#+\\s*", "")
+                .replaceAll("(?im)^category\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^source references\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^purpose\\s*:?\\s*$", "")
+                .replaceAll("(?im)^original question\\s*:?\\s*$", "")
+                .replaceAll("(?im)^observed answer\\s*:?\\s*$", "")
+                .replaceAll("(?im)^review checklist\\s*:?\\s*$", "")
+                .replaceAll("(?im)^web evidence summary\\s*:?\\s*$", "")
+                .replaceAll("(?im)^model-generated answer\\s*:?\\s*$", "")
+                .replaceAll("(?im)^sources\\s*:?\\s*$", "")
+                .trim();
+    }
+
+    private String normalizeAnswerLine(String rawLine) {
+        if (rawLine == null) {
+            return "";
+        }
+        String line = rawLine
+                .replaceAll("^\\s*[-*•]+\\s*", "")
+                .replaceAll("^\\s*\\d+[.)]\\s*", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return limitAnswerPoint(line);
+    }
+
+    private boolean isUsefulAnswerPoint(String line) {
+        String normalized = safeLower(line);
+        return line.length() >= 24
+                && !normalized.startsWith("category:")
+                && !normalized.startsWith("source references:")
+                && !normalized.startsWith("purpose:")
+                && !normalized.startsWith("sources:")
+                && !normalized.contains("capture externally discovered evidence")
+                && !normalized.contains("preserve the model-generated answer")
+                && !normalized.contains("review this content before publishing")
+                && !normalized.contains("saved for administrator review")
+                && !normalized.contains("add internal system names")
+                && !normalized.contains("remove any platform-specific claim")
+                && !normalized.contains("validate the source url");
+    }
+
+    private String limitAnswerPoint(String value) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        if (trimmed.length() <= 220) {
+            return trimmed;
+        }
+        return trimmed.substring(0, 217).trim() + "...";
+    }
+
     private AiAnswerVO buildFallbackAnswer() {
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer("I could not find a reliable answer in uploaded documents, internal knowledge articles, or external web evidence. A support ticket can be created for further assistance.");
+        answerVO.setAnswer("I do not have enough reliable knowledge to answer this yet. Please create a support ticket or add reviewed knowledge for this topic.");
         answerVO.setSourceType("NONE");
         answerVO.setSourceScore(null);
         answerVO.setSourceArticleId(null);
