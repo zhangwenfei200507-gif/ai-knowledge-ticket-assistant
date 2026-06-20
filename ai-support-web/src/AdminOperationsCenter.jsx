@@ -1759,8 +1759,8 @@ Prevention controls:
       <div className="adminPageHeader">
         <div>
           <span>Knowledge Library</span>
-          <h2>Published Articles</h2>
-          <p>Maintain concise internal articles used by AI as structured answer sources.</p>
+          <h2>Published Knowledge Packs</h2>
+          <p>Maintain reviewed, durable articles used by AI as long-term answer sources. Short document chunks stay in the document library as retrieval evidence.</p>
         </div>
         <div>
           <button type="button" onClick={loadArticles}>Refresh</button>
@@ -1802,8 +1802,8 @@ Prevention controls:
       <div className="adminPageHeader">
         <div>
           <span>Document Library</span>
-          <h2>Uploaded Runbooks</h2>
-          <p>Inspect uploaded documents and the exact chunks used by retrieval.</p>
+          <h2>Uploaded Documents and Retrieval Chunks</h2>
+          <p>Inspect source files and their searchable chunks. Chunks are retrieval evidence, not published articles.</p>
         </div>
         <div>
           <button type="button" onClick={loadDocuments}>Refresh</button>
@@ -2234,7 +2234,7 @@ Prevention controls:
 
     if (activeModal === 'articleLibrary') {
       return (
-        <AdminModal title="Knowledge Articles" onClose={closeModal}>
+        <AdminModal title="Knowledge Packs" onClose={closeModal}>
           <div className="knowledgeLibrary">
             <div className="libraryList">
               <div className="libraryToolbar">
@@ -2273,7 +2273,7 @@ Prevention controls:
 
     if (activeModal === 'documentLibrary') {
       return (
-        <AdminModal title="Uploaded Runbook Documents" onClose={closeModal}>
+        <AdminModal title="Uploaded Documents and Chunks" onClose={closeModal}>
           <div className="knowledgeLibrary">
             <div className="libraryList">
               <div className="libraryToolbar">
