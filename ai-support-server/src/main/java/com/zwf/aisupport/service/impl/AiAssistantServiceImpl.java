@@ -6,6 +6,7 @@ import com.zwf.aisupport.dto.AiAskDTO;
 import com.zwf.aisupport.dto.AiQuestionLogFeedbackDTO;
 import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
 import com.zwf.aisupport.entity.AiQuestionLog;
+import com.zwf.aisupport.entity.DocumentChunk;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.Ticket;
 import com.zwf.aisupport.entity.WebEvidence;
@@ -14,10 +15,12 @@ import com.zwf.aisupport.mapper.DocumentChunkMapper;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.service.AiAssistantService;
+import com.zwf.aisupport.service.DocumentService;
 import com.zwf.aisupport.service.LlmGatewayService;
 import com.zwf.aisupport.service.WebEvidenceService;
 import com.zwf.aisupport.vo.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -42,6 +45,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private final TicketMapper ticketMapper;
     private final AiQuestionLogMapper aiQuestionLogMapper;
     private final DocumentChunkMapper documentChunkMapper;
+    private final DocumentService documentService;
     private final WebEvidenceService webEvidenceService;
     private final LlmGatewayService llmGatewayService;
 
@@ -49,12 +53,14 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                                   TicketMapper ticketMapper,
                                   AiQuestionLogMapper aiQuestionLogMapper,
                                   DocumentChunkMapper documentChunkMapper,
+                                  DocumentService documentService,
                                   WebEvidenceService webEvidenceService,
                                   LlmGatewayService llmGatewayService) {
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.ticketMapper = ticketMapper;
         this.aiQuestionLogMapper = aiQuestionLogMapper;
         this.documentChunkMapper = documentChunkMapper;
+        this.documentService = documentService;
         this.webEvidenceService = webEvidenceService;
         this.llmGatewayService = llmGatewayService;
     }
@@ -66,6 +72,29 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         // Record every AI question so the platform can review usage and improve knowledge later.
         saveQuestionLog(aiAskDTO.getQuestion(), answerVO);
 
+        return answerVO;
+    }
+
+    @Override
+    public AiAnswerVO askWithFile(String question, MultipartFile file) {
+        if (question == null || question.isBlank()) {
+            throw new BusinessException("Question cannot be blank");
+        }
+
+        String trimmedQuestion = question.trim();
+        if (file == null || file.isEmpty()) {
+            AiAskDTO askDTO = new AiAskDTO();
+            askDTO.setQuestion(trimmedQuestion);
+            return ask(askDTO);
+        }
+
+        KnowledgeDocumentVO uploadedDocument = documentService.upload(file, "User Upload");
+        List<DocumentSearchResultVO> uploadedDocumentResults = findUploadedDocumentAnswer(trimmedQuestion, uploadedDocument);
+        AiAnswerVO answerVO = uploadedDocumentResults.isEmpty()
+                ? findAnswerFromKnowledgeBase(trimmedQuestion)
+                : buildDocumentBasedAnswer(trimmedQuestion, uploadedDocumentResults);
+
+        saveQuestionLog(trimmedQuestion, answerVO);
         return answerVO;
     }
 
@@ -101,7 +130,10 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private AiAnswerVO findAnswerFromKnowledgeBase(AiAskDTO aiAskDTO) {
-        String question = aiAskDTO.getQuestion().trim();
+        return findAnswerFromKnowledgeBase(aiAskDTO.getQuestion().trim());
+    }
+
+    private AiAnswerVO findAnswerFromKnowledgeBase(String question) {
         List<String> terms = extractSearchTerms(question);
         List<String> specificTerms = extractSpecificTerms(terms);
         List<String> versionTerms = extractVersionTerms(terms);
@@ -131,6 +163,57 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         }
 
         return buildFallbackAnswer();
+    }
+
+    private List<DocumentSearchResultVO> findUploadedDocumentAnswer(String question, KnowledgeDocumentVO document) {
+        List<String> terms = extractSearchTerms(question);
+        List<String> specificTerms = extractSpecificTerms(terms);
+        List<String> versionTerms = extractVersionTerms(terms);
+
+        List<DocumentSearchResultVO> preciseResults = documentChunkMapper.searchChunksByDocumentId(document.getId(), question)
+                .stream()
+                .filter(result -> isReliableInternalSource(result.getContent(), terms, specificTerms, versionTerms))
+                .toList();
+        if (!preciseResults.isEmpty()) {
+            return preciseResults;
+        }
+
+        if (isDocumentOverviewQuestion(question)) {
+            return documentChunkMapper.findByDocumentId(document.getId())
+                    .stream()
+                    .limit(3)
+                    .map(chunk -> convertUploadedChunkToSearchResult(document, chunk))
+                    .toList();
+        }
+
+        return List.of();
+    }
+
+    private boolean isDocumentOverviewQuestion(String question) {
+        String normalized = safeLower(question);
+        return normalized.contains("summarize")
+                || normalized.contains("summary")
+                || normalized.contains("what is this document")
+                || normalized.contains("what does this document")
+                || normalized.contains("key points")
+                || normalized.contains("main points")
+                || normalized.contains("核心")
+                || normalized.contains("总结")
+                || normalized.contains("概括")
+                || normalized.contains("这份文件")
+                || normalized.contains("这个文件");
+    }
+
+    private DocumentSearchResultVO convertUploadedChunkToSearchResult(KnowledgeDocumentVO document, DocumentChunk chunk) {
+        DocumentSearchResultVO result = new DocumentSearchResultVO();
+        result.setChunkId(chunk.getId());
+        result.setDocumentId(document.getId());
+        result.setOriginalFilename(document.getOriginalFilename());
+        result.setCategory(document.getCategory());
+        result.setChunkIndex(chunk.getChunkIndex());
+        result.setContent(chunk.getContent());
+        result.setRelevanceScore(1.0);
+        return result;
     }
 
     private void saveQuestionLog(String question, AiAnswerVO answerVO) {

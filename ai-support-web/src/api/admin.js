@@ -155,7 +155,19 @@ export const uploadKnowledgeDocument = ({ file, category }) => {
   });
 };
 
-export const askAiQuestion = (payload) => requestJson('/api/ai/ask', {
-  method: 'POST',
-  body: JSON.stringify(payload),
-});
+export const askAiQuestion = (payload) => {
+  if (payload?.file) {
+    const formData = new FormData();
+    formData.append('question', payload.question);
+    formData.append('file', payload.file);
+    return requestJson('/api/ai/ask-with-file', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  return requestJson('/api/ai/ask', {
+    method: 'POST',
+    body: JSON.stringify({ question: payload.question }),
+  });
+};

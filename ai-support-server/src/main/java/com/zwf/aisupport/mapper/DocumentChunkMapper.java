@@ -50,4 +50,30 @@ public interface DocumentChunkMapper {
         limit 5
         """)
     List<DocumentSearchResultVO> searchChunks(@Param("keyword") String keyword);
+
+    @Select("""
+        with search_query as (
+            select websearch_to_tsquery('english', #{keyword}) as query
+        )
+        select dc.id as chunk_id,
+               dc.document_id,
+               d.original_filename,
+               d.category,
+               dc.chunk_index,
+               dc.content,
+               ts_rank(to_tsvector('english', dc.content), search_query.query) as relevance_score
+        from document_chunks dc
+        join documents d on d.id = dc.document_id
+        cross join search_query
+        where d.status = 'ACTIVE'
+          and dc.document_id = #{documentId}
+          and (
+              to_tsvector('english', dc.content) @@ search_query.query
+              or lower(dc.content) like lower(concat('%', #{keyword}, '%'))
+          )
+        order by relevance_score desc, dc.chunk_index asc
+        limit 5
+        """)
+    List<DocumentSearchResultVO> searchChunksByDocumentId(@Param("documentId") Long documentId,
+                                                          @Param("keyword") String keyword);
 }

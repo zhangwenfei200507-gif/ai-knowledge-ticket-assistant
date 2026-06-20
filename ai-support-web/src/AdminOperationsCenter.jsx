@@ -747,7 +747,8 @@ function AdminOperationsCenter() {
   const [actionStatus, setActionStatus] = useState({ type: '', text: '' });
   const [articleForm, setArticleForm] = useState({ title: '', category: 'General', file: null });
   const [documentForm, setDocumentForm] = useState({ category: 'General', file: null });
-  const [questionForm, setQuestionForm] = useState({ question: '' });
+  const [questionForm, setQuestionForm] = useState({ question: '', file: null });
+  const [questionAnswer, setQuestionAnswer] = useState(null);
   const [articles, setArticles] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [selectedArticle, setSelectedArticle] = useState(null);
@@ -849,6 +850,9 @@ function AdminOperationsCenter() {
 
   const openModal = (modal) => {
     setActionStatus({ type: '', text: '' });
+    if (modal === 'ask') {
+      setQuestionAnswer(null);
+    }
     setActiveModal(modal);
   };
 
@@ -1483,11 +1487,18 @@ Prevention controls:
       return;
     }
 
-    setActionStatus({ type: 'loading', text: 'Asking AI and recording the question log...' });
+    setActionStatus({ type: 'loading', text: questionForm.file ? 'Uploading file, searching precise knowledge, and asking AI...' : 'Asking AI and recording the question log...' });
     try {
-      await askAiQuestion({ question: questionForm.question.trim() });
-      setActionStatus({ type: 'success', text: 'Question recorded. Dashboard metrics will reflect the new AI log.' });
-      setQuestionForm({ question: '' });
+      const answer = await askAiQuestion({ question: questionForm.question.trim(), file: questionForm.file });
+      setQuestionAnswer(answer);
+      setActionStatus({ type: 'success', text: questionForm.file ? 'Answer ready. Uploaded file was indexed and checked first.' : 'Answer ready and recorded.' });
+      setQuestionForm({ question: '', file: null });
+      if (activePage === 'ai') {
+        await loadAiLogs();
+      }
+      if (questionForm.file) {
+        await loadDocumentCandidates();
+      }
       loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -1569,11 +1580,11 @@ Prevention controls:
       <section className="commandCenterGrid">
         <article className="commandPanel highlight">
           <span>Primary Workflow</span>
-          <h2>Build reliable internal knowledge first.</h2>
-          <p>Upload verified runbooks, review gaps, and let AI answer only from grounded sources.</p>
+          <h2>Ask AI with files, knowledge, and web fallback.</h2>
+          <p>Attach a runbook or incident note, ask a precise question, and let AegisCloud search the file first before using internal knowledge or web evidence.</p>
           <div>
+            <button type="button" onClick={() => openModal('ask')}><Bot size={15} />Ask AI</button>
             <button type="button" onClick={() => openModal('uploadArticle')}><FileText size={15} />New Article</button>
-            <button type="button" onClick={() => openModal('uploadDocument')}><Upload size={15} />Upload Document</button>
           </div>
         </article>
 
@@ -1949,13 +1960,37 @@ Prevention controls:
 
     if (activeModal === 'ask') {
       return (
-        <AdminModal title="Ask AI With Current Knowledge" onClose={closeModal}>
+        <AdminModal title="Ask AI With Optional File" onClose={closeModal}>
           <form className="adminActionForm" onSubmit={submitAiQuestion}>
             <Field label="Question">
-              <textarea value={questionForm.question} rows={5} placeholder="Ask about uploaded documents or knowledge articles" onChange={(event) => setQuestionForm({ question: event.target.value })} />
+              <textarea
+                value={questionForm.question}
+                rows={5}
+                placeholder="Ask about an uploaded file, internal knowledge, or a CloudOps issue"
+                onChange={(event) => setQuestionForm((current) => ({ ...current, question: event.target.value }))}
+              />
             </Field>
-            <button className="adminSubmitButton" type="submit">Ask and Record</button>
+            <Field label="Attach file optional">
+              <input
+                type="file"
+                accept=".txt,.md,.pdf,.docx"
+                onChange={(event) => setQuestionForm((current) => ({ ...current, file: event.target.files?.[0] ?? null }))}
+              />
+            </Field>
+            <button className="adminSubmitButton" type="submit">Ask AI</button>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+            {questionAnswer && (
+              <div className="detailReadableBlock">
+                <strong>{statusText(questionAnswer.sourceType)} answer</strong>
+                <KnowledgeContentBlock content={questionAnswer.answer} />
+                <InfoGroup title="Grounding" rows={[
+                  ['Source Type', statusText(questionAnswer.sourceType)],
+                  ['Document', questionAnswer.sourceDocumentName],
+                  ['Article', questionAnswer.sourceTitle],
+                  ['Web', questionAnswer.sourceDomain],
+                ]} />
+              </div>
+            )}
           </form>
         </AdminModal>
       );

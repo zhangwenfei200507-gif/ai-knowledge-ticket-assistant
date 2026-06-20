@@ -8,6 +8,7 @@ import com.zwf.aisupport.service.AiAssistantService;
 import com.zwf.aisupport.vo.*;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -24,6 +25,13 @@ public class AiAssistantController {
     @PostMapping("/ask")
     public Result<AiAnswerVO> ask(@Valid @RequestBody AiAskDTO aiAskDTO) {
         AiAnswerVO answer = aiAssistantService.ask(aiAskDTO);
+        return Result.success(answer);
+    }
+
+    @PostMapping("/ask-with-file")
+    public Result<AiAnswerVO> askWithFile(@RequestParam("question") String question,
+                                          @RequestParam(value = "file", required = false) MultipartFile file) {
+        AiAnswerVO answer = aiAssistantService.askWithFile(question, file);
         return Result.success(answer);
     }
 
