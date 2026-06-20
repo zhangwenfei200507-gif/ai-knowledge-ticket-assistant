@@ -5,6 +5,7 @@ import com.zwf.aisupport.entity.DocumentChunk;
 import com.zwf.aisupport.entity.KnowledgeDocument;
 import com.zwf.aisupport.mapper.DocumentChunkMapper;
 import com.zwf.aisupport.mapper.DocumentKnowledgeCandidateMapper;
+import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.KnowledgeDocumentMapper;
 import com.zwf.aisupport.security.CurrentUser;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
@@ -42,6 +43,9 @@ class DocumentServiceImplTest {
 
     @Mock
     private DocumentKnowledgeCandidateMapper candidateMapper;
+
+    @Mock
+    private KnowledgeArticleMapper knowledgeArticleMapper;
 
     @InjectMocks
     private DocumentServiceImpl documentService;

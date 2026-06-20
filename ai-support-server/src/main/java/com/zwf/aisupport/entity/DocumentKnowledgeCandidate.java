@@ -15,6 +15,8 @@ public class DocumentKnowledgeCandidate {
     private String content;
     private String category;
     private BigDecimal importanceScore;
+    private Long suggestedArticleId;
+    private String suggestedAction;
     private String status;
     private Long createdBy;
     private Long reviewedBy;

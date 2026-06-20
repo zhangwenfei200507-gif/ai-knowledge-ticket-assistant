@@ -178,12 +178,14 @@ const navItems = [
   ['command', 'Command Center', Home],
   ['knowledge', 'Knowledge Library', BookOpen],
   ['documents', 'Document Library', FileText],
-  ['documentLearning', 'Document Learning', Target],
+  ['documentLearning', 'Knowledge Review', Target],
   ['webEvidence', 'Web Evidence', Globe2],
   ['ai', 'AI Activity', Bot],
   ['gaps', 'Knowledge Gaps', AlertTriangle],
   ['tickets', 'Tickets', GitBranch],
 ];
+
+const LIBRARY_PAGE_SIZE = 8;
 
 function statusText(status) {
   if (!status) return 'Unknown';
@@ -224,6 +226,17 @@ function Section({ number, title, action, onAction, children, className = '', id
 
 function EmptyState({ text }) {
   return <div className="adminEmptyState">{text}</div>;
+}
+
+function LibraryPager({ page, pageCount, total, onPageChange }) {
+  if (total <= LIBRARY_PAGE_SIZE) return null;
+  return (
+    <div className="libraryPager">
+      <button type="button" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>Prev</button>
+      <span>{page} / {pageCount} · {total} total</span>
+      <button type="button" disabled={page >= pageCount} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>Next</button>
+    </div>
+  );
 }
 
 function MetricCard({ metric, onClick }) {
@@ -760,6 +773,8 @@ function AdminOperationsCenter() {
   const [selectedDocumentCandidate, setSelectedDocumentCandidate] = useState(null);
   const [articleSearch, setArticleSearch] = useState('');
   const [documentSearch, setDocumentSearch] = useState('');
+  const [articlePage, setArticlePage] = useState(1);
+  const [documentPage, setDocumentPage] = useState(1);
   const [globalSearch, setGlobalSearch] = useState('');
   const [globalSearchResults, setGlobalSearchResults] = useState({ articles: [], chunks: [] });
   const [articleEditor, setArticleEditor] = useState({ id: null, title: '', category: '', content: '' });
@@ -839,6 +854,11 @@ function AdminOperationsCenter() {
       document.status,
     ].some((value) => String(value ?? '').toLowerCase().includes(keyword)));
   }, [documents, documentSearch]);
+
+  const articlePageCount = Math.max(1, Math.ceil(filteredArticles.length / LIBRARY_PAGE_SIZE));
+  const documentPageCount = Math.max(1, Math.ceil(filteredDocuments.length / LIBRARY_PAGE_SIZE));
+  const pagedArticles = filteredArticles.slice((articlePage - 1) * LIBRARY_PAGE_SIZE, articlePage * LIBRARY_PAGE_SIZE);
+  const pagedDocuments = filteredDocuments.slice((documentPage - 1) * LIBRARY_PAGE_SIZE, documentPage * LIBRARY_PAGE_SIZE);
 
   const dashboardNotificationKeys = useMemo(() => buildNotificationKeys(
     data.knowledgeGapLoop?.gaps ?? [],
@@ -1753,14 +1773,15 @@ Prevention controls:
             <strong>{articles.length} Articles</strong>
             <button type="button" onClick={() => openModal('uploadArticle')}>Upload New</button>
           </div>
-          <input className="librarySearch" value={articleSearch} placeholder="Search title, category, content..." onChange={(event) => setArticleSearch(event.target.value)} />
+          <input className="librarySearch" value={articleSearch} placeholder="Search title, category, content..." onChange={(event) => { setArticleSearch(event.target.value); setArticlePage(1); }} />
           {actionStatus.text && activePage === 'knowledge' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
-          {filteredArticles.length ? filteredArticles.map((article) => (
+          {pagedArticles.length ? pagedArticles.map((article) => (
             <button className={selectedArticle?.id === article.id ? 'active' : ''} type="button" key={article.id} onClick={() => setSelectedArticle(article)}>
               <strong>{article.title}</strong>
               <span>{article.category || 'Uncategorized'} · {statusText(article.status)}</span>
             </button>
           )) : <EmptyState text="No knowledge articles uploaded yet." />}
+          <LibraryPager page={articlePage} pageCount={articlePageCount} total={filteredArticles.length} onPageChange={setArticlePage} />
         </div>
         <KnowledgeReader
           article={selectedArticle}
@@ -1795,14 +1816,15 @@ Prevention controls:
             <strong>{documents.length} Documents</strong>
             <button type="button" onClick={() => openModal('uploadDocument')}>Upload New</button>
           </div>
-          <input className="librarySearch" value={documentSearch} placeholder="Search filename, category, type..." onChange={(event) => setDocumentSearch(event.target.value)} />
+          <input className="librarySearch" value={documentSearch} placeholder="Search filename, category, type..." onChange={(event) => { setDocumentSearch(event.target.value); setDocumentPage(1); }} />
           {actionStatus.text && activePage === 'documents' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
-          {filteredDocuments.length ? filteredDocuments.map((document) => (
+          {pagedDocuments.length ? pagedDocuments.map((document) => (
             <button className={selectedDocument?.id === document.id ? 'active' : ''} type="button" key={document.id} onClick={() => viewDocumentChunks(document)}>
               <strong>{document.originalFilename}</strong>
               <span>{document.category || 'Uncategorized'} · {formatFileSize(document.fileSize)} · {statusText(document.status)}</span>
             </button>
           )) : <EmptyState text="No documents uploaded yet." />}
+          <LibraryPager page={documentPage} pageCount={documentPageCount} total={filteredDocuments.length} onPageChange={setDocumentPage} />
         </div>
         <KnowledgeReader
           chunks={selectedChunks}
@@ -1824,13 +1846,13 @@ Prevention controls:
       <section className="adminPageSurface">
         <div className="adminPageHeader">
           <div>
-            <span>Document Learning</span>
-            <h2>Knowledge Candidates From Uploaded Files</h2>
-            <p>Review high-value operational knowledge extracted from user and admin uploaded documents before it becomes trusted internal knowledge.</p>
+            <span>Knowledge Review</span>
+            <h2>Merge File Insights Into Durable Articles</h2>
+            <p>Review small knowledge points extracted from uploaded files, merge related items into existing articles, or publish a new article only when the topic is truly new.</p>
           </div>
           <div>
             <button type="button" onClick={loadDocumentCandidates}>Refresh</button>
-            <button type="button" onClick={() => openModal('uploadDocument')}>Upload Document</button>
+            <button type="button" onClick={() => openModal('ask')}>Ask With File</button>
           </div>
         </div>
         <div className="knowledgeLibrary embedded">
@@ -1848,21 +1870,23 @@ Prevention controls:
                 onClick={() => setSelectedDocumentCandidate(candidate)}
               >
                 <strong>{candidate.title}</strong>
-                <span>{candidate.category || 'General'} · {statusText(candidate.status)} · {candidate.originalFilename}</span>
+                <span>{candidate.category || 'General'} · {statusText(candidate.status)} · {candidate.suggestedAction === 'MERGE_ARTICLE' ? `Merge into ${candidate.suggestedArticleTitle || 'article'}` : 'New article'} · {candidate.originalFilename}</span>
               </button>
-            )) : <EmptyState text="No document learning candidates yet. Upload CloudOps documents to create reviewable insights." />}
+            )) : <EmptyState text="No knowledge review candidates yet. Ask AI with a CloudOps file to create reviewable insights." />}
           </div>
           <KnowledgeReader
             article={selectedDocumentCandidate && {
               title: selectedDocumentCandidate.title,
               category: selectedDocumentCandidate.category,
               status: selectedDocumentCandidate.status,
-              content: selectedDocumentCandidate.content,
+              content: `${selectedDocumentCandidate.suggestedAction === 'MERGE_ARTICLE'
+                ? `Suggested action: Merge into "${selectedDocumentCandidate.suggestedArticleTitle || `Article #${selectedDocumentCandidate.suggestedArticleId}`}".`
+                : 'Suggested action: Create a new article.'}\n\n${selectedDocumentCandidate.content}`,
             }}
             actions={selectedDocumentCandidate && (
               <>
                 <button type="button" onClick={() => copyToClipboard(selectedDocumentCandidate.content, 'Document insight copied.')}>Copy</button>
-                <button type="button" onClick={() => approveSelectedDocumentCandidate(selectedDocumentCandidate)}>Approve</button>
+                <button type="button" onClick={() => approveSelectedDocumentCandidate(selectedDocumentCandidate)}>{selectedDocumentCandidate.suggestedAction === 'MERGE_ARTICLE' ? 'Approve Merge' : 'Approve New Article'}</button>
                 <button className="danger" type="button" onClick={() => rejectSelectedDocumentCandidate(selectedDocumentCandidate)}>Reject</button>
               </>
             )}
@@ -2217,9 +2241,9 @@ Prevention controls:
                 <strong>{articles.length} Articles</strong>
                 <button type="button" onClick={() => openModal('uploadArticle')}>Upload New</button>
               </div>
-              <input className="librarySearch" value={articleSearch} placeholder="Search title, category, content..." onChange={(event) => setArticleSearch(event.target.value)} />
+              <input className="librarySearch" value={articleSearch} placeholder="Search title, category, content..." onChange={(event) => { setArticleSearch(event.target.value); setArticlePage(1); }} />
               {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
-              {filteredArticles.length ? filteredArticles.map((article) => (
+              {pagedArticles.length ? pagedArticles.map((article) => (
                 <button
                   className={selectedArticle?.id === article.id ? 'active' : ''}
                   type="button"
@@ -2230,6 +2254,7 @@ Prevention controls:
                   <span>{article.category || 'Uncategorized'} · {statusText(article.status)}</span>
                 </button>
               )) : <EmptyState text="No knowledge articles uploaded yet." />}
+              <LibraryPager page={articlePage} pageCount={articlePageCount} total={filteredArticles.length} onPageChange={setArticlePage} />
             </div>
             <KnowledgeReader
               article={selectedArticle}
@@ -2255,9 +2280,9 @@ Prevention controls:
                 <strong>{documents.length} Documents</strong>
                 <button type="button" onClick={() => openModal('uploadDocument')}>Upload New</button>
               </div>
-              <input className="librarySearch" value={documentSearch} placeholder="Search filename, category, type..." onChange={(event) => setDocumentSearch(event.target.value)} />
+              <input className="librarySearch" value={documentSearch} placeholder="Search filename, category, type..." onChange={(event) => { setDocumentSearch(event.target.value); setDocumentPage(1); }} />
               {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
-              {filteredDocuments.length ? filteredDocuments.map((document) => (
+              {pagedDocuments.length ? pagedDocuments.map((document) => (
                 <button
                   className={selectedDocument?.id === document.id ? 'active' : ''}
                   type="button"
@@ -2268,6 +2293,7 @@ Prevention controls:
                   <span>{document.category || 'Uncategorized'} · {formatFileSize(document.fileSize)} · {statusText(document.status)}</span>
                 </button>
               )) : <EmptyState text="No documents uploaded yet." />}
+              <LibraryPager page={documentPage} pageCount={documentPageCount} total={filteredDocuments.length} onPageChange={setDocumentPage} />
             </div>
             <KnowledgeReader
               chunks={selectedChunks}

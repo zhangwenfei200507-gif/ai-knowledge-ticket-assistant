@@ -5,9 +5,11 @@ import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.common.util.UploadedTextExtractor;
 import com.zwf.aisupport.entity.DocumentChunk;
 import com.zwf.aisupport.entity.DocumentKnowledgeCandidate;
+import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.KnowledgeDocument;
 import com.zwf.aisupport.mapper.DocumentChunkMapper;
 import com.zwf.aisupport.mapper.DocumentKnowledgeCandidateMapper;
+import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.KnowledgeDocumentMapper;
 import com.zwf.aisupport.service.DocumentService;
 import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
@@ -33,13 +35,16 @@ public class DocumentServiceImpl implements DocumentService {
     private final KnowledgeDocumentMapper knowledgeDocumentMapper;
     private final DocumentChunkMapper documentChunkMapper;
     private final DocumentKnowledgeCandidateMapper candidateMapper;
+    private final KnowledgeArticleMapper knowledgeArticleMapper;
 
     public DocumentServiceImpl(KnowledgeDocumentMapper knowledgeDocumentMapper,
                                DocumentChunkMapper documentChunkMapper,
-                               DocumentKnowledgeCandidateMapper candidateMapper) {
+                               DocumentKnowledgeCandidateMapper candidateMapper,
+                               KnowledgeArticleMapper knowledgeArticleMapper) {
         this.knowledgeDocumentMapper = knowledgeDocumentMapper;
         this.documentChunkMapper = documentChunkMapper;
         this.candidateMapper = candidateMapper;
+        this.knowledgeArticleMapper = knowledgeArticleMapper;
     }
 
     @Override
@@ -128,9 +133,50 @@ public class DocumentServiceImpl implements DocumentService {
         candidate.setContent(buildCandidateContent(document, chunk, category));
         candidate.setCategory(category);
         candidate.setImportanceScore(new BigDecimal(score).movePointLeft(1).min(new BigDecimal("0.99")));
+        SuggestedArticleTarget target = findSuggestedArticleTarget(category, chunk.getContent());
+        candidate.setSuggestedArticleId(target.articleId());
+        candidate.setSuggestedAction(target.articleId() == null ? "CREATE_ARTICLE" : "MERGE_ARTICLE");
         candidate.setStatus("NEEDS_REVIEW");
         candidate.setCreatedBy(currentUserId);
         return candidate;
+    }
+
+    private SuggestedArticleTarget findSuggestedArticleTarget(String category, String content) {
+        List<String> terms = extractTerms(category + " " + content);
+        return knowledgeArticleMapper.findPublishedArticles().stream()
+                .map(article -> new ArticleTargetScore(article, scoreArticleTarget(article, category, terms)))
+                .filter(score -> score.score() >= 6)
+                .max(Comparator.comparingInt(ArticleTargetScore::score))
+                .map(score -> new SuggestedArticleTarget(score.article().getId()))
+                .orElse(new SuggestedArticleTarget(null));
+    }
+
+    private int scoreArticleTarget(KnowledgeArticle article, String category, List<String> terms) {
+        String articleText = normalizeSearchText(article.getTitle() + " " + article.getCategory() + " " + article.getContent());
+        int score = 0;
+        if (category != null && article.getCategory() != null && category.equalsIgnoreCase(article.getCategory())) {
+            score += 5;
+        }
+        for (String term : terms) {
+            if (articleText.contains(term)) {
+                score++;
+            }
+        }
+        return score;
+    }
+
+    private List<String> extractTerms(String text) {
+        String normalized = normalizeSearchText(text);
+        List<String> terms = new ArrayList<>();
+        for (String term : normalized.split("[^a-z0-9+#./-]+")) {
+            if (term.length() >= 4 && !terms.contains(term)) {
+                terms.add(term);
+            }
+            if (terms.size() >= 12) {
+                break;
+            }
+        }
+        return terms;
     }
 
     private String buildCandidateTitle(String filename, String category, String content) {
@@ -267,6 +313,12 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     private record CandidateDraft(DocumentChunk chunk, int score) {
+    }
+
+    private record SuggestedArticleTarget(Long articleId) {
+    }
+
+    private record ArticleTargetScore(KnowledgeArticle article, int score) {
     }
     @Override
     public void archive(Long documentId) {

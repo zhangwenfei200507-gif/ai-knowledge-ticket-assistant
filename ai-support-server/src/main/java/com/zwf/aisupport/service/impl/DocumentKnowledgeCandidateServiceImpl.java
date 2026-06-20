@@ -46,17 +46,57 @@ public class DocumentKnowledgeCandidateServiceImpl implements DocumentKnowledgeC
             throw new BusinessException("Rejected document knowledge cannot be converted to an article");
         }
 
-        KnowledgeArticle article = new KnowledgeArticle();
-        article.setTitle(candidate.getTitle());
-        article.setContent(candidate.getContent());
-        article.setCategory(candidate.getCategory());
-        article.setCreatedBy(currentUserId);
-        article.setStatus("PUBLISHED");
-        knowledgeArticleMapper.insert(article);
+        KnowledgeArticle article;
+        if ("MERGE_ARTICLE".equals(candidate.getSuggestedAction()) && candidate.getSuggestedArticleId() != null) {
+            article = mergeIntoExistingArticle(candidate);
+        } else {
+            article = createNewArticle(candidate, currentUserId);
+        }
         candidateMapper.markConverted(candidate.getId(), currentUserId, article.getId());
 
         KnowledgeArticle savedArticle = knowledgeArticleMapper.findById(article.getId());
         return convertToKnowledgeArticleVO(savedArticle == null ? article : savedArticle);
+    }
+
+    private KnowledgeArticle mergeIntoExistingArticle(DocumentKnowledgeCandidate candidate) {
+        KnowledgeArticle article = knowledgeArticleMapper.findById(candidate.getSuggestedArticleId());
+        if (article == null || !"PUBLISHED".equals(article.getStatus())) {
+            throw new BusinessException("Suggested article is no longer available");
+        }
+
+        article.setContent(buildMergedArticleContent(article.getContent(), candidate));
+        knowledgeArticleMapper.update(article);
+        return article;
+    }
+
+    private KnowledgeArticle createNewArticle(DocumentKnowledgeCandidate candidate, Long currentUserId) {
+        KnowledgeArticle article = new KnowledgeArticle();
+        article.setTitle(cleanCandidateTitle(candidate.getTitle()));
+        article.setContent(normalizeArticleContent(candidate));
+        article.setCategory(candidate.getCategory());
+        article.setCreatedBy(currentUserId);
+        article.setStatus("PUBLISHED");
+        knowledgeArticleMapper.insert(article);
+        return article;
+    }
+
+    private String buildMergedArticleContent(String existingContent, DocumentKnowledgeCandidate candidate) {
+        return (existingContent == null ? "" : existingContent.trim())
+                + "\n\n## Reviewed update from uploaded document\n\n"
+                + normalizeArticleContent(candidate)
+                + "\n";
+    }
+
+    private String normalizeArticleContent(DocumentKnowledgeCandidate candidate) {
+        return candidate.getContent()
+                .replaceFirst("(?is)^#\\s+.*?(\\R\\R|$)", "")
+                .replaceAll("(?im)^Review checklist:\\s*$[\\s\\S]*$", "")
+                .trim();
+    }
+
+    private String cleanCandidateTitle(String title) {
+        String cleaned = title == null || title.isBlank() ? "Document Knowledge Article" : title.trim();
+        return cleaned.replaceFirst("^Document Insight:\\s*", "");
     }
 
     @Override

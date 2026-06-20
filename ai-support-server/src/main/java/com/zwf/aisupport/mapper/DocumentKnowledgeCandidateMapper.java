@@ -17,6 +17,8 @@ public interface DocumentKnowledgeCandidateMapper {
             content,
             category,
             importance_score,
+            suggested_article_id,
+            suggested_action,
             status,
             created_by
         )
@@ -27,6 +29,8 @@ public interface DocumentKnowledgeCandidateMapper {
             #{content},
             #{category},
             #{importanceScore},
+            #{suggestedArticleId},
+            #{suggestedAction},
             #{status},
             #{createdBy}
         )
@@ -36,18 +40,22 @@ public interface DocumentKnowledgeCandidateMapper {
 
     @Select("""
         select dkc.*,
-               d.original_filename
+               d.original_filename,
+               ka.title as suggested_article_title
         from document_knowledge_candidates dkc
         join documents d on d.id = dkc.document_id
+        left join knowledge_articles ka on ka.id = dkc.suggested_article_id
         order by dkc.created_time desc
         """)
     List<DocumentKnowledgeCandidateVO> findAll();
 
     @Select("""
         select dkc.*,
-               d.original_filename
+               d.original_filename,
+               ka.title as suggested_article_title
         from document_knowledge_candidates dkc
         join documents d on d.id = dkc.document_id
+        left join knowledge_articles ka on ka.id = dkc.suggested_article_id
         where dkc.id = #{id}
         """)
     DocumentKnowledgeCandidateVO findVOById(Long id);

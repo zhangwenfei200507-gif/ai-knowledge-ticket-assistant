@@ -2531,6 +2531,33 @@ button {
   background: #c9333d;
 }
 
+.libraryPager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 2px 0;
+  color: #5f6b66;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.libraryPager button {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid #d8e0d8;
+  border-radius: 999px;
+  color: #0b5f45;
+  background: #fff;
+  font-weight: 800;
+}
+
+.libraryPager button:disabled {
+  cursor: not-allowed;
+  color: #aab3ad;
+  background: #f5f4f0;
+}
+
 .topRecordList p {
   display: -webkit-box;
   -webkit-line-clamp: 3;

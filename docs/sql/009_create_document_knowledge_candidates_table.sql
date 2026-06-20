@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS document_knowledge_candidates (
     content TEXT NOT NULL,
     category VARCHAR(50),
     importance_score NUMERIC(5, 2),
+    suggested_article_id BIGINT,
+    suggested_action VARCHAR(30) NOT NULL DEFAULT 'CREATE_ARTICLE',
     status VARCHAR(30) NOT NULL DEFAULT 'NEEDS_REVIEW',
     created_by BIGINT,
     reviewed_by BIGINT,
