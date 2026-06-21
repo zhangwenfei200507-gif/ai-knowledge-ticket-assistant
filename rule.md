@@ -98,3 +98,110 @@ Requirements:
 Continuously maintain a unified, accurate, maintainable, low-redundancy enterprise Knowledge Library that can evolve over time.
 
 Do not accumulate endless new articles and fragmented chunks.
+
+---
+
+# Backend Engineering Rules
+
+You are a senior backend architect and enterprise software engineer. Backend code must be optimized for long-term maintainability, correctness, security, and clear Spring Boot layering.
+
+These rules apply to all backend changes in `ai-support-server`.
+
+## Core Principles
+
+- Preserve existing business behavior unless there is a clear defect, security risk, data consistency issue, or rule violation.
+- Prefer readable, maintainable, testable code over clever or overly short code.
+- Keep the implementation enterprise-grade without over-engineering.
+- Optimize performance where it naturally improves correctness or scalability, but avoid speculative micro-optimization.
+- Make changes in small, coherent units that are easy to review and rollback.
+
+## Layering Rules
+
+- Controllers only handle HTTP request mapping, parameter validation, authentication context handoff, and response wrapping.
+- Services own business logic, orchestration, validation that depends on business state, transaction boundaries, and domain decisions.
+- Mappers/Repositories own data access only. They must not contain business rules.
+- DTOs are used for inbound request data.
+- VOs are used for outbound response data.
+- Entity objects must not be exposed directly from controller responses.
+- Cross-cutting behavior such as exceptions, security, logging, and configuration should use centralized Spring mechanisms.
+
+## Spring Boot Standards
+
+- Use constructor injection. Do not use field injection.
+- Prefer Spring official practices and simple framework-native solutions before custom infrastructure.
+- Use a unified exception handling mechanism. Do not leak internal stack traces, SQL details, secrets, or infrastructure paths to API users.
+- Use logging instead of `System.out.println`.
+- Logs must be useful, structured enough for troubleshooting, and must not expose passwords, tokens, API keys, authorization headers, or user secrets.
+- Keep configuration in `application.yml`, environment variables, or typed configuration classes. Do not hardcode secrets or environment-specific values.
+
+## Service Design Rules
+
+- Keep service methods focused on one business use case.
+- Extract reusable domain behavior into dedicated services/components only when it reduces duplication or clarifies ownership.
+- Avoid duplicated validation, conversion, and persistence logic across services.
+- Prefer clear names that describe domain intent, not technical side effects.
+- Use transactions when one business operation updates multiple tables or must be atomic.
+- Avoid hidden side effects. If a method writes data, its name should make that clear.
+
+## Data Access Rules
+
+- Keep SQL readable and parameterized.
+- Avoid N+1 access patterns when listing or aggregating data.
+- Add indexes when new query patterns require them.
+- Do not load large records or unbounded lists without a reason. Use pagination for growing admin lists and audit logs.
+- Database migrations must be additive and safe for existing data whenever possible.
+- Historical migration scripts must not be edited in a way that breaks already-applied environments; add a new migration for new changes.
+
+## Security Rules
+
+- Validate all external input at DTO/controller boundaries and re-check business-sensitive rules in services.
+- Enforce role and ownership checks in service methods, not only in controllers or security config.
+- Never store or log plain-text passwords, tokens, API keys, or private credentials.
+- Avoid returning sensitive internal data in VOs.
+- Treat uploaded files as untrusted input. Validate file size, extension, content type, and parsed content.
+- Guard external HTTP calls with timeouts and safe error handling.
+- Fail closed for authorization and authentication errors.
+
+## Reliability Rules
+
+- Check nullability and empty values before use.
+- Return clear business errors for expected invalid states.
+- Do not swallow exceptions silently unless there is a deliberate fallback and the fallback is safe.
+- Use idempotent behavior where repeated admin actions may occur, such as approval, conversion, archive, and review actions.
+- Avoid resource leaks. Use try-with-resources for streams and file processing.
+- External integrations must have timeouts and should degrade gracefully when unavailable.
+
+## Code Quality Rules
+
+- Remove dead code, unused imports, redundant branches, and obsolete comments.
+- Comments should explain non-obvious business decisions or complex logic, not restate obvious code.
+- Keep naming consistent across Controller, Service, Mapper, DTO, VO, entity, database column, and frontend API usage.
+- Prefer small private helper methods for repeated conversion or normalization logic.
+- Avoid large methods that mix validation, persistence, formatting, and external calls.
+- Keep formatting consistent with the surrounding code.
+
+## Testing Rules
+
+- Add or update tests when behavior changes, especially for service logic, security checks, parsing, approval flows, and knowledge reorganization.
+- Tests should verify business behavior, not implementation trivia.
+- For bug fixes, add a regression test when practical.
+- Before completing backend work, run the relevant Maven tests unless blocked.
+
+## Review And Optimization Workflow
+
+When reviewing or optimizing backend code:
+
+1. Analyze the current design and business flow first.
+2. List problems by severity: security/data loss, correctness, reliability, maintainability, performance, style.
+3. Fix high-impact issues before cosmetic cleanup.
+4. Preserve behavior unless a change is clearly justified.
+5. Explain important tradeoffs and benefits.
+6. Verify with tests or a clear manual validation path.
+
+## Architecture Improvement Guidance
+
+- Introduce a new abstraction only when it has a clear owner and removes real duplication or complexity.
+- Shared domain behavior should live in a domain-specific component, not in controllers or unrelated services.
+- Do not create generic utility classes for one-off logic.
+- Prefer explicit, boring, reliable code over complex design patterns.
+- Keep the project aligned with Spring Boot layered architecture and SOLID principles.
