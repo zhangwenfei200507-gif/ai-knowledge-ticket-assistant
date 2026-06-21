@@ -2,6 +2,8 @@ package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
+import com.zwf.aisupport.common.util.KnowledgeCategoryResolver;
+import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.common.util.UploadedTextExtractor;
 import com.zwf.aisupport.entity.DocumentChunk;
 import com.zwf.aisupport.entity.DocumentKnowledgeCandidate;
@@ -23,7 +25,6 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 
 @Service
 public class DocumentServiceImpl implements DocumentService {
@@ -49,10 +50,7 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public KnowledgeDocumentVO upload(MultipartFile file, String category) {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         UploadedTextExtractor.ExtractedText extractedText = UploadedTextExtractor.extract(file, MAX_FILE_SIZE, "document");
         List<String> chunks = splitIntoChunks(extractedText.content());
@@ -125,7 +123,7 @@ public class DocumentServiceImpl implements DocumentService {
                                                       DocumentChunk chunk,
                                                       int score,
                                                       Long currentUserId) {
-        String category = inferCategory(document.getCategory(), document.getOriginalFilename() + " " + chunk.getContent());
+        String category = KnowledgeCategoryResolver.infer(document.getCategory(), document.getOriginalFilename() + " " + chunk.getContent());
         DocumentKnowledgeCandidate candidate = new DocumentKnowledgeCandidate();
         candidate.setDocumentId(document.getId());
         candidate.setChunkId(chunk.getId());
@@ -152,7 +150,7 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     private int scoreArticleTarget(KnowledgeArticle article, String category, List<String> terms) {
-        String articleText = normalizeSearchText(article.getTitle() + " " + article.getCategory() + " " + article.getContent());
+        String articleText = TextUtil.normalizeSearchText(article.getTitle() + " " + article.getCategory() + " " + article.getContent());
         int score = 0;
         if (category != null && article.getCategory() != null && category.equalsIgnoreCase(article.getCategory())) {
             score += 5;
@@ -166,7 +164,7 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     private List<String> extractTerms(String text) {
-        String normalized = normalizeSearchText(text);
+        String normalized = TextUtil.normalizeSearchText(text);
         List<String> terms = new ArrayList<>();
         for (String term : normalized.split("[^a-z0-9+#./-]+")) {
             if (term.length() >= 4 && !terms.contains(term)) {
@@ -184,7 +182,7 @@ public class DocumentServiceImpl implements DocumentService {
         if (topic.length() > 70) {
             topic = topic.substring(0, 67).trim() + "...";
         }
-        return limit("Knowledge Candidate: " + category + " - " + topic, 180);
+        return TextUtil.limit("Knowledge Candidate: " + category + " - " + topic, 180);
     }
 
     private String buildCandidateContent(KnowledgeDocument document, DocumentChunk chunk, String category) {
@@ -214,7 +212,7 @@ public class DocumentServiceImpl implements DocumentService {
         for (String rawSentence : content.split("(?<=[.!?。！？])\\s+|\\R+")) {
             String sentence = normalizeLine(rawSentence);
             if (isOperationalSentence(sentence) && !points.contains(sentence)) {
-                points.add(limit(sentence, 220));
+                points.add(TextUtil.limit(sentence, 220));
             }
             if (points.size() >= 5) {
                 return points;
@@ -224,11 +222,11 @@ public class DocumentServiceImpl implements DocumentService {
         if (!points.isEmpty()) {
             return points;
         }
-        return List.of(limit(normalizeLine(content), 220));
+        return List.of(TextUtil.limit(normalizeLine(content), 220));
     }
 
     private int scoreLearningValue(KnowledgeDocument document, DocumentChunk chunk) {
-        String text = normalizeSearchText(document.getCategory() + " " + document.getOriginalFilename() + " " + chunk.getContent());
+        String text = TextUtil.normalizeSearchText(document.getCategory() + " " + document.getOriginalFilename() + " " + chunk.getContent());
         int score = 0;
         score += countMatches(text, "production", "incident", "outage", "down", "failure", "error", "timeout", "latency") * 3;
         score += countMatches(text, "verify", "check", "diagnose", "troubleshoot", "rollback", "restart", "configure") * 2;
@@ -244,9 +242,9 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     private boolean isOperationalSentence(String sentence) {
-        String normalized = normalizeSearchText(sentence);
+        String normalized = TextUtil.normalizeSearchText(sentence);
         return sentence.length() >= 24
-                && containsAny(normalized,
+                && TextUtil.containsAny(normalized,
                 "check", "verify", "confirm", "diagnose", "configure", "restart", "rollback",
                 "redis", "postgres", "postgresql", "docker", "kubernetes", "jwt", "token",
                 "production", "incident", "error", "timeout", "log", "metric", "alert", "sla");
@@ -262,19 +260,6 @@ public class DocumentServiceImpl implements DocumentService {
         return "Uploaded document knowledge";
     }
 
-    private String inferCategory(String fallbackCategory, String text) {
-        String normalized = normalizeSearchText(text);
-        if (containsAny(normalized, "jwt", "token", "login", "auth", "password", "session")) return "Auth / JWT";
-        if (containsAny(normalized, "redis", "cache")) return "Redis Cache";
-        if (containsAny(normalized, "postgres", "postgresql", "database", "sql")) return "PostgreSQL";
-        if (containsAny(normalized, "docker", "container", "compose")) return "Docker";
-        if (containsAny(normalized, "kubernetes", "k8s", "pod", "cluster")) return "Kubernetes";
-        if (containsAny(normalized, "incident", "outage", "sev", "rollback")) return "Incident SOP";
-        if (containsAny(normalized, "ticket", "sla", "priority", "escalation")) return "Ticket Rules";
-        if (containsAny(normalized, "customer", "template", "reply")) return "Customer Templates";
-        return fallbackCategory == null || fallbackCategory.isBlank() ? "General" : fallbackCategory;
-    }
-
     private int countMatches(String text, String... terms) {
         int score = 0;
         for (String term : terms) {
@@ -285,32 +270,12 @@ public class DocumentServiceImpl implements DocumentService {
         return score;
     }
 
-    private boolean containsAny(String text, String... terms) {
-        for (String term : terms) {
-            if (text.contains(term)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String normalizeSearchText(String value) {
-        return value == null ? "" : value.toLowerCase(Locale.ROOT);
-    }
-
     private String normalizeLine(String value) {
         return value == null ? "" : value
                 .replaceAll("^\\s*[-*•]+\\s*", "")
                 .replaceAll("^\\s*\\d+[.)]\\s*", "")
                 .replaceAll("\\s+", " ")
                 .trim();
-    }
-
-    private String limit(String value, int maxLength) {
-        if (value == null || value.length() <= maxLength) {
-            return value;
-        }
-        return value.substring(0, maxLength).trim();
     }
 
     private record CandidateDraft(DocumentChunk chunk, int score) {
@@ -323,10 +288,7 @@ public class DocumentServiceImpl implements DocumentService {
     }
     @Override
     public void archive(Long documentId) {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can archive documents");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can archive documents");
 
         KnowledgeDocument document = knowledgeDocumentMapper.findById(documentId);
         if (document == null || !"ACTIVE".equals(document.getStatus())) {
@@ -338,10 +300,7 @@ public class DocumentServiceImpl implements DocumentService {
     }
     @Override
     public List<DocumentCategoryStatsVO> getCategoryStats() {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can access document category stats");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can access document category stats");
 
         // Document category stats help administrators understand how uploaded knowledge is organized.
         return knowledgeDocumentMapper.countActiveDocumentsByCategory();

@@ -2,6 +2,7 @@ package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
+import com.zwf.aisupport.common.util.KnowledgeArticleVoMapper;
 import com.zwf.aisupport.entity.DocumentKnowledgeCandidate;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.mapper.DocumentKnowledgeCandidateMapper;
@@ -30,19 +31,19 @@ public class DocumentKnowledgeCandidateServiceImpl implements DocumentKnowledgeC
 
     @Override
     public List<DocumentKnowledgeCandidateVO> listAll() {
-        ensureAdmin();
+        CurrentUserUtil.requireAdmin("Only administrators can manage document knowledge candidates");
         return candidateMapper.findAll();
     }
 
     @Override
     public KnowledgeArticleVO approveToArticle(Long id) {
-        ensureAdmin();
-        Long currentUserId = requireCurrentUserId();
+        CurrentUserUtil.requireAdmin("Only administrators can manage document knowledge candidates");
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
         DocumentKnowledgeCandidate candidate = requireCandidate(id);
         if ("CONVERTED".equals(candidate.getStatus()) && candidate.getConvertedArticleId() != null) {
             KnowledgeArticle article = knowledgeArticleMapper.findById(candidate.getConvertedArticleId());
             if (article != null) {
-                return convertToKnowledgeArticleVO(article);
+                return KnowledgeArticleVoMapper.toVO(article);
             }
         }
         if ("REJECTED".equals(candidate.getStatus())) {
@@ -64,17 +65,17 @@ public class DocumentKnowledgeCandidateServiceImpl implements DocumentKnowledgeC
                 "Uploaded document knowledge candidate");
 
         candidateMapper.markConverted(candidate.getId(), currentUserId, article.getId());
-        return convertToKnowledgeArticleVO(article);
+        return KnowledgeArticleVoMapper.toVO(article);
     }
 
     @Override
     public void reject(Long id) {
-        ensureAdmin();
+        CurrentUserUtil.requireAdmin("Only administrators can manage document knowledge candidates");
         DocumentKnowledgeCandidate candidate = requireCandidate(id);
         if ("CONVERTED".equals(candidate.getStatus())) {
             throw new BusinessException("Converted document knowledge cannot be rejected");
         }
-        candidateMapper.markRejected(candidate.getId(), requireCurrentUserId());
+        candidateMapper.markRejected(candidate.getId(), CurrentUserUtil.requireCurrentUserId());
     }
 
     private DocumentKnowledgeCandidate requireCandidate(Long id) {
@@ -85,30 +86,4 @@ public class DocumentKnowledgeCandidateServiceImpl implements DocumentKnowledgeC
         return candidate;
     }
 
-    private void ensureAdmin() {
-        if (!"ADMIN".equals(CurrentUserUtil.getCurrentUserRole())) {
-            throw new BusinessException("Only administrators can manage document knowledge candidates");
-        }
-    }
-
-    private Long requireCurrentUserId() {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
-        return currentUserId;
-    }
-
-    private KnowledgeArticleVO convertToKnowledgeArticleVO(KnowledgeArticle article) {
-        KnowledgeArticleVO vo = new KnowledgeArticleVO();
-        vo.setId(article.getId());
-        vo.setTitle(article.getTitle());
-        vo.setContent(article.getContent());
-        vo.setCategory(article.getCategory());
-        vo.setCreatedBy(article.getCreatedBy());
-        vo.setStatus(article.getStatus());
-        vo.setCreatedTime(article.getCreatedTime());
-        vo.setUpdatedTime(article.getUpdatedTime());
-        return vo;
-    }
 }

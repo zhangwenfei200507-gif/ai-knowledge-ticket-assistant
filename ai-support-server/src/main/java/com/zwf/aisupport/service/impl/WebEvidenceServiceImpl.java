@@ -2,6 +2,9 @@ package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
+import com.zwf.aisupport.common.util.KnowledgeArticleVoMapper;
+import com.zwf.aisupport.common.util.KnowledgeCategoryResolver;
+import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.dto.WebEvidenceSearchDTO;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.WebEvidence;
@@ -49,14 +52,14 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
         WebEvidence evidence = new WebEvidence();
         evidence.setQuestion(question);
         evidence.setQuery(question);
-        evidence.setTitle(limit("Model Answer: " + question, 300));
+        evidence.setTitle(TextUtil.limit("Model Answer: " + question, 300));
         evidence.setUrl(null);
         evidence.setDomain("OpenAI model");
-        evidence.setSnippet(limit(answer, 1200));
+        evidence.setSnippet(TextUtil.limit(answer, 1200));
         evidence.setExtractedContent(answer);
-        evidence.setSuggestedArticleTitle(limit("Reviewed Model Answer: " + question, 150));
+        evidence.setSuggestedArticleTitle(TextUtil.limit("Reviewed Model Answer: " + question, 150));
         evidence.setSuggestedArticleContent(buildModelSuggestedArticle(question, answer));
-        evidence.setCategory(inferCategory(question + " " + answer));
+        evidence.setCategory(KnowledgeCategoryResolver.infer(question + " " + answer));
         evidence.setCredibilityScore(new BigDecimal("0.70"));
         evidence.setEvidenceOrigin("LLM_GENERATED");
         evidence.setStatus("NEEDS_REVIEW");
@@ -84,8 +87,8 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
 
     @Override
     public WebEvidenceVO searchManually(WebEvidenceSearchDTO searchDTO) {
-        ensureAdmin();
-        Long currentUserId = requireCurrentUserId();
+        CurrentUserUtil.requireAdmin("Only administrators can manage web evidence");
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
         WebEvidence evidence = searchAndStoreEvidence(searchDTO.getQuestion().trim(), currentUserId)
                 .orElseThrow(() -> new BusinessException("No reliable external evidence was found for this question"));
         return convertToVO(evidence);
@@ -93,7 +96,7 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
 
     @Override
     public List<WebEvidenceVO> listAll() {
-        ensureAdmin();
+        CurrentUserUtil.requireAdmin("Only administrators can manage web evidence");
         return webEvidenceMapper.findAll().stream()
                 .map(this::convertToVO)
                 .toList();
@@ -101,13 +104,13 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
 
     @Override
     public KnowledgeArticleVO approveToArticle(Long id) {
-        ensureAdmin();
-        Long currentUserId = requireCurrentUserId();
+        CurrentUserUtil.requireAdmin("Only administrators can manage web evidence");
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
         WebEvidence evidence = requireEvidence(id);
         if ("CONVERTED".equals(evidence.getStatus()) && evidence.getConvertedArticleId() != null) {
             KnowledgeArticle article = knowledgeArticleMapper.findById(evidence.getConvertedArticleId());
             if (article != null) {
-                return convertToKnowledgeArticleVO(article);
+                return KnowledgeArticleVoMapper.toVO(article);
             }
         }
         if ("REJECTED".equals(evidence.getStatus())) {
@@ -125,17 +128,17 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
                 "Reviewed " + (evidence.getEvidenceOrigin() == null ? "external evidence" : evidence.getEvidenceOrigin())
         );
         webEvidenceMapper.markConverted(evidence.getId(), currentUserId, article.getId());
-        return convertToKnowledgeArticleVO(article);
+        return KnowledgeArticleVoMapper.toVO(article);
     }
 
     @Override
     public void reject(Long id) {
-        ensureAdmin();
+        CurrentUserUtil.requireAdmin("Only administrators can manage web evidence");
         WebEvidence evidence = requireEvidence(id);
         if ("CONVERTED".equals(evidence.getStatus())) {
             throw new BusinessException("Converted evidence cannot be rejected");
         }
-        webEvidenceMapper.markRejected(evidence.getId(), requireCurrentUserId());
+        webEvidenceMapper.markRejected(evidence.getId(), CurrentUserUtil.requireCurrentUserId());
     }
 
     private WebEvidence requireEvidence(Long id) {
@@ -144,20 +147,6 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
             throw new BusinessException("Web evidence not found");
         }
         return evidence;
-    }
-
-    private void ensureAdmin() {
-        if (!"ADMIN".equals(CurrentUserUtil.getCurrentUserRole())) {
-            throw new BusinessException("Only administrators can manage web evidence");
-        }
-    }
-
-    private Long requireCurrentUserId() {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
-        return currentUserId;
     }
 
     private WebEvidenceVO convertToVO(WebEvidence evidence) {
@@ -184,21 +173,8 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
         return vo;
     }
 
-    private KnowledgeArticleVO convertToKnowledgeArticleVO(KnowledgeArticle article) {
-        KnowledgeArticleVO vo = new KnowledgeArticleVO();
-        vo.setId(article.getId());
-        vo.setTitle(article.getTitle());
-        vo.setContent(article.getContent());
-        vo.setCategory(article.getCategory());
-        vo.setCreatedBy(article.getCreatedBy());
-        vo.setStatus(article.getStatus());
-        vo.setCreatedTime(article.getCreatedTime());
-        vo.setUpdatedTime(article.getUpdatedTime());
-        return vo;
-    }
-
     private String buildModelSuggestedArticle(String question, String answer) {
-        String category = inferCategory(question + " " + answer);
+        String category = KnowledgeCategoryResolver.infer(question + " " + answer);
         return """
                 # Reviewed Model Answer: %s
 
@@ -225,7 +201,7 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
                 - Source type: LLM_GENERATED
                 - Source reference: OpenAI model fallback
                 - Original question: %s
-                """.formatted(limit(question, 120), category, normalizeArticleBullets(answer), category, question);
+                """.formatted(TextUtil.limit(question, 120), category, normalizeArticleBullets(answer), category, question);
     }
 
     private String normalizeArticleBullets(String answer) {
@@ -237,41 +213,12 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
                 .filter(line -> line.length() >= 12)
                 .map(line -> line.replaceAll("^[-*]\\s*", ""))
                 .limit(6)
-                .map(line -> "- " + limit(line, 260))
+                .map(line -> "- " + TextUtil.limit(line, 260))
                 .toList();
         if (points.isEmpty()) {
-            return "- " + limit(answer.replaceAll("\\s+", " ").trim(), 260);
+            return "- " + TextUtil.limit(answer.replaceAll("\\s+", " ").trim(), 260);
         }
         return String.join("\n", points);
-    }
-
-    private String inferCategory(String text) {
-        String normalized = text == null ? "" : text.toLowerCase();
-        if (containsAny(normalized, "jwt", "token", "login", "auth", "password", "session")) return "Auth / JWT";
-        if (containsAny(normalized, "redis", "cache")) return "Redis Cache";
-        if (containsAny(normalized, "postgres", "postgresql", "database", "sql")) return "PostgreSQL";
-        if (containsAny(normalized, "docker", "container", "compose")) return "Docker";
-        if (containsAny(normalized, "kubernetes", "k8s", "pod", "cluster")) return "Kubernetes";
-        if (containsAny(normalized, "incident", "outage", "sev", "rollback")) return "Incident SOP";
-        if (containsAny(normalized, "ticket", "sla", "priority", "escalation")) return "Ticket Rules";
-        if (containsAny(normalized, "customer", "template", "reply")) return "Customer Templates";
-        return "General";
-    }
-
-    private boolean containsAny(String text, String... terms) {
-        for (String term : terms) {
-            if (text.contains(term)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String limit(String value, int maxLength) {
-        if (value == null || value.length() <= maxLength) {
-            return value;
-        }
-        return value.substring(0, maxLength).trim();
     }
 
     private boolean isLowQualityKnowledgeContent(String content) {

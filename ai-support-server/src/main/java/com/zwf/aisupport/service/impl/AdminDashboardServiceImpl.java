@@ -1,7 +1,8 @@
 package com.zwf.aisupport.service.impl;
 
-import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
+import com.zwf.aisupport.common.util.KnowledgeCategoryResolver;
+import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.entity.AiQuestionLog;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.KnowledgeDocument;
@@ -117,10 +118,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
     @Override
     public AdminDashboardOverviewVO getOverview() {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can access dashboard overview");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can access dashboard overview");
 
         AdminDashboardOverviewVO overviewVO = new AdminDashboardOverviewVO();
         overviewVO.setTotalTickets(ticketMapper.countAll());
@@ -168,10 +166,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     }
 
     private void ensureAdmin() {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can access dashboard overview");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can access dashboard overview");
     }
 
     private AdminOperationsCenterVO.EnvironmentStatusVO buildEnvironmentStatus() {
@@ -415,7 +410,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
         List<AdminOperationsCenterVO.KnowledgeGapQueueItemVO> gaps = knowledgeGaps.stream()
                 .limit(5)
                 .map(log -> {
-                    String category = inferCategory(log.getQuestion());
+                    String category = KnowledgeCategoryResolver.infer(log.getQuestion());
                     AdminOperationsCenterVO.KnowledgeGapQueueItemVO item = new AdminOperationsCenterVO.KnowledgeGapQueueItemVO();
                     item.setLogId(log.getId());
                     item.setQuestion(log.getQuestion());
@@ -461,7 +456,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
         long feedbackTotal = useful + notUseful + pending;
 
         Map<String, Long> categoryQuestionCounts = logs.stream()
-                .map(log -> inferCategory(log.getQuestion()))
+                .map(log -> KnowledgeCategoryResolver.infer(log.getQuestion()))
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
 
         List<AdminOperationsCenterVO.CategoryQuestionVO> topCategories = categoryQuestionCounts.entrySet().stream()
@@ -552,48 +547,19 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
     private String inferIntent(String question) {
         String normalized = normalize(question);
-        if (containsAny(normalized, "error", "fail", "down", "timeout", "cannot", "issue", "crash")) {
+        if (TextUtil.containsAny(normalized, "error", "fail", "down", "timeout", "cannot", "issue", "crash")) {
             return "Troubleshooting";
         }
-        if (containsAny(normalized, "how", "guide", "steps", "reset", "configure")) {
+        if (TextUtil.containsAny(normalized, "how", "guide", "steps", "reset", "configure")) {
             return "How-to Guide";
         }
-        if (containsAny(normalized, "why", "explain", "what is")) {
+        if (TextUtil.containsAny(normalized, "why", "explain", "what is")) {
             return "Concept Explanation";
         }
-        if (containsAny(normalized, "setting", "config", "policy", "permission")) {
+        if (TextUtil.containsAny(normalized, "setting", "config", "policy", "permission")) {
             return "Configuration";
         }
         return "Other";
-    }
-
-    private String inferCategory(String text) {
-        String normalized = normalize(text);
-        if (containsAny(normalized, "jwt", "token", "login", "auth", "password", "session")) {
-            return "Auth / JWT";
-        }
-        if (containsAny(normalized, "redis", "cache")) {
-            return "Redis Cache";
-        }
-        if (containsAny(normalized, "postgres", "postgresql", "database", "connection")) {
-            return "PostgreSQL";
-        }
-        if (containsAny(normalized, "docker", "container", "compose")) {
-            return "Docker";
-        }
-        if (containsAny(normalized, "kubernetes", "k8s", "pod", "cluster")) {
-            return "Kubernetes";
-        }
-        if (containsAny(normalized, "incident", "outage", "sev", "rollback")) {
-            return "Incident SOP";
-        }
-        if (containsAny(normalized, "ticket", "sla", "priority", "escalation")) {
-            return "Ticket Rules";
-        }
-        if (containsAny(normalized, "customer", "template", "reply")) {
-            return "Customer Templates";
-        }
-        return "General";
     }
 
     private String suggestArticleTitle(String category, String question) {
@@ -661,15 +627,6 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
     private String normalize(String text) {
         return text == null ? "" : text.toLowerCase(Locale.ROOT);
-    }
-
-    private boolean containsAny(String text, String... terms) {
-        for (String term : terms) {
-            if (text.contains(term)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private int cappedPercent(long value) {

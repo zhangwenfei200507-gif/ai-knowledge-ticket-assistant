@@ -2,6 +2,7 @@ package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
+import com.zwf.aisupport.common.util.KnowledgeArticleVoMapper;
 import com.zwf.aisupport.common.util.UploadedTextExtractor;
 import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
 import com.zwf.aisupport.dto.KnowledgeArticleUpdateDTO;
@@ -31,15 +32,8 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
 
     @Override
     public void create(KnowledgeArticleCreateDTO knowledgeArticleCreateDTO) {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can create knowledge articles");
-        }
-
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can create knowledge articles");
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         knowledgePackReorganizer.reorganizeOrCreate(
                 knowledgeArticleCreateDTO.getTitle(),
@@ -52,15 +46,8 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
 
     @Override
     public KnowledgeArticleVO upload(MultipartFile file, String category, String title) {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can upload knowledge articles");
-        }
-
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can upload knowledge articles");
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         UploadedTextExtractor.ExtractedText extractedText = UploadedTextExtractor.extract(file, MAX_ARTICLE_FILE_SIZE, "article");
 
@@ -71,14 +58,14 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
                 currentUserId,
                 "Administrator uploaded article file: " + extractedText.filename()
         );
-        return convertToKnowledgeArticleVO(article);
+        return KnowledgeArticleVoMapper.toVO(article);
     }
 
     @Override
     public List<KnowledgeArticleVO> listPublishedArticles() {
         return knowledgeArticleMapper.findPublishedArticles()
                 .stream()
-                .map(this::convertToKnowledgeArticleVO)
+                .map(KnowledgeArticleVoMapper::toVO)
                 .toList();
     }
 
@@ -89,20 +76,7 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
             throw new BusinessException("Knowledge article not found");
         }
 
-        return convertToKnowledgeArticleVO(article);
-    }
-
-    private KnowledgeArticleVO convertToKnowledgeArticleVO(KnowledgeArticle article) {
-        KnowledgeArticleVO knowledgeArticleVO = new KnowledgeArticleVO();
-        knowledgeArticleVO.setId(article.getId());
-        knowledgeArticleVO.setTitle(article.getTitle());
-        knowledgeArticleVO.setContent(article.getContent());
-        knowledgeArticleVO.setCategory(article.getCategory());
-        knowledgeArticleVO.setCreatedBy(article.getCreatedBy());
-        knowledgeArticleVO.setStatus(article.getStatus());
-        knowledgeArticleVO.setCreatedTime(article.getCreatedTime());
-        knowledgeArticleVO.setUpdatedTime(article.getUpdatedTime());
-        return knowledgeArticleVO;
+        return KnowledgeArticleVoMapper.toVO(article);
     }
     @Override
     public List<KnowledgeArticleVO> searchPublishedArticles(String keyword) {
@@ -113,15 +87,12 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
         // Keyword search is the first step before adding AI semantic retrieval.
         return knowledgeArticleMapper.searchPublishedArticles(keyword.trim())
                 .stream()
-                .map(this::convertToKnowledgeArticleVO)
+                .map(KnowledgeArticleVoMapper::toVO)
                 .toList();
     }
     @Override
     public KnowledgeArticleVO update(Long id, KnowledgeArticleUpdateDTO updateDTO) {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can update knowledge articles");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can update knowledge articles");
 
         KnowledgeArticle article = knowledgeArticleMapper.findById(id);
         if (article == null || !"PUBLISHED".equals(article.getStatus())) {
@@ -135,15 +106,12 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
                 updateDTO.getContent(),
                 "Manual administrator Knowledge Pack edit"
         );
-        return convertToKnowledgeArticleVO(updatedArticle);
+        return KnowledgeArticleVoMapper.toVO(updatedArticle);
     }
 
     @Override
     public void archive(Long id) {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can archive knowledge articles");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can archive knowledge articles");
 
         KnowledgeArticle article = knowledgeArticleMapper.findById(id);
         if (article == null || !"PUBLISHED".equals(article.getStatus())) {
@@ -155,10 +123,7 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
     }
     @Override
     public List<KnowledgeCategoryStatsVO> getCategoryStats() {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can access knowledge category stats");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can access knowledge category stats");
 
         // Category stats help administrators understand how the knowledge base is organized.
         return knowledgeArticleMapper.countPublishedArticlesByCategory();

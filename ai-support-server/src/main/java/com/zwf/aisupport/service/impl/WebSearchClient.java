@@ -2,6 +2,8 @@ package com.zwf.aisupport.service.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zwf.aisupport.common.util.KnowledgeCategoryResolver;
+import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.entity.WebEvidence;
 import org.springframework.stereotype.Component;
 
@@ -201,14 +203,14 @@ public class WebSearchClient {
         WebEvidence evidence = new WebEvidence();
         evidence.setQuestion(question);
         evidence.setQuery(query);
-        evidence.setTitle(limit(blankToDefault(title, shortTitle(question)), 300));
+        evidence.setTitle(TextUtil.limit(blankToDefault(title, shortTitle(question)), 300));
         evidence.setUrl(url);
         evidence.setDomain(domain(url));
-        evidence.setSnippet(limit(clean(snippet), 1200));
-        evidence.setExtractedContent(limit(summary.isBlank() ? content : summary, MAX_CONTENT_LENGTH));
-        evidence.setSuggestedArticleTitle(limit(suggestTitle(question), 150));
+        evidence.setSnippet(TextUtil.limit(clean(snippet), 1200));
+        evidence.setExtractedContent(TextUtil.limit(summary.isBlank() ? content : summary, MAX_CONTENT_LENGTH));
+        evidence.setSuggestedArticleTitle(TextUtil.limit(suggestTitle(question), 150));
         evidence.setSuggestedArticleContent(buildSuggestedArticle(question, summary, url, evidence.getDomain()));
-        evidence.setCategory(inferCategory(question + " " + title + " " + snippet));
+        evidence.setCategory(KnowledgeCategoryResolver.infer(question + " " + title + " " + snippet));
         evidence.setCredibilityScore(scoreDomain(url));
         evidence.setEvidenceOrigin("WEB_SEARCH");
         evidence.setStatus("NEEDS_REVIEW");
@@ -278,9 +280,9 @@ public class WebSearchClient {
 
         String summary = String.join("\n", sentences);
         if (summary.isBlank()) {
-            summary = limit(text, 1200);
+            summary = TextUtil.limit(text, 1200);
         }
-        return limit(summary, 1800);
+        return TextUtil.limit(summary, 1800);
     }
 
     private int matchScore(String sentence, List<String> terms) {
@@ -291,14 +293,14 @@ public class WebSearchClient {
                 score++;
             }
         }
-        if (containsAny(normalized, "purpose", "instruction", "command", "sets", "copies", "runs", "exposes", "executes", "default")) {
+        if (TextUtil.containsAny(normalized, "purpose", "instruction", "command", "sets", "copies", "runs", "exposes", "executes", "default")) {
             score += 2;
         }
         return score;
     }
 
     private String buildSuggestedArticle(String question, String summary, String url, String domain) {
-        String category = inferCategory(question + " " + summary);
+        String category = KnowledgeCategoryResolver.infer(question + " " + summary);
         String title = suggestTitle(question);
         String answerDraft = buildUserAnswerDraft(question, summary);
         return """
@@ -364,7 +366,7 @@ public class WebSearchClient {
                 .filter(point -> point.length() >= 24)
                 .filter(point -> !isWebNoise(point))
                 .limit(5)
-                .map(point -> "- " + limit(point, 220))
+                .map(point -> "- " + TextUtil.limit(point, 220))
                 .toList();
         if (points.isEmpty()) {
             return "- Review the source evidence and write a concise operational answer before publishing.";
@@ -378,7 +380,7 @@ public class WebSearchClient {
                 .filter(point -> point.length() >= 24)
                 .filter(point -> !isWebNoise(point))
                 .limit(6)
-                .map(point -> "- " + limit(point, 260))
+                .map(point -> "- " + TextUtil.limit(point, 260))
                 .toList();
         return points.isEmpty() ? "- No clean evidence summary was extracted. Re-open the source before approval." : String.join("\n", points);
     }
@@ -407,28 +409,6 @@ public class WebSearchClient {
         } catch (Exception ignored) {
             return "";
         }
-    }
-
-    private String inferCategory(String text) {
-        String normalized = text == null ? "" : text.toLowerCase(Locale.ROOT);
-        if (containsAny(normalized, "jwt", "token", "login", "auth", "password", "session")) return "Auth / JWT";
-        if (containsAny(normalized, "redis", "cache")) return "Redis Cache";
-        if (containsAny(normalized, "postgres", "postgresql", "database", "sql")) return "PostgreSQL";
-        if (containsAny(normalized, "docker", "container", "compose")) return "Docker";
-        if (containsAny(normalized, "kubernetes", "k8s", "pod", "cluster")) return "Kubernetes";
-        if (containsAny(normalized, "incident", "outage", "sev", "rollback")) return "Incident SOP";
-        if (containsAny(normalized, "ticket", "sla", "priority", "escalation")) return "Ticket Rules";
-        if (containsAny(normalized, "customer", "template", "reply")) return "Customer Templates";
-        return "General";
-    }
-
-    private boolean containsAny(String text, String... terms) {
-        for (String term : terms) {
-            if (text.contains(term)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private String suggestTitle(String question) {
@@ -502,13 +482,6 @@ public class WebSearchClient {
 
     private String blankToDefault(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
-    }
-
-    private String limit(String value, int maxLength) {
-        if (value == null || value.length() <= maxLength) {
-            return value;
-        }
-        return value.substring(0, maxLength).trim();
     }
 
     private record SearchCandidate(String title, String url, String snippet) {

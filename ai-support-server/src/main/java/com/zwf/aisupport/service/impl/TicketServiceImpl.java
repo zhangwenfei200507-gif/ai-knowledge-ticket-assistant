@@ -29,10 +29,7 @@ public class TicketServiceImpl implements TicketService {
 
     @Override
     public void create(TicketCreateDTO ticketCreateDTO) {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         Ticket ticket = new Ticket();
         ticket.setTitle(ticketCreateDTO.getTitle());
@@ -54,10 +51,7 @@ public class TicketServiceImpl implements TicketService {
     }
     @Override
     public List<TicketVO> listMyTickets() {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         return ticketMapper.findByCreatedBy(currentUserId)
                 .stream()
@@ -80,32 +74,15 @@ public class TicketServiceImpl implements TicketService {
     }
     @Override
     public TicketVO getDetail(Long id) {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
-        String role = CurrentUserUtil.getCurrentUserRole();
-
-        Ticket ticket = ticketMapper.findById(id);
-        if (ticket == null || (!"ADMIN".equals(role) && !currentUserId.equals(ticket.getCreatedBy()) && !currentUserId.equals(ticket.getAssignedTo()))) {
-            throw new BusinessException("Ticket not found");
-        }
+        Ticket ticket = requireVisibleTicket(id, CurrentUserUtil.requireCurrentUserId());
 
         // Admins can inspect any ticket; users can inspect tickets they created or own.
         return convertToTicketVO(ticket);
     }
+
     @Override
     public void updateStatus(Long id, TicketStatusUpdateDTO ticketStatusUpdateDTO) {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
-        String role = CurrentUserUtil.getCurrentUserRole();
-
-        Ticket ticket = ticketMapper.findById(id);
-        if (ticket == null || (!"ADMIN".equals(role) && !currentUserId.equals(ticket.getCreatedBy()) && !currentUserId.equals(ticket.getAssignedTo()))) {
-            throw new BusinessException("Ticket not found");
-        }
+        requireVisibleTicket(id, CurrentUserUtil.requireCurrentUserId());
 
         String status = ticketStatusUpdateDTO.getStatus().trim().toUpperCase();
         if (!ALLOWED_STATUSES.contains(status)) {
@@ -117,10 +94,7 @@ public class TicketServiceImpl implements TicketService {
     }
     @Override
     public List<TicketVO> listAllTickets() {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can access all tickets");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can access all tickets");
 
         // Admin users can review all tickets for support management.
         return ticketMapper.findAll()
@@ -130,10 +104,7 @@ public class TicketServiceImpl implements TicketService {
     }
     @Override
     public void assignTicket(Long id, TicketAssignDTO ticketAssignDTO) {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can assign tickets");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can assign tickets");
 
         Ticket ticket = ticketMapper.findById(id);
         if (ticket == null) {
@@ -149,10 +120,7 @@ public class TicketServiceImpl implements TicketService {
     }
     @Override
     public List<TicketVO> listAssignedToMe() {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         // Use assigned_to so support users can focus on tickets assigned to them.
         return ticketMapper.findByAssignedTo(currentUserId)
@@ -162,18 +130,14 @@ public class TicketServiceImpl implements TicketService {
     }
     @Override
     public void resolveTicket(Long id) {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         Ticket ticket = ticketMapper.findById(id);
         if (ticket == null) {
             throw new BusinessException("Ticket not found");
         }
 
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role) && !currentUserId.equals(ticket.getAssignedTo())) {
+        if (!CurrentUserUtil.isAdmin() && !currentUserId.equals(ticket.getAssignedTo())) {
             throw new BusinessException("Only the assigned user can resolve this ticket");
         }
 
@@ -186,18 +150,14 @@ public class TicketServiceImpl implements TicketService {
     }
     @Override
     public void closeTicket(Long id) {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         Ticket ticket = ticketMapper.findById(id);
         if (ticket == null) {
             throw new BusinessException("Ticket not found");
         }
 
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role) && !currentUserId.equals(ticket.getCreatedBy())) {
+        if (!CurrentUserUtil.isAdmin() && !currentUserId.equals(ticket.getCreatedBy())) {
             throw new BusinessException("Only the creator can close this ticket");
         }
 
@@ -207,5 +167,15 @@ public class TicketServiceImpl implements TicketService {
 
         // The creator confirms the issue is resolved and closes the ticket.
         ticketMapper.closeTicket(id);
+    }
+
+    private Ticket requireVisibleTicket(Long id, Long currentUserId) {
+        Ticket ticket = ticketMapper.findById(id);
+        if (ticket == null || (!CurrentUserUtil.isAdmin()
+                && !currentUserId.equals(ticket.getCreatedBy())
+                && !currentUserId.equals(ticket.getAssignedTo()))) {
+            throw new BusinessException("Ticket not found");
+        }
+        return ticket;
     }
 }

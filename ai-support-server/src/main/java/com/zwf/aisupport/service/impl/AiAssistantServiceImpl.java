@@ -2,6 +2,8 @@ package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
+import com.zwf.aisupport.common.util.KnowledgeArticleVoMapper;
+import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.dto.AiAskDTO;
 import com.zwf.aisupport.dto.AiQuestionLogFeedbackDTO;
 import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
@@ -26,7 +28,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -111,10 +112,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             return answerVO;
         }
 
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         Ticket ticket = new Ticket();
         ticket.setTitle(generateTicketTitle(aiAskDTO.getQuestion()));
@@ -158,10 +156,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             return buildKnowledgeBasedAnswer(question, articles);
         }
 
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
         Optional<WebEvidence> webEvidence = webEvidenceService.searchAndStoreEvidence(question, currentUserId);
         if (webEvidence.isPresent()) {
             return buildWebEvidenceBasedAnswer(webEvidence.get());
@@ -203,7 +198,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private boolean isDocumentOverviewQuestion(String question) {
-        String normalized = safeLower(question);
+        String normalized = TextUtil.safeLower(question);
         return normalized.contains("summarize")
                 || normalized.contains("summary")
                 || normalized.contains("what is this document")
@@ -230,10 +225,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private void saveQuestionLog(String question, AiAnswerVO answerVO) {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         AiQuestionLog aiQuestionLog = new AiQuestionLog();
         aiQuestionLog.setUserId(currentUserId);
@@ -260,10 +252,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
    @Override
     public List<AiQuestionLogVO> listMyQuestionLogs() {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         // Users can review their own AI question history.
         return aiQuestionLogMapper.findByUserId(currentUserId)
@@ -273,10 +262,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
     @Override
     public AiDashboardStatsVO getDashboardStats() {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can access AI dashboard stats");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can access AI dashboard stats");
 
         AiDashboardStatsVO statsVO = new AiDashboardStatsVO();
         statsVO.setTotalQuestions(aiQuestionLogMapper.countAll());
@@ -293,10 +279,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
     @Override
     public List<KnowledgeGapVO> listKnowledgeGaps() {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can access knowledge gaps");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can access knowledge gaps");
 
         // Knowledge gaps help administrators decide which Knowledge Pack should be reorganized.
         return aiQuestionLogMapper.findKnowledgeGaps()
@@ -306,15 +289,8 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
     @Override
     public KnowledgeArticleVO createArticleFromKnowledgeGap(Long logId, KnowledgeArticleCreateDTO createDTO) {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can create articles from knowledge gaps");
-        }
-
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can create articles from knowledge gaps");
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         AiQuestionLog aiQuestionLog = aiQuestionLogMapper.findById(logId);
         if (aiQuestionLog == null || aiQuestionLog.getSourceArticleId() != null) {
@@ -333,20 +309,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         );
         aiQuestionLogMapper.linkKnowledgeArticle(logId, article.getId(), article.getTitle());
 
-        return convertToKnowledgeArticleVO(article);
-    }
-
-    private KnowledgeArticleVO convertToKnowledgeArticleVO(KnowledgeArticle article) {
-        KnowledgeArticleVO vo = new KnowledgeArticleVO();
-        vo.setId(article.getId());
-        vo.setTitle(article.getTitle());
-        vo.setContent(article.getContent());
-        vo.setCategory(article.getCategory());
-        vo.setCreatedBy(article.getCreatedBy());
-        vo.setStatus(article.getStatus());
-        vo.setCreatedTime(article.getCreatedTime());
-        vo.setUpdatedTime(article.getUpdatedTime());
-        return vo;
+        return KnowledgeArticleVoMapper.toVO(article);
     }
     private KnowledgeGapVO convertToKnowledgeGapVO(AiQuestionLog aiQuestionLog) {
         KnowledgeGapVO vo = new KnowledgeGapVO();
@@ -363,10 +326,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
     @Override
     public List<AiQuestionLogVO> listAllQuestionLogs() {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can access AI question logs");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can access AI question logs");
 
         // Admin users can review AI usage across the whole platform.
         return aiQuestionLogMapper.findAll()
@@ -377,10 +337,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     @Override
     public void deleteQuestionLog(Long id) {
-        String role = CurrentUserUtil.getCurrentUserRole();
-        if (!"ADMIN".equals(role)) {
-            throw new BusinessException("Only administrators can delete AI question logs");
-        }
+        CurrentUserUtil.requireAdmin("Only administrators can delete AI question logs");
 
         AiQuestionLog aiQuestionLog = aiQuestionLogMapper.findById(id);
         if (aiQuestionLog == null) {
@@ -392,10 +349,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     @Override
     public void submitQuestionLogFeedback(Long id, AiQuestionLogFeedbackDTO feedbackDTO) {
-        Long currentUserId = CurrentUserUtil.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException("User is not authenticated");
-        }
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
         AiQuestionLog aiQuestionLog = aiQuestionLogMapper.findById(id);
         if (aiQuestionLog == null || !currentUserId.equals(aiQuestionLog.getUserId())) {
@@ -621,9 +575,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private int scoreArticle(KnowledgeArticle article, List<String> terms) {
-        String title = safeLower(article.getTitle());
-        String category = safeLower(article.getCategory());
-        String content = safeLower(article.getContent());
+        String title = TextUtil.safeLower(article.getTitle());
+        String category = TextUtil.safeLower(article.getCategory());
+        String content = TextUtil.safeLower(article.getContent());
         int score = 0;
 
         for (String term : terms) {
@@ -666,7 +620,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             return false;
         }
 
-        String normalizedSource = safeLower(sourceText);
+        String normalizedSource = TextUtil.safeLower(sourceText);
         long matchedTerms = terms.stream()
                 .filter(normalizedSource::contains)
                 .count();
@@ -682,17 +636,13 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private String combinedArticleText(KnowledgeArticle article) {
-        return safeLower(article.getTitle()) + " "
-                + safeLower(article.getCategory()) + " "
-                + safeLower(article.getContent());
-    }
-
-    private String safeLower(String value) {
-        return value == null ? "" : value.toLowerCase();
+        return TextUtil.safeLower(article.getTitle()) + " "
+                + TextUtil.safeLower(article.getCategory()) + " "
+                + TextUtil.safeLower(article.getContent());
     }
 
     private boolean isLowQualityKnowledgeContent(String content) {
-        String normalized = safeLower(content);
+        String normalized = TextUtil.safeLower(content);
         return normalized.contains("i could not find a reliable answer")
                 || normalized.contains("add concrete checks, commands, dashboards, or logs")
                 || normalized.contains("add the final reviewed answer here before publishing")
@@ -788,24 +738,24 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private int scoreAnswerPoint(String point, List<String> terms) {
-        String normalized = safeLower(point);
+        String normalized = TextUtil.safeLower(point);
         int score = 0;
         for (String term : terms) {
             if (normalized.contains(term)) {
                 score += term.length() >= 8 ? 3 : 1;
             }
         }
-        if (containsAny(normalized, "first", "check", "verify", "configure", "set", "run", "command", "cause", "because")) {
+        if (TextUtil.containsAny(normalized, "first", "check", "verify", "configure", "set", "run", "command", "cause", "because")) {
             score += 2;
         }
-        if (containsAny(normalized, "click", "subscribe", "copyright", "table of contents", "skip to content")) {
+        if (TextUtil.containsAny(normalized, "click", "subscribe", "copyright", "table of contents", "skip to content")) {
             score -= 5;
         }
         return score;
     }
 
     private boolean isDockerfileInstructionQuestion(String question) {
-        String normalized = safeLower(question);
+        String normalized = TextUtil.safeLower(question);
         return normalized.contains("dockerfile")
                 && normalized.contains("workdir")
                 && normalized.contains("copy")
@@ -857,7 +807,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private boolean isUsefulAnswerPoint(String line) {
-        String normalized = safeLower(line);
+        String normalized = TextUtil.safeLower(line);
         return line.length() >= 24
                 && !normalized.startsWith("category:")
                 && !normalized.startsWith("source references:")
@@ -877,16 +827,6 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 && !normalized.contains("document.")
                 && !normalized.contains("__next")
                 && !normalized.matches(".*[{};]{4,}.*");
-    }
-
-    private boolean containsAny(String text, String... terms) {
-        String normalized = text == null ? "" : text.toLowerCase(Locale.ROOT);
-        for (String term : terms) {
-            if (normalized.contains(term)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private String limitAnswerPoint(String value) {

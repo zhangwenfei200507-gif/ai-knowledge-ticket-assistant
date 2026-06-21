@@ -1,6 +1,7 @@
 package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
+import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import org.springframework.stereotype.Component;
@@ -99,7 +100,7 @@ public class KnowledgePackReorganizer {
     }
 
     private int scoreTarget(KnowledgeArticle article, String category, List<String> terms) {
-        String articleText = normalizeSearchText(article.getTitle() + " " + article.getCategory() + " " + article.getContent());
+        String articleText = TextUtil.normalizeSearchText(article.getTitle() + " " + article.getCategory() + " " + article.getContent());
         int score = 0;
         if (category != null && article.getCategory() != null && category.equalsIgnoreCase(article.getCategory())) {
             score += 6;
@@ -170,13 +171,13 @@ public class KnowledgePackReorganizer {
 
         for (String point : points) {
             String normalized = point.toLowerCase(Locale.ROOT);
-            if (containsAny(normalized, "configure", "configuration", "setting", "property", "environment", "yaml", "port", "timeout", "token", "secret")) {
+            if (TextUtil.containsAny(normalized, "configure", "configuration", "setting", "property", "environment", "yaml", "port", "timeout", "token", "secret")) {
                 configuration.add(point);
-            } else if (containsAny(normalized, "workflow", "step", "process", "pipeline", "flow", "before", "after")) {
+            } else if (TextUtil.containsAny(normalized, "workflow", "step", "process", "pipeline", "flow", "before", "after")) {
                 workflow.add(point);
-            } else if (containsAny(normalized, "error", "fail", "failure", "down", "timeout", "check", "verify", "diagnose", "log", "metric", "alert", "issue")) {
+            } else if (TextUtil.containsAny(normalized, "error", "fail", "failure", "down", "timeout", "check", "verify", "diagnose", "log", "metric", "alert", "issue")) {
                 troubleshooting.add(point);
-            } else if (containsAny(normalized, "should", "must", "avoid", "recommend", "best practice", "prevent", "keep", "ensure")) {
+            } else if (TextUtil.containsAny(normalized, "should", "must", "avoid", "recommend", "best practice", "prevent", "keep", "ensure")) {
                 bestPractices.add(point);
             } else {
                 core.add(point);
@@ -259,12 +260,12 @@ public class KnowledgePackReorganizer {
         StringBuilder builder = new StringBuilder();
         points.stream()
                 .limit(14)
-                .forEach(point -> builder.append("- ").append(limit(point, 280)).append("\n"));
+                .forEach(point -> builder.append("- ").append(TextUtil.limit(point, 280)).append("\n"));
         return builder.toString().trim();
     }
 
     private List<String> extractTerms(String text) {
-        String normalized = normalizeSearchText(text);
+        String normalized = TextUtil.normalizeSearchText(text);
         List<String> terms = new ArrayList<>();
         for (String term : normalized.split("[^a-z0-9+#./-]+")) {
             if (term.length() >= 4 && !terms.contains(term)) {
@@ -278,12 +279,8 @@ public class KnowledgePackReorganizer {
     }
 
     private String signature(String point) {
-        String signature = normalizeSearchText(point).replaceAll("[^a-z0-9]+", "");
+        String signature = TextUtil.normalizeSearchText(point).replaceAll("[^a-z0-9]+", "");
         return signature.length() <= 120 ? signature : signature.substring(0, 120);
-    }
-
-    private String normalizeSearchText(String text) {
-        return text == null ? "" : text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
     }
 
     private String cleanTitle(String title, String category) {
@@ -297,7 +294,7 @@ public class KnowledgePackReorganizer {
         if (!cleaned.toLowerCase(Locale.ROOT).contains("knowledge pack")) {
             cleaned = cleaned + " Knowledge Pack";
         }
-        return limit(cleaned, 180);
+        return TextUtil.limit(cleaned, 180);
     }
 
     private String safeCategory(String category) {
@@ -323,22 +320,6 @@ public class KnowledgePackReorganizer {
                 target.add(ordered.get(i));
             }
         }
-    }
-
-    private boolean containsAny(String text, String... terms) {
-        for (String term : terms) {
-            if (text.contains(term)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String limit(String value, int maxLength) {
-        if (value == null || value.length() <= maxLength) {
-            return value;
-        }
-        return value.substring(0, maxLength).trim();
     }
 
     private KnowledgeArticle reload(KnowledgeArticle article) {

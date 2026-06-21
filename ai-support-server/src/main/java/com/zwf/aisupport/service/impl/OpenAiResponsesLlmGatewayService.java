@@ -2,6 +2,7 @@ package com.zwf.aisupport.service.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.service.LlmGatewayService;
 import com.zwf.aisupport.vo.AiAnswerSourceVO;
 import org.springframework.beans.factory.annotation.Value;
@@ -171,7 +172,7 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
                     .append("Domain: ").append(nullToDash(source.getSourceDomain())).append("\n")
                     .append("URL: ").append(nullToDash(source.getSourceUrl())).append("\n")
                     .append("Content:\n")
-                    .append(limit(source.getPreviewContent(), 2200))
+                    .append(TextUtil.limit(source.getPreviewContent(), 2200))
                     .append("\n\n");
         }
 
@@ -184,7 +185,7 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
 
                 Evidence:
                 %s
-                """.formatted(question, sourceType, limit(evidence.toString(), MAX_EVIDENCE_CHARS));
+                """.formatted(question, sourceType, TextUtil.limit(evidence.toString(), MAX_EVIDENCE_CHARS));
     }
 
     private Optional<String> extractOutputText(JsonNode root) {
@@ -202,16 +203,6 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
 
     private String nullToDash(String value) {
         return value == null || value.isBlank() ? "-" : value;
-    }
-
-    private String limit(String value, int maxLength) {
-        if (value == null) {
-            return "";
-        }
-        if (value.length() <= maxLength) {
-            return value;
-        }
-        return value.substring(0, maxLength).trim();
     }
 
     private String trimTrailingSlash(String value) {
