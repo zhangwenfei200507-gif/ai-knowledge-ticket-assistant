@@ -22,13 +22,16 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
     private final WebSearchClient webSearchClient;
     private final WebEvidenceMapper webEvidenceMapper;
     private final KnowledgeArticleMapper knowledgeArticleMapper;
+    private final KnowledgePackReorganizer knowledgePackReorganizer;
 
     public WebEvidenceServiceImpl(WebSearchClient webSearchClient,
                                   WebEvidenceMapper webEvidenceMapper,
-                                  KnowledgeArticleMapper knowledgeArticleMapper) {
+                                  KnowledgeArticleMapper knowledgeArticleMapper,
+                                  KnowledgePackReorganizer knowledgePackReorganizer) {
         this.webSearchClient = webSearchClient;
         this.webEvidenceMapper = webEvidenceMapper;
         this.knowledgeArticleMapper = knowledgeArticleMapper;
+        this.knowledgePackReorganizer = knowledgePackReorganizer;
     }
 
     @Override
@@ -114,16 +117,15 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
             throw new BusinessException("Evidence is not useful enough to publish as internal knowledge");
         }
 
-        KnowledgeArticle article = new KnowledgeArticle();
-        article.setTitle(evidence.getSuggestedArticleTitle());
-        article.setContent(evidence.getSuggestedArticleContent());
-        article.setCategory(evidence.getCategory());
-        article.setCreatedBy(currentUserId);
-        article.setStatus("PUBLISHED");
-        knowledgeArticleMapper.insert(article);
+        KnowledgeArticle article = knowledgePackReorganizer.reorganizeOrCreate(
+                evidence.getSuggestedArticleTitle(),
+                evidence.getCategory(),
+                evidence.getSuggestedArticleContent(),
+                currentUserId,
+                "Reviewed " + (evidence.getEvidenceOrigin() == null ? "external evidence" : evidence.getEvidenceOrigin())
+        );
         webEvidenceMapper.markConverted(evidence.getId(), currentUserId, article.getId());
-        KnowledgeArticle savedArticle = knowledgeArticleMapper.findById(article.getId());
-        return convertToKnowledgeArticleVO(savedArticle == null ? article : savedArticle);
+        return convertToKnowledgeArticleVO(article);
     }
 
     @Override

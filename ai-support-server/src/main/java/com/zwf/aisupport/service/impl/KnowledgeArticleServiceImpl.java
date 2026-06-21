@@ -21,9 +21,12 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
     private static final long MAX_ARTICLE_FILE_SIZE = 10 * 1024 * 1024;
 
     private final KnowledgeArticleMapper knowledgeArticleMapper;
+    private final KnowledgePackReorganizer knowledgePackReorganizer;
 
-    public KnowledgeArticleServiceImpl(KnowledgeArticleMapper knowledgeArticleMapper) {
+    public KnowledgeArticleServiceImpl(KnowledgeArticleMapper knowledgeArticleMapper,
+                                       KnowledgePackReorganizer knowledgePackReorganizer) {
         this.knowledgeArticleMapper = knowledgeArticleMapper;
+        this.knowledgePackReorganizer = knowledgePackReorganizer;
     }
 
     @Override
@@ -38,14 +41,13 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
             throw new BusinessException("User is not authenticated");
         }
 
-        KnowledgeArticle article = new KnowledgeArticle();
-        article.setTitle(knowledgeArticleCreateDTO.getTitle());
-        article.setContent(knowledgeArticleCreateDTO.getContent());
-        article.setCategory(knowledgeArticleCreateDTO.getCategory());
-        article.setCreatedBy(currentUserId);
-        article.setStatus("PUBLISHED");
-
-        knowledgeArticleMapper.insert(article);
+        knowledgePackReorganizer.reorganizeOrCreate(
+                knowledgeArticleCreateDTO.getTitle(),
+                knowledgeArticleCreateDTO.getCategory(),
+                knowledgeArticleCreateDTO.getContent(),
+                currentUserId,
+                "Manual administrator knowledge entry"
+        );
     }
 
     @Override
@@ -62,14 +64,13 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
 
         UploadedTextExtractor.ExtractedText extractedText = UploadedTextExtractor.extract(file, MAX_ARTICLE_FILE_SIZE, "article");
 
-        KnowledgeArticle article = new KnowledgeArticle();
-        article.setTitle(UploadedTextExtractor.titleFromFilename(extractedText.filename(), title));
-        article.setContent(extractedText.content());
-        article.setCategory(category);
-        article.setCreatedBy(currentUserId);
-        article.setStatus("PUBLISHED");
-
-        knowledgeArticleMapper.insert(article);
+        KnowledgeArticle article = knowledgePackReorganizer.reorganizeOrCreate(
+                UploadedTextExtractor.titleFromFilename(extractedText.filename(), title),
+                category,
+                extractedText.content(),
+                currentUserId,
+                "Administrator uploaded article file: " + extractedText.filename()
+        );
         return convertToKnowledgeArticleVO(article);
     }
 
@@ -127,14 +128,13 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
             throw new BusinessException("Knowledge article not found");
         }
 
-        article.setTitle(updateDTO.getTitle());
-        article.setContent(updateDTO.getContent());
-        article.setCategory(updateDTO.getCategory());
-
-        // Keep knowledge articles editable so AI answers can improve over time.
-        knowledgeArticleMapper.update(article);
-
-        KnowledgeArticle updatedArticle = knowledgeArticleMapper.findById(id);
+        KnowledgeArticle updatedArticle = knowledgePackReorganizer.rewriteSingleArticle(
+                id,
+                updateDTO.getTitle(),
+                updateDTO.getCategory(),
+                updateDTO.getContent(),
+                "Manual administrator Knowledge Pack edit"
+        );
         return convertToKnowledgeArticleVO(updatedArticle);
     }
 

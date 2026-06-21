@@ -50,6 +50,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private final DocumentService documentService;
     private final WebEvidenceService webEvidenceService;
     private final LlmGatewayService llmGatewayService;
+    private final KnowledgePackReorganizer knowledgePackReorganizer;
 
     public AiAssistantServiceImpl(KnowledgeArticleMapper knowledgeArticleMapper,
                                   TicketMapper ticketMapper,
@@ -57,7 +58,8 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                                   DocumentChunkMapper documentChunkMapper,
                                   DocumentService documentService,
                                   WebEvidenceService webEvidenceService,
-                                  LlmGatewayService llmGatewayService) {
+                                  LlmGatewayService llmGatewayService,
+                                  KnowledgePackReorganizer knowledgePackReorganizer) {
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.ticketMapper = ticketMapper;
         this.aiQuestionLogMapper = aiQuestionLogMapper;
@@ -65,6 +67,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         this.documentService = documentService;
         this.webEvidenceService = webEvidenceService;
         this.llmGatewayService = llmGatewayService;
+        this.knowledgePackReorganizer = knowledgePackReorganizer;
     }
 
     @Override
@@ -295,7 +298,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             throw new BusinessException("Only administrators can access knowledge gaps");
         }
 
-        // Knowledge gaps help administrators decide what new articles should be added.
+        // Knowledge gaps help administrators decide which Knowledge Pack should be reorganized.
         return aiQuestionLogMapper.findKnowledgeGaps()
                 .stream()
                 .map(this::convertToKnowledgeGapVO)
@@ -321,15 +324,13 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             throw new BusinessException("Article content is still a placeholder or failed answer. Please replace it with a reviewed, useful solution before publishing.");
         }
 
-        KnowledgeArticle article = new KnowledgeArticle();
-        article.setTitle(createDTO.getTitle());
-        article.setContent(createDTO.getContent());
-        article.setCategory(createDTO.getCategory());
-        article.setCreatedBy(currentUserId);
-        article.setStatus("PUBLISHED");
-
-        // Convert an unanswered AI question into reusable knowledge for future answers.
-        knowledgeArticleMapper.insert(article);
+        KnowledgeArticle article = knowledgePackReorganizer.reorganizeOrCreate(
+                createDTO.getTitle(),
+                createDTO.getCategory(),
+                createDTO.getContent(),
+                currentUserId,
+                "Reviewed knowledge gap answer"
+        );
         aiQuestionLogMapper.linkKnowledgeArticle(logId, article.getId(), article.getTitle());
 
         return convertToKnowledgeArticleVO(article);
