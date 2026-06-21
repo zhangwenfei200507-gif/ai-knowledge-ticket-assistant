@@ -311,6 +311,18 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
         return KnowledgeArticleVoMapper.toVO(article);
     }
+
+    @Override
+    public void deleteKnowledgeGap(Long logId) {
+        CurrentUserUtil.requireAdmin("Only administrators can delete knowledge gaps");
+
+        AiQuestionLog aiQuestionLog = aiQuestionLogMapper.findById(logId);
+        if (aiQuestionLog == null || !"NONE".equals(aiQuestionLog.getSourceType())) {
+            throw new BusinessException("Knowledge gap not found");
+        }
+        aiQuestionLogMapper.deleteById(logId);
+    }
+
     private KnowledgeGapVO convertToKnowledgeGapVO(AiQuestionLog aiQuestionLog) {
         KnowledgeGapVO vo = new KnowledgeGapVO();
         vo.setLogId(aiQuestionLog.getId());

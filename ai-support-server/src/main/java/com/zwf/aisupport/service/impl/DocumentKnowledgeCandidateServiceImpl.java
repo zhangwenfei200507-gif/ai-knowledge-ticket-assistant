@@ -69,6 +69,17 @@ public class DocumentKnowledgeCandidateServiceImpl implements DocumentKnowledgeC
     }
 
     @Override
+    public DocumentKnowledgeCandidateVO updateReviewContent(Long id, String title, String content, String category) {
+        CurrentUserUtil.requireAdmin("Only administrators can manage document knowledge candidates");
+        DocumentKnowledgeCandidate candidate = requireCandidate(id);
+        if (!"NEEDS_REVIEW".equals(candidate.getStatus())) {
+            throw new BusinessException("Only pending document knowledge can be edited before approval");
+        }
+        candidateMapper.updateReviewContent(id, title.trim(), content.trim(), category == null ? null : category.trim());
+        return candidateMapper.findVOById(id);
+    }
+
+    @Override
     public void reject(Long id) {
         CurrentUserUtil.requireAdmin("Only administrators can manage document knowledge candidates");
         DocumentKnowledgeCandidate candidate = requireCandidate(id);
@@ -76,6 +87,26 @@ public class DocumentKnowledgeCandidateServiceImpl implements DocumentKnowledgeC
             throw new BusinessException("Converted document knowledge cannot be rejected");
         }
         candidateMapper.markRejected(candidate.getId(), CurrentUserUtil.requireCurrentUserId());
+    }
+
+    @Override
+    public void archive(Long id) {
+        CurrentUserUtil.requireAdmin("Only administrators can manage document knowledge candidates");
+        DocumentKnowledgeCandidate candidate = requireCandidate(id);
+        if ("CONVERTED".equals(candidate.getStatus())) {
+            throw new BusinessException("Converted document knowledge is part of the knowledge audit trail and cannot be archived here");
+        }
+        candidateMapper.markArchived(candidate.getId(), CurrentUserUtil.requireCurrentUserId());
+    }
+
+    @Override
+    public void delete(Long id) {
+        CurrentUserUtil.requireAdmin("Only administrators can manage document knowledge candidates");
+        DocumentKnowledgeCandidate candidate = requireCandidate(id);
+        if (!"REJECTED".equals(candidate.getStatus()) && !"ARCHIVED".equals(candidate.getStatus())) {
+            throw new BusinessException("Only rejected or archived document knowledge can be deleted");
+        }
+        candidateMapper.deleteById(candidate.getId());
     }
 
     private DocumentKnowledgeCandidate requireCandidate(Long id) {

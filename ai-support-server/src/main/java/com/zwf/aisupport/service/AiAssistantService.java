@@ -29,4 +29,6 @@ public interface AiAssistantService {
     List<KnowledgeGapVO> listKnowledgeGaps();
 
     KnowledgeArticleVO createArticleFromKnowledgeGap(Long logId, KnowledgeArticleCreateDTO createDTO);
+
+    void deleteKnowledgeGap(Long logId);
 }

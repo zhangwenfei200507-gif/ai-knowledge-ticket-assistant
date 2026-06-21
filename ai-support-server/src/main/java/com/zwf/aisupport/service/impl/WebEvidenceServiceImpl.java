@@ -70,8 +70,12 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
     }
 
     @Override
-    public WebEvidence updateSuggestedArticle(Long id, String suggestedArticleTitle, String suggestedArticleContent) {
+    public WebEvidenceVO updateSuggestedArticle(Long id, String suggestedArticleTitle, String suggestedArticleContent) {
+        CurrentUserUtil.requireAdmin("Only administrators can manage web evidence");
         WebEvidence evidence = requireEvidence(id);
+        if (!"NEEDS_REVIEW".equals(evidence.getStatus())) {
+            throw new BusinessException("Only pending evidence can be edited before approval");
+        }
         webEvidenceMapper.updateSuggestedArticle(
                 id,
                 suggestedArticleTitle == null || suggestedArticleTitle.isBlank()
@@ -82,7 +86,7 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
                         : suggestedArticleContent
         );
         WebEvidence updated = webEvidenceMapper.findById(id);
-        return updated == null ? evidence : updated;
+        return convertToVO(updated == null ? evidence : updated);
     }
 
     @Override
@@ -139,6 +143,26 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
             throw new BusinessException("Converted evidence cannot be rejected");
         }
         webEvidenceMapper.markRejected(evidence.getId(), CurrentUserUtil.requireCurrentUserId());
+    }
+
+    @Override
+    public void archive(Long id) {
+        CurrentUserUtil.requireAdmin("Only administrators can manage web evidence");
+        WebEvidence evidence = requireEvidence(id);
+        if ("CONVERTED".equals(evidence.getStatus())) {
+            throw new BusinessException("Converted evidence is part of the knowledge audit trail and cannot be archived here");
+        }
+        webEvidenceMapper.markArchived(evidence.getId(), CurrentUserUtil.requireCurrentUserId());
+    }
+
+    @Override
+    public void delete(Long id) {
+        CurrentUserUtil.requireAdmin("Only administrators can manage web evidence");
+        WebEvidence evidence = requireEvidence(id);
+        if (!"REJECTED".equals(evidence.getStatus()) && !"ARCHIVED".equals(evidence.getStatus())) {
+            throw new BusinessException("Only rejected or archived evidence can be deleted");
+        }
+        webEvidenceMapper.deleteById(evidence.getId());
     }
 
     private WebEvidence requireEvidence(Long id) {

@@ -11,5 +11,11 @@ public interface DocumentKnowledgeCandidateService {
 
     KnowledgeArticleVO approveToArticle(Long id);
 
+    DocumentKnowledgeCandidateVO updateReviewContent(Long id, String title, String content, String category);
+
     void reject(Long id);
+
+    void archive(Long id);
+
+    void delete(Long id);
 }

@@ -47,6 +47,7 @@ public interface WebEvidenceMapper {
 
     @Select("""
         select * from web_evidence
+        where status <> 'ARCHIVED'
         order by created_time desc
         """)
     List<WebEvidence> findAll();
@@ -92,6 +93,19 @@ public interface WebEvidenceMapper {
     void updateSuggestedArticle(@Param("id") Long id,
                                 @Param("suggestedArticleTitle") String suggestedArticleTitle,
                                 @Param("suggestedArticleContent") String suggestedArticleContent);
+
+    @Update("""
+        update web_evidence
+        set status = 'ARCHIVED',
+            reviewed_by = #{reviewedBy},
+            reviewed_time = CURRENT_TIMESTAMP
+        where id = #{id}
+        """)
+    void markArchived(@Param("id") Long id,
+                      @Param("reviewedBy") Long reviewedBy);
+
+    @Delete("delete from web_evidence where id = #{id}")
+    void deleteById(Long id);
 
     @Select("select count(*) from web_evidence")
     Long countAll();

@@ -35,12 +35,17 @@ import {
 import {
   approveDocumentKnowledgeCandidate,
   approveWebEvidence,
+  archiveDocumentKnowledgeCandidate,
   archiveKnowledgeArticle,
   archiveKnowledgeDocument,
+  archiveWebEvidence,
   askAiQuestion,
   closeTicket,
   createArticleFromKnowledgeGap,
+  deleteDocumentKnowledgeCandidate,
   deleteAiQuestionLog,
+  deleteKnowledgeGap,
+  deleteWebEvidence,
   getAiQuestionLogs,
   getCurrentUser,
   getDocumentKnowledgeCandidates,
@@ -59,8 +64,10 @@ import {
   searchDocumentChunks,
   searchKnowledgeArticles,
   searchWebEvidence,
+  updateDocumentKnowledgeCandidate,
   updateKnowledgeArticle,
   updateTicketStatus,
+  updateWebEvidenceSuggestion,
   uploadKnowledgeArticle,
   uploadKnowledgeDocument,
 } from './api/admin';
@@ -388,13 +395,21 @@ function WebEvidenceWorkspace({
   onSearch,
   onRefresh,
   onSelect,
+  onEdit,
   onApprove,
   onReject,
+  onArchive,
+  onDelete,
 }) {
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const pendingCount = evidence.filter((item) => item.status === 'NEEDS_REVIEW').length;
   const convertedCount = evidence.filter((item) => item.status === 'CONVERTED').length;
   const rejectedCount = evidence.filter((item) => item.status === 'REJECTED').length;
-  const { page, pageCount, pagedItems, setPage } = usePagedItems(evidence);
+  const filteredEvidence = useMemo(
+    () => statusFilter === 'ALL' ? evidence : evidence.filter((item) => item.status === statusFilter),
+    [evidence, statusFilter]
+  );
+  const { page, pageCount, pagedItems, setPage } = usePagedItems(filteredEvidence);
 
   return (
     <section className="webEvidenceWorkspace">
@@ -422,7 +437,13 @@ function WebEvidenceWorkspace({
       <div className="webEvidenceReviewGrid">
         <div className="webEvidenceQueue">
           <div className="libraryToolbar">
-            <strong>{evidence.length} Evidence Records</strong>
+            <strong>{filteredEvidence.length} Evidence Records</strong>
+            <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}>
+              <option value="ALL">All Status</option>
+              <option value="NEEDS_REVIEW">Needs Review</option>
+              <option value="CONVERTED">Converted</option>
+              <option value="REJECTED">Rejected</option>
+            </select>
             <button type="button" onClick={onRefresh}>Refresh</button>
           </div>
           {pagedItems.length ? pagedItems.map((item) => (
@@ -432,7 +453,7 @@ function WebEvidenceWorkspace({
               <p>{item.question}</p>
             </button>
           )) : <EmptyState text="No external evidence yet. Ask an unknown question or run a manual web search." />}
-          <ReviewPager page={page} pageCount={pageCount} total={evidence.length} onPageChange={setPage} />
+          <ReviewPager page={page} pageCount={pageCount} total={filteredEvidence.length} onPageChange={setPage} />
         </div>
 
         <article className="webEvidenceDetail">
@@ -445,8 +466,11 @@ function WebEvidenceWorkspace({
                 <div className="readerActions">
                   {selectedEvidence.url && <button type="button" onClick={() => window.open(selectedEvidence.url, '_blank', 'noopener,noreferrer')}>Open Source</button>}
                   <button type="button" onClick={() => navigator.clipboard.writeText(selectedEvidence.suggestedArticleContent || selectedEvidence.extractedContent || '')}>Copy Evidence</button>
+                  <button type="button" disabled={selectedEvidence.status !== 'NEEDS_REVIEW'} onClick={() => onEdit(selectedEvidence)}>Edit Before Approve</button>
                   <button type="button" disabled={selectedEvidence.status !== 'NEEDS_REVIEW'} onClick={() => onApprove(selectedEvidence)}>Approve to Article</button>
                   <button className="danger" type="button" disabled={selectedEvidence.status !== 'NEEDS_REVIEW'} onClick={() => onReject(selectedEvidence)}>Reject</button>
+                  <button className="danger" type="button" disabled={selectedEvidence.status === 'CONVERTED'} onClick={() => onArchive(selectedEvidence)}>Archive</button>
+                  <button className="danger" type="button" disabled={!['REJECTED', 'ARCHIVED'].includes(selectedEvidence.status)} onClick={() => onDelete(selectedEvidence)}>Delete</button>
                 </div>
               </div>
 
@@ -523,26 +547,47 @@ function MetricLine({ label, value, danger }) {
   );
 }
 
-function KnowledgeGaps({ data, onView }) {
+function KnowledgeGaps({ data, onView, onDelete }) {
   const gaps = data?.gaps ?? [];
+  const [keyword, setKeyword] = useState('');
+  const filteredGaps = useMemo(() => {
+    const normalized = keyword.trim().toLowerCase();
+    if (!normalized) return gaps;
+    return gaps.filter((gap) => [
+      gap.question,
+      gap.answer,
+      gap.category,
+      gap.priority,
+      gap.suggestedArticle,
+    ].some((value) => String(value ?? '').toLowerCase().includes(normalized)));
+  }, [gaps, keyword]);
+  const { page, pageCount, pagedItems, setPage } = usePagedItems(filteredGaps);
 
   if (!gaps.length) {
     return <EmptyState text="No knowledge gaps yet." />;
   }
 
   return (
-    <div className="actionRecordGrid">
-      {gaps.map((gap) => (
+    <>
+      <div className="libraryToolbar">
+        <strong>{filteredGaps.length} Gap Records</strong>
+        <input className="librarySearch compact" value={keyword} placeholder="Search gaps..." onChange={(event) => { setKeyword(event.target.value); setPage(1); }} />
+      </div>
+      <div className="actionRecordGrid">
+      {pagedItems.map((gap) => (
         <button type="button" key={`${gap.logId}-${gap.question}`} onClick={() => onView(gap)}>
           <div>
             <strong>{gap.question}</strong>
             <span>{gap.category} · Frequency {gap.frequency}</span>
           </div>
-          <p>{gap.suggestedArticle}</p>
-          <b className={`priorityPill ${gap.priority?.toLowerCase()}`}>{gap.priority}</b>
+          <p>{gap.suggestedArticle || gap.answer || 'No reviewed answer yet.'}</p>
+          <b className={`priorityPill ${gap.priority?.toLowerCase()}`}>{gap.priority || 'Review'}</b>
+          <em onClick={(event) => { event.stopPropagation(); onDelete(gap); }}>Delete</em>
         </button>
       ))}
-    </div>
+      </div>
+      <ReviewPager page={page} pageCount={pageCount} total={filteredGaps.length} onPageChange={setPage} />
+    </>
   );
 }
 
@@ -806,6 +851,7 @@ function AdminOperationsCenter() {
   const [selectedDocumentCandidate, setSelectedDocumentCandidate] = useState(null);
   const [articleSearch, setArticleSearch] = useState('');
   const [documentSearch, setDocumentSearch] = useState('');
+  const [candidateSearch, setCandidateSearch] = useState('');
   const [articlePage, setArticlePage] = useState(1);
   const [documentPage, setDocumentPage] = useState(1);
   const [candidatePage, setCandidatePage] = useState(1);
@@ -814,6 +860,7 @@ function AdminOperationsCenter() {
   const [globalSearch, setGlobalSearch] = useState('');
   const [globalSearchResults, setGlobalSearchResults] = useState({ articles: [], chunks: [] });
   const [articleEditor, setArticleEditor] = useState({ id: null, title: '', category: '', content: '' });
+  const [reviewEditor, setReviewEditor] = useState({ type: '', id: null, title: '', category: '', content: '' });
   const [aiLogs, setAiLogs] = useState([]);
   const [selectedAiLog, setSelectedAiLog] = useState(null);
   const [knowledgeGaps, setKnowledgeGaps] = useState([]);
@@ -891,12 +938,25 @@ function AdminOperationsCenter() {
     ].some((value) => String(value ?? '').toLowerCase().includes(keyword)));
   }, [documents, documentSearch]);
 
+  const filteredDocumentCandidates = useMemo(() => {
+    const keyword = candidateSearch.trim().toLowerCase();
+    if (!keyword) return documentCandidates;
+    return documentCandidates.filter((candidate) => [
+      candidate.title,
+      candidate.content,
+      candidate.category,
+      candidate.status,
+      candidate.suggestedArticleTitle,
+      candidate.originalFilename,
+    ].some((value) => String(value ?? '').toLowerCase().includes(keyword)));
+  }, [documentCandidates, candidateSearch]);
+
   const articlePageCount = Math.max(1, Math.ceil(filteredArticles.length / LIBRARY_PAGE_SIZE));
   const documentPageCount = Math.max(1, Math.ceil(filteredDocuments.length / LIBRARY_PAGE_SIZE));
   const pagedArticles = filteredArticles.slice((articlePage - 1) * LIBRARY_PAGE_SIZE, articlePage * LIBRARY_PAGE_SIZE);
   const pagedDocuments = filteredDocuments.slice((documentPage - 1) * LIBRARY_PAGE_SIZE, documentPage * LIBRARY_PAGE_SIZE);
-  const candidatePageCount = Math.max(1, Math.ceil(documentCandidates.length / REVIEW_PAGE_SIZE));
-  const pagedDocumentCandidates = documentCandidates.slice((candidatePage - 1) * REVIEW_PAGE_SIZE, candidatePage * REVIEW_PAGE_SIZE);
+  const candidatePageCount = Math.max(1, Math.ceil(filteredDocumentCandidates.length / REVIEW_PAGE_SIZE));
+  const pagedDocumentCandidates = filteredDocumentCandidates.slice((candidatePage - 1) * REVIEW_PAGE_SIZE, candidatePage * REVIEW_PAGE_SIZE);
   const aiLogPageCount = Math.max(1, Math.ceil(aiLogs.length / REVIEW_PAGE_SIZE));
   const pagedAiLogs = aiLogs.slice((aiLogPage - 1) * REVIEW_PAGE_SIZE, aiLogPage * REVIEW_PAGE_SIZE);
 
@@ -1193,6 +1253,50 @@ function AdminOperationsCenter() {
     openModal('editArticle');
   };
 
+  const openReviewEditor = (type, item) => {
+    if (!item) return;
+    setReviewEditor({
+      type,
+      id: item.id,
+      title: type === 'webEvidence' ? item.suggestedArticleTitle || item.title || '' : item.title || '',
+      category: item.category || 'General',
+      content: type === 'webEvidence'
+        ? item.suggestedArticleContent || item.extractedContent || ''
+        : item.content || '',
+    });
+    openModal('editReviewContent');
+  };
+
+  const submitReviewEdit = async (event) => {
+    event.preventDefault();
+    if (!reviewEditor.id || !reviewEditor.title.trim() || !reviewEditor.content.trim()) {
+      setActionStatus({ type: 'error', text: 'Title and content are required before saving review content.' });
+      return;
+    }
+
+    setActionStatus({ type: 'loading', text: 'Saving reviewed knowledge content...' });
+    try {
+      const payload = {
+        title: reviewEditor.title.trim(),
+        category: reviewEditor.category.trim(),
+        content: reviewEditor.content.trim(),
+      };
+      if (reviewEditor.type === 'webEvidence') {
+        const updated = await updateWebEvidenceSuggestion(reviewEditor.id, payload);
+        setSelectedEvidence(updated);
+        await loadWebEvidence();
+      } else {
+        const updated = await updateDocumentKnowledgeCandidate(reviewEditor.id, payload);
+        setSelectedDocumentCandidate(updated);
+        await loadDocumentCandidates();
+      }
+      setActionStatus({ type: 'success', text: 'Review content saved. It is ready for approval.' });
+      setActiveModal(null);
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
   const copyToClipboard = async (text, successText) => {
     try {
       await navigator.clipboard.writeText(text || '');
@@ -1354,6 +1458,38 @@ function AdminOperationsCenter() {
     }
   };
 
+  const archiveSelectedEvidence = async (evidence) => {
+    if (!evidence) return;
+    const confirmed = window.confirm(`Archive web evidence "${evidence.title || evidence.question}"? It will be hidden from the active review queue.`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Archiving external evidence...' });
+    try {
+      await archiveWebEvidence(evidence.id);
+      await loadWebEvidence();
+      setActionStatus({ type: 'success', text: 'Evidence archived.' });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const deleteSelectedEvidence = async (evidence) => {
+    if (!evidence) return;
+    const confirmed = window.confirm(`Permanently delete rejected evidence "${evidence.title || evidence.question}"?`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Deleting rejected evidence...' });
+    try {
+      await deleteWebEvidence(evidence.id);
+      await loadWebEvidence();
+      setActionStatus({ type: 'success', text: 'Rejected evidence deleted.' });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
   const approveSelectedDocumentCandidate = async (candidate) => {
     if (!candidate) return;
     const reorganizesExisting = ['REORGANIZE_KNOWLEDGE', 'MERGE_ARTICLE'].includes(candidate.suggestedAction);
@@ -1383,6 +1519,38 @@ function AdminOperationsCenter() {
       await rejectDocumentKnowledgeCandidate(candidate.id);
       await loadDocumentCandidates();
       setActionStatus({ type: 'success', text: 'Knowledge candidate rejected.' });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const archiveSelectedDocumentCandidate = async (candidate) => {
+    if (!candidate) return;
+    const confirmed = window.confirm(`Archive knowledge candidate "${candidate.title}"? It will be hidden from the active review queue.`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Archiving knowledge candidate...' });
+    try {
+      await archiveDocumentKnowledgeCandidate(candidate.id);
+      await loadDocumentCandidates();
+      setActionStatus({ type: 'success', text: 'Knowledge candidate archived.' });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const deleteSelectedDocumentCandidate = async (candidate) => {
+    if (!candidate) return;
+    const confirmed = window.confirm(`Permanently delete rejected knowledge candidate "${candidate.title}"?`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Deleting rejected knowledge candidate...' });
+    try {
+      await deleteDocumentKnowledgeCandidate(candidate.id);
+      await loadDocumentCandidates();
+      setActionStatus({ type: 'success', text: 'Rejected knowledge candidate deleted.' });
       loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -1482,6 +1650,24 @@ Prevention controls:
       setActionStatus({ type: 'success', text: `Published article: ${article.title}` });
       await loadOperationsCenter();
       setActiveModal(null);
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const deleteSelectedGap = async (gap = selectedGap) => {
+    if (!gap) return;
+    const confirmed = window.confirm(`Delete knowledge gap "${gap.question}"?`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Deleting knowledge gap...' });
+    try {
+      await deleteKnowledgeGap(gap.logId);
+      setKnowledgeGaps((current) => current.filter((item) => item.logId !== gap.logId));
+      setSelectedGap(null);
+      setActiveModal(null);
+      setActionStatus({ type: 'success', text: 'Knowledge gap deleted.' });
+      loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
     }
@@ -1908,6 +2094,7 @@ Prevention controls:
               <strong>{pendingCount} Pending</strong>
               <button type="button" onClick={loadDocumentCandidates}>Reload</button>
             </div>
+            <input className="librarySearch" value={candidateSearch} placeholder="Search review candidates..." onChange={(event) => { setCandidateSearch(event.target.value); setCandidatePage(1); }} />
             {actionStatus.text && activePage === 'documentLearning' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
             {pagedDocumentCandidates.length ? pagedDocumentCandidates.map((candidate) => (
               <button
@@ -1920,7 +2107,7 @@ Prevention controls:
                 <span>{candidate.category || 'General'} / {statusText(candidate.status)} / {isReorganizeCandidate(candidate) ? `Reorganize ${candidate.suggestedArticleTitle || 'Knowledge Pack'}` : 'New Knowledge Pack'} / {candidate.originalFilename}</span>
               </button>
             )) : <EmptyState text="No knowledge review candidates yet. Ask AI with a CloudOps file to create reviewable insights." />}
-            <ReviewPager page={candidatePage} pageCount={candidatePageCount} total={documentCandidates.length} onPageChange={setCandidatePage} />
+            <ReviewPager page={candidatePage} pageCount={candidatePageCount} total={filteredDocumentCandidates.length} onPageChange={setCandidatePage} />
           </div>
           <KnowledgeReader
             article={selectedDocumentCandidate && {
@@ -1934,8 +2121,11 @@ Prevention controls:
             actions={selectedDocumentCandidate && (
               <>
                 <button type="button" onClick={() => copyToClipboard(selectedDocumentCandidate.content, 'Knowledge candidate copied.')}>Copy</button>
-                <button type="button" onClick={() => approveSelectedDocumentCandidate(selectedDocumentCandidate)}>{isReorganizeCandidate(selectedDocumentCandidate) ? 'Approve Reorganization' : 'Approve New Pack'}</button>
-                <button className="danger" type="button" onClick={() => rejectSelectedDocumentCandidate(selectedDocumentCandidate)}>Reject</button>
+                <button type="button" disabled={selectedDocumentCandidate.status !== 'NEEDS_REVIEW'} onClick={() => openReviewEditor('documentCandidate', selectedDocumentCandidate)}>Edit Before Approve</button>
+                <button type="button" disabled={selectedDocumentCandidate.status !== 'NEEDS_REVIEW'} onClick={() => approveSelectedDocumentCandidate(selectedDocumentCandidate)}>{isReorganizeCandidate(selectedDocumentCandidate) ? 'Approve Reorganization' : 'Approve New Pack'}</button>
+                <button className="danger" type="button" disabled={selectedDocumentCandidate.status !== 'NEEDS_REVIEW'} onClick={() => rejectSelectedDocumentCandidate(selectedDocumentCandidate)}>Reject</button>
+                <button className="danger" type="button" disabled={selectedDocumentCandidate.status === 'CONVERTED'} onClick={() => archiveSelectedDocumentCandidate(selectedDocumentCandidate)}>Archive</button>
+                <button className="danger" type="button" disabled={!['REJECTED', 'ARCHIVED'].includes(selectedDocumentCandidate.status)} onClick={() => deleteSelectedDocumentCandidate(selectedDocumentCandidate)}>Delete</button>
               </>
             )}
           />
@@ -1983,8 +2173,11 @@ Prevention controls:
       onSearch={submitWebEvidenceSearch}
       onRefresh={loadWebEvidence}
       onSelect={setSelectedEvidence}
+      onEdit={(evidence) => openReviewEditor('webEvidence', evidence)}
       onApprove={approveSelectedEvidence}
       onReject={rejectSelectedEvidence}
+      onArchive={archiveSelectedEvidence}
+      onDelete={deleteSelectedEvidence}
     />
   );
 
@@ -2000,7 +2193,7 @@ Prevention controls:
           <button type="button" onClick={loadOperationsCenter}>Refresh</button>
         </div>
       </div>
-      <KnowledgeGaps data={data.knowledgeGapLoop} onView={openGapDetail} />
+      <KnowledgeGaps data={{ gaps: knowledgeGaps.length ? knowledgeGaps : data.knowledgeGapLoop?.gaps ?? [] }} onView={openGapDetail} onDelete={deleteSelectedGap} />
     </section>
   );
 
@@ -2174,6 +2367,7 @@ Prevention controls:
             <div className="formButtonRow">
               <button className="adminSubmitButton" type="submit">Publish Article</button>
               <button className="secondaryAdminButton" type="button" onClick={() => copyToClipboard(gapArticleDraft.content, 'Draft article copied.')}>Copy Draft</button>
+              <button className="secondaryAdminButton dangerText" type="button" onClick={() => deleteSelectedGap(selectedGap)}>Delete Gap</button>
             </div>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
           </form>
@@ -2276,6 +2470,29 @@ Prevention controls:
             <div className="formButtonRow">
               <button className="adminSubmitButton" type="submit">Save Changes</button>
               <button className="secondaryAdminButton" type="button" onClick={() => setActiveModal('articleLibrary')}>Cancel</button>
+            </div>
+            {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+          </form>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'editReviewContent') {
+      return (
+        <AdminModal title="Edit Review Content Before Approval" onClose={closeModal}>
+          <form className="adminActionForm wide" onSubmit={submitReviewEdit}>
+            <Field label="Title">
+              <input value={reviewEditor.title} onChange={(event) => setReviewEditor((current) => ({ ...current, title: event.target.value }))} />
+            </Field>
+            <Field label="Category">
+              <input value={reviewEditor.category} onChange={(event) => setReviewEditor((current) => ({ ...current, category: event.target.value }))} />
+            </Field>
+            <Field label="Reviewed knowledge content">
+              <textarea value={reviewEditor.content} rows={16} onChange={(event) => setReviewEditor((current) => ({ ...current, content: event.target.value }))} />
+            </Field>
+            <div className="formButtonRow">
+              <button className="adminSubmitButton" type="submit">Save Review Content</button>
+              <button className="secondaryAdminButton" type="button" onClick={closeModal}>Cancel</button>
             </div>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
           </form>

@@ -14,7 +14,7 @@ public interface WebEvidenceService {
 
     WebEvidence storeModelGeneratedEvidence(String question, String answer, Long userId);
 
-    WebEvidence updateSuggestedArticle(Long id, String suggestedArticleTitle, String suggestedArticleContent);
+    WebEvidenceVO updateSuggestedArticle(Long id, String suggestedArticleTitle, String suggestedArticleContent);
 
     WebEvidenceVO searchManually(WebEvidenceSearchDTO searchDTO);
 
@@ -23,4 +23,8 @@ public interface WebEvidenceService {
     KnowledgeArticleVO approveToArticle(Long id);
 
     void reject(Long id);
+
+    void archive(Long id);
+
+    void delete(Long id);
 }

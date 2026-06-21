@@ -1,6 +1,7 @@
 package com.zwf.aisupport.controller;
 
 import com.zwf.aisupport.common.result.Result;
+import com.zwf.aisupport.dto.ReviewContentUpdateDTO;
 import com.zwf.aisupport.dto.WebEvidenceSearchDTO;
 import com.zwf.aisupport.service.WebEvidenceService;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
@@ -35,9 +36,31 @@ public class WebEvidenceController {
         return Result.success(webEvidenceService.approveToArticle(id));
     }
 
+    @PutMapping("/{id}/suggested-article")
+    public Result<WebEvidenceVO> updateSuggestedArticle(@PathVariable Long id,
+                                                        @Valid @RequestBody ReviewContentUpdateDTO updateDTO) {
+        return Result.success(webEvidenceService.updateSuggestedArticle(
+                id,
+                updateDTO.getTitle(),
+                updateDTO.getContent()
+        ));
+    }
+
     @PatchMapping("/{id}/reject")
     public Result<Void> reject(@PathVariable Long id) {
         webEvidenceService.reject(id);
+        return Result.success();
+    }
+
+    @PatchMapping("/{id}/archive")
+    public Result<Void> archive(@PathVariable Long id) {
+        webEvidenceService.archive(id);
+        return Result.success();
+    }
+
+    @DeleteMapping("/{id}")
+    public Result<Void> delete(@PathVariable Long id) {
+        webEvidenceService.delete(id);
         return Result.success();
     }
 }

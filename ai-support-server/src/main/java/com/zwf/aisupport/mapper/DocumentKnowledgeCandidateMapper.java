@@ -45,6 +45,7 @@ public interface DocumentKnowledgeCandidateMapper {
         from document_knowledge_candidates dkc
         join documents d on d.id = dkc.document_id
         left join knowledge_articles ka on ka.id = dkc.suggested_article_id
+        where dkc.status <> 'ARCHIVED'
         order by dkc.created_time desc
         """)
     List<DocumentKnowledgeCandidateVO> findAll();
@@ -84,6 +85,31 @@ public interface DocumentKnowledgeCandidateMapper {
         """)
     void markRejected(@Param("id") Long id,
                       @Param("reviewedBy") Long reviewedBy);
+
+    @Update("""
+        update document_knowledge_candidates
+        set title = #{title},
+            content = #{content},
+            category = #{category}
+        where id = #{id}
+        """)
+    void updateReviewContent(@Param("id") Long id,
+                             @Param("title") String title,
+                             @Param("content") String content,
+                             @Param("category") String category);
+
+    @Update("""
+        update document_knowledge_candidates
+        set status = 'ARCHIVED',
+            reviewed_by = #{reviewedBy},
+            reviewed_time = CURRENT_TIMESTAMP
+        where id = #{id}
+        """)
+    void markArchived(@Param("id") Long id,
+                      @Param("reviewedBy") Long reviewedBy);
+
+    @Delete("delete from document_knowledge_candidates where id = #{id}")
+    void deleteById(Long id);
 
     @Select("select count(*) from document_knowledge_candidates where status = 'NEEDS_REVIEW'")
     Long countPendingReview();

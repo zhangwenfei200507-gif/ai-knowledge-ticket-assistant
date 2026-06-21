@@ -80,4 +80,10 @@ public class AiAssistantController {
         KnowledgeArticleVO article = aiAssistantService.createArticleFromKnowledgeGap(logId, createDTO);
         return Result.success(article);
     }
+
+    @DeleteMapping("/knowledge-gaps/{logId}")
+    public Result<Void> deleteKnowledgeGap(@PathVariable Long logId) {
+        aiAssistantService.deleteKnowledgeGap(logId);
+        return Result.success();
+    }
 }

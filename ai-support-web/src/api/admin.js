@@ -101,6 +101,19 @@ export const rejectWebEvidence = (id) => requestJson(`/api/admin/web-evidence/${
   method: 'PATCH',
 });
 
+export const updateWebEvidenceSuggestion = (id, payload) => requestJson(`/api/admin/web-evidence/${id}/suggested-article`, {
+  method: 'PUT',
+  body: JSON.stringify(payload),
+});
+
+export const archiveWebEvidence = (id) => requestJson(`/api/admin/web-evidence/${id}/archive`, {
+  method: 'PATCH',
+});
+
+export const deleteWebEvidence = (id) => requestJson(`/api/admin/web-evidence/${id}`, {
+  method: 'DELETE',
+});
+
 export const getDocumentKnowledgeCandidates = () => requestJson('/api/admin/document-knowledge-candidates');
 
 export const approveDocumentKnowledgeCandidate = (id) => requestJson(`/api/admin/document-knowledge-candidates/${id}/approve`, {
@@ -109,6 +122,23 @@ export const approveDocumentKnowledgeCandidate = (id) => requestJson(`/api/admin
 
 export const rejectDocumentKnowledgeCandidate = (id) => requestJson(`/api/admin/document-knowledge-candidates/${id}/reject`, {
   method: 'PATCH',
+});
+
+export const updateDocumentKnowledgeCandidate = (id, payload) => requestJson(`/api/admin/document-knowledge-candidates/${id}`, {
+  method: 'PUT',
+  body: JSON.stringify(payload),
+});
+
+export const archiveDocumentKnowledgeCandidate = (id) => requestJson(`/api/admin/document-knowledge-candidates/${id}/archive`, {
+  method: 'PATCH',
+});
+
+export const deleteDocumentKnowledgeCandidate = (id) => requestJson(`/api/admin/document-knowledge-candidates/${id}`, {
+  method: 'DELETE',
+});
+
+export const deleteKnowledgeGap = (id) => requestJson(`/api/ai/knowledge-gaps/${id}`, {
+  method: 'DELETE',
 });
 
 export const getCurrentUser = () => requestJson('/api/users/me');
