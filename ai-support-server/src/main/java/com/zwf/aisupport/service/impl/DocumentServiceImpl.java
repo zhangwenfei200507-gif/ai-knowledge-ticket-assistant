@@ -30,7 +30,8 @@ import java.util.List;
 public class DocumentServiceImpl implements DocumentService {
 
     private static final long MAX_FILE_SIZE = 10 * 1024 * 1024;
-    private static final int MAX_CHUNK_LENGTH = 800;
+    private static final int TARGET_CHUNK_TOKENS = 800;
+    private static final int APPROX_CHARS_PER_TOKEN = 4;
     private static final int MAX_LEARNING_CANDIDATES_PER_DOCUMENT = 3;
 
     private final KnowledgeDocumentMapper knowledgeDocumentMapper;
@@ -127,7 +128,7 @@ public class DocumentServiceImpl implements DocumentService {
         DocumentKnowledgeCandidate candidate = new DocumentKnowledgeCandidate();
         candidate.setDocumentId(document.getId());
         candidate.setChunkId(chunk.getId());
-        candidate.setTitle(buildCandidateTitle(document.getOriginalFilename(), category, chunk.getContent()));
+        candidate.setTitle(buildCandidateTitle(category, chunk.getContent()));
         candidate.setContent(buildCandidateContent(document, chunk, category));
         candidate.setCategory(category);
         candidate.setImportanceScore(new BigDecimal(score).movePointLeft(1).min(new BigDecimal("0.99")));
@@ -177,7 +178,7 @@ public class DocumentServiceImpl implements DocumentService {
         return terms;
     }
 
-    private String buildCandidateTitle(String filename, String category, String content) {
+    private String buildCandidateTitle(String category, String content) {
         String topic = firstUsefulSentence(content);
         if (topic.length() > 70) {
             topic = topic.substring(0, 67).trim() + "...";
@@ -188,7 +189,7 @@ public class DocumentServiceImpl implements DocumentService {
     private String buildCandidateContent(KnowledgeDocument document, DocumentChunk chunk, String category) {
         List<String> points = extractOperationalPoints(chunk.getContent());
         StringBuilder builder = new StringBuilder();
-        builder.append("# ").append(buildCandidateTitle(document.getOriginalFilename(), category, chunk.getContent())).append("\n\n")
+        builder.append("# ").append(buildCandidateTitle(category, chunk.getContent())).append("\n\n")
                 .append("Category: ").append(category).append("\n")
                 .append("\n## Core Knowledge\n");
 
@@ -304,31 +305,31 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         List<String> chunks = new ArrayList<>();
-        String[] paragraphs = normalizedContent.split("\\R\\s*\\R");
+        List<String> semanticUnits = splitIntoSemanticUnits(normalizedContent);
 
         StringBuilder currentChunk = new StringBuilder();
-        for (String paragraph : paragraphs) {
-            String cleanedParagraph = paragraph.trim();
-            if (cleanedParagraph.isBlank()) {
+        for (String unit : semanticUnits) {
+            String cleanedUnit = unit.trim();
+            if (cleanedUnit.isBlank()) {
                 continue;
             }
 
-            if (currentChunk.length() + cleanedParagraph.length() > MAX_CHUNK_LENGTH) {
-                if (!currentChunk.isEmpty()) {
-                    chunks.add(currentChunk.toString().trim());
-                    currentChunk.setLength(0);
-                }
+            if (estimateTokens(currentChunk.length() + cleanedUnit.length()) <= TARGET_CHUNK_TOKENS) {
+                appendUnit(currentChunk, cleanedUnit);
+                continue;
             }
 
-            if (cleanedParagraph.length() > MAX_CHUNK_LENGTH) {
-                chunks.add(cleanedParagraph.substring(0, MAX_CHUNK_LENGTH));
-                String remaining = cleanedParagraph.substring(MAX_CHUNK_LENGTH).trim();
-                if (!remaining.isBlank()) {
-                    currentChunk.append(remaining).append("\n\n");
-                }
-            } else {
-                currentChunk.append(cleanedParagraph).append("\n\n");
+            if (!currentChunk.isEmpty()) {
+                chunks.add(currentChunk.toString().trim());
+                currentChunk.setLength(0);
             }
+
+            if (estimateTokens(cleanedUnit.length()) <= TARGET_CHUNK_TOKENS) {
+                appendUnit(currentChunk, cleanedUnit);
+                continue;
+            }
+
+            chunks.addAll(splitOversizedTopic(cleanedUnit));
         }
 
         if (!currentChunk.isEmpty()) {
@@ -336,6 +337,99 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         return chunks;
+    }
+
+    private List<String> splitIntoSemanticUnits(String content) {
+        List<String> units = new ArrayList<>();
+        String[] paragraphs = content.split("\\R\\s*\\R");
+        StringBuilder currentUnit = new StringBuilder();
+
+        for (String paragraph : paragraphs) {
+            String cleanedParagraph = paragraph.trim();
+            if (cleanedParagraph.isBlank()) {
+                continue;
+            }
+
+            if (isHeading(cleanedParagraph) && !currentUnit.isEmpty()) {
+                units.add(currentUnit.toString().trim());
+                currentUnit.setLength(0);
+            }
+            appendUnit(currentUnit, cleanedParagraph);
+        }
+
+        if (!currentUnit.isEmpty()) {
+            units.add(currentUnit.toString().trim());
+        }
+        return units.isEmpty() ? List.of(content) : units;
+    }
+
+    private List<String> splitOversizedTopic(String topic) {
+        List<String> chunks = new ArrayList<>();
+        StringBuilder currentChunk = new StringBuilder();
+        for (String paragraph : topic.split("\\R\\s*\\R")) {
+            String cleanedParagraph = paragraph.trim();
+            if (cleanedParagraph.isBlank()) {
+                continue;
+            }
+
+            if (estimateTokens(cleanedParagraph.length()) > TARGET_CHUNK_TOKENS) {
+                if (!currentChunk.isEmpty()) {
+                    chunks.add(currentChunk.toString().trim());
+                    currentChunk.setLength(0);
+                }
+                chunks.addAll(splitOversizedParagraph(cleanedParagraph));
+                continue;
+            }
+
+            if (estimateTokens(currentChunk.length() + cleanedParagraph.length()) > TARGET_CHUNK_TOKENS && !currentChunk.isEmpty()) {
+                chunks.add(currentChunk.toString().trim());
+                currentChunk.setLength(0);
+            }
+            appendUnit(currentChunk, cleanedParagraph);
+        }
+
+        if (!currentChunk.isEmpty()) {
+            chunks.add(currentChunk.toString().trim());
+        }
+        return chunks;
+    }
+
+    private List<String> splitOversizedParagraph(String paragraph) {
+        List<String> chunks = new ArrayList<>();
+        StringBuilder currentChunk = new StringBuilder();
+        for (String sentence : paragraph.split("(?<=[.!?])\\s+")) {
+            String cleanedSentence = sentence.trim();
+            if (cleanedSentence.isBlank()) {
+                continue;
+            }
+
+            if (estimateTokens(currentChunk.length() + cleanedSentence.length()) > TARGET_CHUNK_TOKENS && !currentChunk.isEmpty()) {
+                chunks.add(currentChunk.toString().trim());
+                currentChunk.setLength(0);
+            }
+            appendUnit(currentChunk, cleanedSentence);
+        }
+
+        if (!currentChunk.isEmpty()) {
+            chunks.add(currentChunk.toString().trim());
+        }
+        return chunks.isEmpty() ? List.of(paragraph) : chunks;
+    }
+
+    private boolean isHeading(String paragraph) {
+        return paragraph.matches("^#{1,6}\\s+.+")
+                || paragraph.matches("^[A-Z][A-Za-z0-9 /_-]{2,80}:?$");
+    }
+
+    private void appendUnit(StringBuilder builder, String unit) {
+        if (!builder.isEmpty()) {
+            builder.append("\n\n");
+        }
+        builder.append(unit);
+    }
+
+    private int estimateTokens(int characterCount) {
+        return (int) Math.ceil((double) Math.max(0, characterCount) / APPROX_CHARS_PER_TOKEN);
     }
 
     private String resolveContentType(MultipartFile file, String fileType) {

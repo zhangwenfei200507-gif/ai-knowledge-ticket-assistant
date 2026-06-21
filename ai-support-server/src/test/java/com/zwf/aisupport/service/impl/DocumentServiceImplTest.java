@@ -86,16 +86,17 @@ class DocumentServiceImplTest {
         assertThat(documentCaptor.getValue().getUploadedBy()).isEqualTo(7L);
 
         ArgumentCaptor<DocumentChunk> chunkCaptor = ArgumentCaptor.forClass(DocumentChunk.class);
-        verify(documentChunkMapper, org.mockito.Mockito.times(3)).insert(chunkCaptor.capture());
+        verify(documentChunkMapper).insert(chunkCaptor.capture());
         assertThat(chunkCaptor.getAllValues())
                 .extracting(DocumentChunk::getDocumentId)
                 .containsOnly(42L);
         assertThat(chunkCaptor.getAllValues())
                 .extracting(DocumentChunk::getChunkIndex)
-                .containsExactly(0, 1, 2);
-        assertThat(chunkCaptor.getAllValues())
-                .extracting(chunk -> chunk.getContent().length())
-                .allMatch(length -> length <= 800);
+                .containsExactly(0);
+        assertThat(chunkCaptor.getValue().getContent())
+                .contains("A".repeat(500))
+                .contains("B".repeat(500))
+                .contains("C".repeat(500));
     }
 
     @Test

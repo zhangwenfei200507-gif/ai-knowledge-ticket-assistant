@@ -31,6 +31,9 @@ If the knowledge belongs to the current Knowledge Pack but introduces a new topi
 - Create an appropriate new section.
 - Automatically adjust the table of contents and section order.
 - Keep the article structure consistent with the rest of the library.
+- The new section must be integrated directly into the article structure.
+- Do not preserve the original document format, such as `Title`, `Purpose`, `Knowledge Candidate`, appendix, supplement, or raw source layout.
+- Use the same heading hierarchy, writing style, and formatting as the existing article.
 
 ### 4. Create A New Knowledge Pack
 
@@ -116,6 +119,10 @@ Requirements:
 - Do not duplicate metadata.
 - When article content changes, optimize the corresponding chunks at the same time instead of simply adding new chunks.
 - Re-split chunks when needed so each chunk remains complete, coherent, and suitable for AI retrieval.
+- Do not split a single knowledge topic only to satisfy a fixed token length.
+- If one knowledge topic is still complete and moderately sized, preferably within about 800 tokens, keep it as one chunk.
+- Split semantically only when one topic contains multiple independently understandable subtopics.
+- When splitting is necessary, split by headings, sections, or coherent paragraphs first; split by sentence only as a last resort for oversized content.
 
 ## Final Goal
 
