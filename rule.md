@@ -14,6 +14,34 @@ Determine which existing Knowledge Pack the new knowledge belongs to.
 
 - If it belongs to an existing Knowledge Pack, update the existing article first.
 - Do not create duplicate or highly similar articles just because new knowledge was added.
+- The extracted knowledge Domain must match the target Knowledge Pack Domain before any reorganization is allowed.
+- If the Domain does not match, do not merge or reorganize into that Knowledge Pack; create or select a Knowledge Pack from the correct Domain instead.
+
+## Evidence Quality Rules
+
+External evidence may enter the knowledge workflow only when it is a trustworthy technical source.
+
+Allowed source types:
+
+- Official documentation.
+- Technical articles.
+- RFCs or standards documents.
+- High-quality engineering blogs when they provide concrete technical content.
+
+Rejected source types:
+
+- Advertising pages.
+- Course, bootcamp, training, or certification landing pages.
+- Generic index, search result, tag, category, or listing pages.
+- Thin pages that mainly contain navigation, marketing copy, pricing, signup prompts, or summaries without concrete technical knowledge.
+
+## Knowledge Cleaning Rules
+
+Any content entering a Knowledge Pack must be cleaned before integration:
+
+- Remove `Title`, `Purpose`, `Knowledge Candidate`, source metadata, approval notes, and temporary labels.
+- Remove advertising content, course introductions, marketing language, signup prompts, and generic page navigation.
+- Preserve only durable technical knowledge, commands, concepts, configuration behavior, failure causes, checks, and best practices.
 
 ### 2. Identify The Section
 

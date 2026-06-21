@@ -57,6 +57,7 @@ public class KnowledgePackReorganizer {
         if (article == null || !"PUBLISHED".equals(article.getStatus())) {
             throw new BusinessException("Knowledge Pack is no longer available");
         }
+        ensureSameDomain(article, category);
         return reorganizeExisting(article, title, category, content, sourceLabel);
     }
 
@@ -91,8 +92,10 @@ public class KnowledgePackReorganizer {
     }
 
     private Optional<KnowledgeArticle> findBestTarget(String title, String category, String content) {
+        String incomingDomain = normalizeDomain(category);
         List<String> terms = extractTerms(title + " " + safeCategory(category) + " " + content);
         return knowledgeArticleMapper.findPublishedArticles().stream()
+                .filter(article -> sameDomain(article.getCategory(), incomingDomain))
                 .map(article -> new ArticleScore(article, scoreTarget(article, category, terms)))
                 .filter(score -> score.score() >= TARGET_SCORE_THRESHOLD)
                 .max(Comparator.comparingInt(ArticleScore::score))
@@ -212,7 +215,10 @@ public class KnowledgePackReorganizer {
     private String removeArticleMetadata(String content) {
         return content
                 .replaceAll("(?im)^#+\\s*", "")
+                .replaceAll("(?im)^Title\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^Purpose\\s*:?\\s*.*$", "")
                 .replaceAll("(?im)^Category\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^Knowledge Candidate\\s*:?\\s*.*$", "")
                 .replaceAll("(?im)^Source references\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^Source document\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^Source chunk\\s*:\\s*.*$", "")
@@ -226,7 +232,8 @@ public class KnowledgePackReorganizer {
                 .replaceAll("(?im)^Source type\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^Source domain\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^Source URL\\s*:\\s*.*$", "")
-                .replaceAll("(?im)^Original question\\s*:\\s*.*$", "");
+                .replaceAll("(?im)^Original question\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^.*(course|bootcamp|training|certification|enroll|signup|sign up|pricing|advertisement|sponsored).*$", "");
     }
 
     private String normalizePoint(String raw) {
@@ -250,9 +257,19 @@ public class KnowledgePackReorganizer {
                 && !normalized.startsWith("best practices")
                 && !normalized.startsWith("references")
                 && !normalized.startsWith("source:")
+                && !normalized.startsWith("title:")
+                && !normalized.startsWith("purpose:")
                 && !normalized.contains("knowledge candidate")
                 && !normalized.contains("knowledge architecture checklist")
                 && !normalized.contains("review checklist")
+                && !normalized.contains("advertisement")
+                && !normalized.contains("sponsored")
+                && !normalized.contains("course")
+                && !normalized.contains("bootcamp")
+                && !normalized.contains("certification")
+                && !normalized.contains("enroll now")
+                && !normalized.contains("sign up")
+                && !normalized.contains("pricing")
                 && !normalized.contains("reviewed by administrator")
                 && !normalized.contains("administrator review")
                 && !normalized.contains("approval")
@@ -317,14 +334,31 @@ public class KnowledgePackReorganizer {
         return category == null || category.isBlank() ? "General" : category.trim();
     }
 
+    private void ensureSameDomain(KnowledgeArticle article, String incomingCategory) {
+        if (!sameDomain(article.getCategory(), normalizeDomain(incomingCategory))) {
+            throw new BusinessException("Knowledge domain does not match the target Knowledge Pack");
+        }
+    }
+
+    private boolean sameDomain(String articleCategory, String incomingDomain) {
+        return normalizeDomain(articleCategory).equals(incomingDomain);
+    }
+
+    private String normalizeDomain(String category) {
+        return safeCategory(category).toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
+    }
+
     private String removeProcessArtifacts(String content) {
         return content
                 .replaceAll("(?im)^.*Knowledge Candidate.*$", "")
+                .replaceAll("(?im)^.*Title\\s*:.*$", "")
+                .replaceAll("(?im)^.*Purpose\\s*:.*$", "")
                 .replaceAll("(?im)^.*Source chunk.*$", "")
                 .replaceAll("(?im)^.*Source document.*$", "")
                 .replaceAll("(?im)^.*review checklist.*$", "")
                 .replaceAll("(?im)^.*approval.*$", "")
                 .replaceAll("(?im)^.*retrieval metadata.*$", "")
+                .replaceAll("(?im)^.*(course|bootcamp|training|certification|enroll|signup|sign up|pricing|advertisement|sponsored).*$", "")
                 .replaceAll("\\n{3,}", "\n\n");
     }
 

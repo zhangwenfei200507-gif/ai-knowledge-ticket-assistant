@@ -143,6 +143,9 @@ public class DocumentServiceImpl implements DocumentService {
     private SuggestedArticleTarget findSuggestedArticleTarget(String category, String content) {
         List<String> terms = extractTerms(category + " " + content);
         return knowledgeArticleMapper.findPublishedArticles().stream()
+                .filter(article -> category != null
+                        && article.getCategory() != null
+                        && category.equalsIgnoreCase(article.getCategory()))
                 .map(article -> new ArticleTargetScore(article, scoreArticleTarget(article, category, terms)))
                 .filter(score -> score.score() >= 6)
                 .max(Comparator.comparingInt(ArticleTargetScore::score))

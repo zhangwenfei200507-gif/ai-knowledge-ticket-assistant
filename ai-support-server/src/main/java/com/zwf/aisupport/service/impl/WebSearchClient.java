@@ -68,7 +68,8 @@ public class WebSearchClient {
             String abstractUrl = root.path("AbstractURL").asText("");
             String heading = root.path("Heading").asText("");
 
-            if (!abstractText.isBlank() && !abstractUrl.isBlank()) {
+            if (!abstractText.isBlank() && !abstractUrl.isBlank()
+                    && isAcceptableEvidenceSource(abstractUrl, heading, abstractText, abstractText)) {
                 return Optional.of(buildEvidence(
                         question,
                         query,
@@ -91,7 +92,8 @@ public class WebSearchClient {
                 JsonNode best = relatedTopics.get(0);
                 String text = clean(best.path("Text").asText(""));
                 String firstUrl = best.path("FirstURL").asText("");
-                if (!text.isBlank() && !firstUrl.isBlank()) {
+                if (!text.isBlank() && !firstUrl.isBlank()
+                        && isAcceptableEvidenceSource(firstUrl, shortTitle(text), text, text)) {
                     return Optional.of(buildEvidence(
                             question,
                             query,
@@ -121,7 +123,8 @@ public class WebSearchClient {
                 }
                 String extracted = fetchReadableText(candidate.url())
                         .orElse(candidate.snippet());
-                if (!extracted.isBlank()) {
+                if (!extracted.isBlank()
+                        && isAcceptableEvidenceSource(candidate.url(), candidate.title(), candidate.snippet(), extracted)) {
                     return Optional.of(buildEvidence(
                             question,
                             query,
@@ -428,6 +431,7 @@ public class WebSearchClient {
                 .replace('\u00a0', ' ')
                 .replaceAll("(?m)^\\s*(Skip to content|Search|Sign in|Sign up|Edit this page|Copy page|Table of contents)\\s*$", " ")
                 .replaceAll("(?m)^\\s*(Previous|Next|Feedback|Was this page helpful\\??|On this page)\\s*$", " ")
+                .replaceAll("(?im)^.*(advertisement|sponsored|enroll now|start free trial|pricing|course overview|course curriculum|bootcamp|certification).*$", " ")
                 .replaceAll("\\{[^\\n]{80,}\\}", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
@@ -445,6 +449,15 @@ public class WebSearchClient {
     private boolean isWebNoise(String line) {
         String normalized = line == null ? "" : line.toLowerCase(Locale.ROOT);
         return normalized.length() < 16
+                || normalized.contains("advertisement")
+                || normalized.contains("sponsored")
+                || normalized.contains("course curriculum")
+                || normalized.contains("course overview")
+                || normalized.contains("bootcamp")
+                || normalized.contains("certification")
+                || normalized.contains("enroll now")
+                || normalized.contains("start free trial")
+                || normalized.contains("pricing")
                 || normalized.contains("window.")
                 || normalized.contains("document.")
                 || normalized.contains("function(")
@@ -458,6 +471,49 @@ public class WebSearchClient {
                 || normalized.contains("const ")
                 || normalized.contains("return false")
                 || normalized.matches(".*[{};]{4,}.*");
+    }
+
+    private boolean isAcceptableEvidenceSource(String url, String title, String snippet, String content) {
+        String normalizedUrl = TextUtil.safeLower(url);
+        String normalizedTitle = TextUtil.safeLower(title);
+        String normalizedText = TextUtil.safeLower(title + " " + snippet + " " + content);
+
+        if (isRejectedEvidencePage(normalizedUrl, normalizedTitle, normalizedText)) {
+            return false;
+        }
+        return isOfficialDocumentation(normalizedUrl)
+                || isRfcOrStandard(normalizedUrl, normalizedTitle)
+                || isTechnicalArticle(normalizedUrl, normalizedTitle, normalizedText)
+                || isHighQualityEngineeringBlog(normalizedUrl, normalizedText);
+    }
+
+    private boolean isRejectedEvidencePage(String url, String title, String text) {
+        return TextUtil.containsAny(url, "/courses", "/course", "/training", "/bootcamp", "/certification", "/pricing", "/tag/", "/tags/", "/category/", "/categories/", "/search", "/archive")
+                || TextUtil.containsAny(title, "course", "training", "bootcamp", "certification", "pricing", "tag:", "category:", "search results", "index")
+                || TextUtil.containsAny(text, "enroll now", "course curriculum", "course overview", "start free trial", "buy now", "pricing", "advertisement", "sponsored", "certificate of completion");
+    }
+
+    private boolean isOfficialDocumentation(String url) {
+        return TextUtil.containsAny(url, "docs.", "/docs/", "documentation", "developer.", "learn.microsoft.com", "kubernetes.io/docs", "docs.docker.com", "postgresql.org/docs", "redis.io/docs", "spring.io/projects", "docs.spring.io");
+    }
+
+    private boolean isRfcOrStandard(String url, String title) {
+        return TextUtil.containsAny(url, "rfc-editor.org", "ietf.org", "w3.org", "iso.org")
+                || TextUtil.containsAny(title, "rfc ", "standard", "specification");
+    }
+
+    private boolean isTechnicalArticle(String url, String title, String text) {
+        return TextUtil.containsAny(url, "/blog/", "/articles/", "/article/", ".dev/", "medium.com", "engineering")
+                && hasConcreteTechnicalContent(title + " " + text);
+    }
+
+    private boolean isHighQualityEngineeringBlog(String url, String text) {
+        return TextUtil.containsAny(url, "engineering.", "netflixtechblog.com", "cloudflare.com", "stripe.com/blog", "github.blog", "martinfowler.com", "morling.dev")
+                && hasConcreteTechnicalContent(text);
+    }
+
+    private boolean hasConcreteTechnicalContent(String text) {
+        return TextUtil.containsAny(text, "configure", "configuration", "command", "error", "failure", "diagnose", "troubleshoot", "protocol", "api", "postgres", "redis", "docker", "kubernetes", "jwt", "token", "sql", "yaml", "http", "tls");
     }
 
     private String clean(String value) {
