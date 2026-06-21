@@ -309,7 +309,7 @@ public class WebSearchClient {
                 Category: %s
 
                 ## Overview
-                This draft captures externally discovered knowledge that may extend the %s Knowledge Pack. It must be reviewed, reorganized into the closest existing article, and rewritten to match internal terminology before publishing.
+                This knowledge explains the verified operational concept behind the user's question. It should be integrated into the closest existing Knowledge Pack when the evidence is technically relevant.
 
                 ## Core Answer
                 %s
@@ -319,28 +319,21 @@ public class WebSearchClient {
 
                 ## Troubleshooting
                 - Confirm the exact production component, version, and failure signal before applying this guidance.
-                - Prefer official commands, logs, metrics, and configuration names that can be reproduced in AegisCloud.
-                - If the evidence is only partially related, keep the verified concept and remove assumptions before publishing.
+                - Prefer reproducible commands, logs, metrics, and configuration names.
+                - If the evidence is only partially related, keep the verified concept and remove assumptions.
 
                 ## Best Practices
-                - Reorganize this draft into the closest existing Knowledge Pack instead of creating a duplicate pack.
+                - Integrate overlapping concepts into the related section instead of appending separate notes.
                 - Keep one concept per section and remove repeated definitions.
-                - Rebuild retrieval chunks after approval so each chunk answers one clear question.
+                - Keep the final article readable as one official document.
 
                 ## References
-                - Source type: WEB_SEARCH
-                - Source domain: %s
-                - Source URL: %s
-                - Original question: %s
+                - Add verified official documentation or approved internal references when available.
                 """.formatted(
                 title,
                 category,
-                category,
                 answerDraft,
-                normalizeEvidenceForArticle(summary),
-                blankToDefault(domain, "Unknown"),
-                blankToDefault(url, "-"),
-                question
+                normalizeEvidenceForArticle(summary)
         );
     }
 

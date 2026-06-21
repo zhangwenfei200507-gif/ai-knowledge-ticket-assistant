@@ -182,7 +182,7 @@ public class DocumentServiceImpl implements DocumentService {
         if (topic.length() > 70) {
             topic = topic.substring(0, 67).trim() + "...";
         }
-        return TextUtil.limit("Knowledge Candidate: " + category + " - " + topic, 180);
+        return TextUtil.limit(category + " Knowledge Insight - " + topic, 180);
     }
 
     private String buildCandidateContent(KnowledgeDocument document, DocumentChunk chunk, String category) {
@@ -190,19 +190,11 @@ public class DocumentServiceImpl implements DocumentService {
         StringBuilder builder = new StringBuilder();
         builder.append("# ").append(buildCandidateTitle(document.getOriginalFilename(), category, chunk.getContent())).append("\n\n")
                 .append("Category: ").append(category).append("\n")
-                .append("Source document: ").append(document.getOriginalFilename()).append("\n")
-                .append("Source chunk: ").append(chunk.getChunkIndex()).append("\n\n")
-                .append("Knowledge to reorganize:\n");
+                .append("\n## Core Knowledge\n");
 
         for (String point : points) {
             builder.append("- ").append(point).append("\n");
         }
-
-        builder.append("\nKnowledge architecture checklist:\n")
-                .append("- Place this knowledge in the closest existing Knowledge Pack before creating a new pack.\n")
-                .append("- Rewrite the affected section so the new knowledge is naturally integrated, not appended.\n")
-                .append("- Remove duplicate or low-density wording before publishing.\n")
-                .append("- Reorganize retrieval chunks after the Knowledge Pack changes.\n");
 
         return builder.toString().trim();
     }

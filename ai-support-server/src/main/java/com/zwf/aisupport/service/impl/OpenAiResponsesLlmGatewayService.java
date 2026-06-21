@@ -92,6 +92,10 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
                     Internal knowledge and external web search did not find a reliable answer.
                     Use general CloudOps, Linux, Kubernetes, Docker, Redis, PostgreSQL, Spring Security, and authentication knowledge to provide a careful fallback answer.
                     Do not invent AegisCloud-specific hostnames, dashboards, owners, secrets, service names, or production facts.
+                    Always answer the user's question first.
+                    Explain the likely cause before listing troubleshooting steps.
+                    Synthesize the answer in your own words. Do not copy or quote retrieved text.
+                    Never expose internal article titles, chunk names, runbook names, SOP names, retrieval metadata, or approval workflow details.
                     Keep the user-facing answer short and decisive: 3 to 5 bullets maximum.
                     If uncertain, explicitly say what must be verified.
                     """);
@@ -132,6 +136,10 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
                     The user's internal knowledge base did not contain a reliable answer, so external web evidence was collected.
                     Use the supplied web evidence as the primary grounding, and you may use general CloudOps, Linux, Kubernetes, Docker, Redis, PostgreSQL, Spring Security, and authentication knowledge to make the answer complete.
                     Do not invent AegisCloud-specific hostnames, dashboards, owners, secrets, service names, or production facts.
+                    Always answer the user's question first.
+                    Explain the likely cause before listing troubleshooting steps.
+                    Synthesize the answer in your own words. Do not copy or quote retrieved pages, articles, chunks, or raw evidence.
+                    Never expose internal article titles, chunk names, runbook names, SOP names, retrieval metadata, candidate labels, or approval workflow details.
                     Prefer practical, operational answers: exact checks, commands, configuration areas, likely causes, safe next steps, and escalation signals.
                     If the evidence is weak or only partly related, say what is uncertain and separate verified guidance from assumptions.
                     Answer in the same language as the user's question when possible.
@@ -148,6 +156,10 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
                 Answer the user's question using only the supplied evidence.
                 If the evidence is not enough to answer precisely, say what cannot be confirmed and what should be checked next.
                 Do not invent product-specific platform details.
+                Always answer the user's question first.
+                Explain the likely cause before listing troubleshooting steps.
+                Synthesize the answer in your own words. Do not copy or quote retrieved articles, uploaded documents, chunks, or raw evidence.
+                Never expose internal article titles, chunk names, runbook names, SOP names, retrieval metadata, candidate labels, or approval workflow details.
                 Prefer practical, operational answers: first checks, commands or configuration areas, likely cause, and escalation signals.
                 Answer in the same language as the user's question when possible.
                 Keep the user-facing answer short and decisive: 3 to 5 bullets maximum.

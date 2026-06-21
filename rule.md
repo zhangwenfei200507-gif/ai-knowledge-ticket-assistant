@@ -50,8 +50,32 @@ When updating an existing article:
 - Semantically similar knowledge points must be integrated.
 - Outdated information must be updated.
 - Terminology and formatting must remain consistent.
+- New knowledge must not remain as an isolated paragraph, "Knowledge Candidate", appendix, addendum, or supplemental note.
+- The update must analyze semantic relationships with existing sections and rewrite the related section directly.
+- After the update, readers should not be able to tell which content was added later.
 
 The updated article should become more complete and easier to understand, not larger and more bloated.
+
+## Knowledge Integration Self-Check
+
+After every Knowledge Pack update, verify:
+
+- Has the new knowledge been integrated into the main body instead of being kept as "Knowledge Candidate", "new content", appendix, or supplemental text?
+- Does the article still read like one official document written in one pass, not a stitched-together history of additions?
+- Were duplicate points introduced by the new knowledge removed?
+- Were related existing sections updated, instead of only adding a new section?
+- Are process artifacts such as review checklists, source chunks, retrieval metadata, temporary notes, and approval instructions absent from the final article?
+
+## Answer Generation Rules
+
+When answering users from internal knowledge, uploaded documents, web evidence, or model fallback:
+
+- Always answer the user's question first.
+- Do not copy or quote retrieved articles, web pages, chunks, or raw evidence.
+- Synthesize the retrieved knowledge into a concise, direct answer.
+- Explain the likely cause before listing troubleshooting steps.
+- Never expose internal article titles, chunk names, runbook names, SOP names, retrieval metadata, candidate labels, or approval workflow details.
+- If a table is useful, keep it short, readable, and focused on the user's decision.
 
 ## Document Standards
 

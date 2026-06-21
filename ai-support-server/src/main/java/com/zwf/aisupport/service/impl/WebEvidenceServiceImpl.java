@@ -181,27 +181,22 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
                 Category: %s
 
                 ## Overview
-                This draft captures a model-generated fallback after internal knowledge and web search did not produce reliable evidence. It must be verified against official documentation or internal runbooks before it can become trusted knowledge.
+                This knowledge explains the operational answer for the question and should be integrated into the closest existing Knowledge Pack if it is technically verified.
 
                 ## Core Answer
                 %s
 
-                ## Knowledge Pack Placement
-                - Target Knowledge Pack: %s
-                - Reorganization policy: update the closest existing Knowledge Pack first; create a new pack only if no suitable pack exists.
-                - Chunk policy: rebuild retrieval chunks after approval so each chunk contains one independently understandable knowledge point.
+                ## Troubleshooting
+                - Verify the affected component, version, logs, metrics, and configuration before applying the guidance.
+                - Keep only reproducible checks and remove any advice that does not apply to the production environment.
 
-                ## Review Checklist
-                - Verify every technical claim against official docs, internal runbooks, or reproducible commands.
-                - Add AegisCloud-specific configuration names, dashboards, owners, escalation paths, and version constraints where relevant.
-                - Remove generic advice that does not apply to the production environment.
-                - Integrate duplicate concepts into the existing article instead of appending repeated text.
+                ## Best Practices
+                - Integrate overlapping concepts into existing sections instead of creating duplicate explanations.
+                - Keep the final article concise and written as one official document.
 
                 ## References
-                - Source type: LLM_GENERATED
-                - Source reference: OpenAI model fallback
-                - Original question: %s
-                """.formatted(TextUtil.limit(question, 120), category, normalizeArticleBullets(answer), category, question);
+                - Add verified official documentation or approved internal references when available.
+                """.formatted(TextUtil.limit(question, 120), category, normalizeArticleBullets(answer));
     }
 
     private String normalizeArticleBullets(String answer) {

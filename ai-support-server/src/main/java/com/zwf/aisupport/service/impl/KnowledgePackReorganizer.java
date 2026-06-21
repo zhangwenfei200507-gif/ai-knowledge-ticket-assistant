@@ -135,7 +135,7 @@ public class KnowledgePackReorganizer {
                 .append("Category: ").append(resolvedCategory).append("\n\n")
                 .append("## Overview\n")
                 .append("This Knowledge Pack covers ").append(resolvedCategory)
-                .append(" knowledge for AegisCloud support. It is maintained as a durable, low-redundancy source for AI retrieval and administrator review.\n\n")
+                .append(" knowledge for AegisCloud support. It explains the durable concepts, configuration points, workflows, and operational checks that support teams need.\n\n")
                 .append("## Core Concepts\n")
                 .append(formatSection(buckets.coreConcepts(), "- Add concise durable concepts for this Knowledge Pack.")).append("\n\n");
 
@@ -145,13 +145,11 @@ public class KnowledgePackReorganizer {
         builder.append("## Troubleshooting\n")
                 .append(formatSection(buckets.troubleshooting(), "- Add concrete checks, logs, metrics, commands, and escalation signals.")).append("\n\n")
                 .append("## Best Practices\n")
-                .append(formatSection(buckets.bestPractices(), "- Keep this Knowledge Pack focused, deduplicated, and easy to retrieve.")).append("\n\n")
+                .append(formatSection(buckets.bestPractices(), "- Keep this Knowledge Pack focused, deduplicated, and easy to use.")).append("\n\n")
                 .append("## References\n")
-                .append("- Source: ").append(sourceLabel == null || sourceLabel.isBlank() ? "Knowledge Reorganization" : sourceLabel).append("\n")
-                .append("- Maintenance rule: update the closest existing Knowledge Pack first; create a new pack only for a truly new domain.\n")
-                .append("- Chunk rule: after content changes, retrieval chunks should be reorganized by semantic knowledge point.\n");
+                .append("- Add verified official documentation links or approved internal references when they are safe to expose.\n");
 
-        return builder.toString().trim();
+        return removeProcessArtifacts(builder.toString()).trim();
     }
 
     private void appendOptionalSection(StringBuilder builder, String heading, List<String> points) {
@@ -223,7 +221,12 @@ public class KnowledgePackReorganizer {
                 .replaceAll("(?im)^Review checklist\\s*:?\\s*$", "")
                 .replaceAll("(?im)^Knowledge architecture checklist\\s*:?\\s*$", "")
                 .replaceAll("(?im)^References\\s*$", "")
-                .replaceAll("(?im)^Maintenance rule\\s*:\\s*.*$", "");
+                .replaceAll("(?im)^Maintenance rule\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^Chunk rule\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^Source type\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^Source domain\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^Source URL\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^Original question\\s*:\\s*.*$", "");
     }
 
     private String normalizePoint(String raw) {
@@ -247,10 +250,23 @@ public class KnowledgePackReorganizer {
                 && !normalized.startsWith("best practices")
                 && !normalized.startsWith("references")
                 && !normalized.startsWith("source:")
+                && !normalized.contains("knowledge candidate")
+                && !normalized.contains("knowledge architecture checklist")
+                && !normalized.contains("review checklist")
                 && !normalized.contains("reviewed by administrator")
+                && !normalized.contains("administrator review")
+                && !normalized.contains("approval")
+                && !normalized.contains("retrieval chunk")
+                && !normalized.contains("source chunk")
+                && !normalized.contains("source document")
                 && !normalized.contains("chunk rule:")
                 && !normalized.contains("maintenance rule:")
-                && !normalized.contains("create a new pack only");
+                && !normalized.contains("create a new pack only")
+                && !normalized.contains("place this knowledge in the closest existing knowledge pack")
+                && !normalized.contains("rewrite the affected section")
+                && !normalized.contains("remove duplicate or low-density wording")
+                && !normalized.contains("reorganize retrieval chunks")
+                && !normalized.contains("this draft captures");
     }
 
     private String formatSection(List<String> points, String fallback) {
@@ -299,6 +315,17 @@ public class KnowledgePackReorganizer {
 
     private String safeCategory(String category) {
         return category == null || category.isBlank() ? "General" : category.trim();
+    }
+
+    private String removeProcessArtifacts(String content) {
+        return content
+                .replaceAll("(?im)^.*Knowledge Candidate.*$", "")
+                .replaceAll("(?im)^.*Source chunk.*$", "")
+                .replaceAll("(?im)^.*Source document.*$", "")
+                .replaceAll("(?im)^.*review checklist.*$", "")
+                .replaceAll("(?im)^.*approval.*$", "")
+                .replaceAll("(?im)^.*retrieval metadata.*$", "")
+                .replaceAll("\\n{3,}", "\n\n");
     }
 
     private void validateKnowledge(String content) {
