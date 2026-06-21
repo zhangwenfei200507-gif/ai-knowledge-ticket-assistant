@@ -10,10 +10,10 @@ import com.zwf.aisupport.mapper.KnowledgeDocumentMapper;
 import com.zwf.aisupport.security.CurrentUser;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
@@ -31,6 +31,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class DocumentServiceImplTest {
@@ -47,8 +48,20 @@ class DocumentServiceImplTest {
     @Mock
     private KnowledgeArticleMapper knowledgeArticleMapper;
 
-    @InjectMocks
     private DocumentServiceImpl documentService;
+
+    @BeforeEach
+    void setUp() {
+        documentService = new DocumentServiceImpl(
+                knowledgeDocumentMapper,
+                documentChunkMapper,
+                candidateMapper,
+                new KnowledgeExtractionStage(),
+                new KnowledgeClassificationStage(),
+                new KnowledgeMatchingStage(knowledgeArticleMapper),
+                new SemanticChunkManagementStage()
+        );
+    }
 
     @AfterEach
     void clearSecurityContext() {
@@ -63,7 +76,6 @@ class DocumentServiceImplTest {
             document.setId(42L);
             return null;
         }).when(knowledgeDocumentMapper).insert(any(KnowledgeDocument.class));
-
         String content = "A".repeat(500) + "\n\n" + "B".repeat(500) + "\n\n" + "C".repeat(500);
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -125,6 +137,7 @@ class DocumentServiceImplTest {
             document.setId(88L);
             return null;
         }).when(knowledgeDocumentMapper).insert(any(KnowledgeDocument.class));
+        when(knowledgeArticleMapper.findPublishedArticles()).thenReturn(java.util.List.of());
 
         MockMultipartFile file = new MockMultipartFile(
                 "file",

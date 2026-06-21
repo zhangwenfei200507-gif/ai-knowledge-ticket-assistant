@@ -8,6 +8,38 @@ The goal is to build an enterprise-grade knowledge base that is structurally con
 
 When new knowledge is received, analyze it in this order.
 
+## Knowledge Pipeline Rules
+
+Do not rely on one universal prompt or one monolithic method to extract, classify, match, reorganize, and chunk knowledge.
+
+Enterprise knowledge processing must use a staged pipeline:
+
+1. Knowledge Extraction
+   - Extract only durable technical knowledge from uploaded documents, web evidence, model answers, and admin input.
+   - Remove page noise, navigation, advertising, course copy, review notes, source metadata, and temporary workflow labels.
+   - Keep concrete concepts, constraints, configuration behavior, failure causes, commands, checks, and best practices.
+
+2. Knowledge Classification
+   - Determine the domain, knowledge type, and related concepts.
+   - Classification must happen before matching or reorganizing.
+   - Domain mismatch must stop the merge into an existing Knowledge Pack.
+
+3. Knowledge Matching
+   - Match only against Knowledge Packs from the same domain.
+   - Prefer updating an existing Knowledge Pack when semantic overlap is strong.
+   - Create a new Knowledge Pack only when no suitable target exists.
+
+4. Knowledge Refactoring
+   - Reorganize knowledge into the target article structure.
+   - Rewrite affected sections directly instead of appending raw snippets.
+   - The final article must read like one official document, not a merge history.
+
+5. Semantic Chunk Management
+   - Regenerate affected retrieval chunks after the article is updated.
+   - Chunk by complete semantic concepts, not by arbitrary length or source fragments.
+
+Each stage must have a clear responsibility. Do not mix extraction, classification, matching, article rewriting, and chunk generation in the same service method when it can be cleanly separated.
+
 ### 1. Identify The Domain
 
 Determine which existing Knowledge Pack the new knowledge belongs to.
