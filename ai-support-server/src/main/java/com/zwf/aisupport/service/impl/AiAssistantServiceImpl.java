@@ -42,7 +42,21 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             "in", "on", "at", "to", "for", "from", "with", "without", "after", "before", "behind",
             "why", "what", "how", "when", "where", "which", "who", "does", "do", "did", "is", "are",
             "was", "were", "be", "been", "being", "still", "first", "should", "check", "please",
-            "i", "we", "you", "my", "our", "your", "it", "its", "of", "by", "as", "into", "about"
+            "i", "we", "you", "my", "our", "your", "it", "its", "of", "by", "as", "into", "about",
+            "not", "because", "even", "though", "has", "have", "had", "than"
+    );
+    private static final Set<String> BROAD_DOMAIN_TERMS = Set.of(
+            "auth", "authentication", "authorization", "jwt", "token", "kubernetes", "postgresql",
+            "postgres", "redis", "docker", "production", "troubleshooting", "document", "article",
+            "knowledge", "platform", "cloudops", "support", "server", "service", "system"
+    );
+    private static final Set<String> SHORT_TECHNICAL_TERMS = Set.of(
+            "jwt", "nbf", "exp", "iat", "iss", "aud", "jti", "kid", "wal", "lsn", "pod", "hpa",
+            "cpu", "api", "tls", "ssl", "dns", "rbac", "sso", "oidc", "csrf", "cors"
+    );
+    private static final Set<String> GENERIC_QUESTION_TERMS = Set.of(
+            "rejected", "reject", "expired", "expire", "failure", "failed", "error", "issue",
+            "problem", "handle", "configure", "download", "install", "login", "logout", "users"
     );
 
     private final KnowledgeArticleMapper knowledgeArticleMapper;
@@ -141,26 +155,36 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<String> terms = extractSearchTerms(question);
         List<String> specificTerms = extractSpecificTerms(terms);
         List<String> versionTerms = extractVersionTerms(terms);
+        List<String> coreConcepts = extractCoreConcepts(question, terms);
 
         // Search uploaded document chunks with the full user question first.
         List<DocumentSearchResultVO> documentResults = documentChunkMapper.searchChunks(question)
                 .stream()
-                .filter(result -> isReliableInternalSource(result.getContent(), terms, specificTerms, versionTerms))
+                .filter(result -> isReliableInternalSource(result.getContent(), terms, specificTerms, versionTerms, coreConcepts))
                 .toList();
         if (!documentResults.isEmpty()) {
-            return buildDocumentBasedAnswer(question, documentResults);
+            AiAnswerVO answer = buildDocumentBasedAnswer(question, documentResults);
+            if (isGroundedAnswerUsable(answer.getAnswer(), terms, coreConcepts)) {
+                return answer;
+            }
         }
 
         // Then use local article relevance scoring. This avoids matching broad stop words or loosely related topics.
-        List<KnowledgeArticle> articles = findRelevantArticles(question, terms, specificTerms, versionTerms);
+        List<KnowledgeArticle> articles = findRelevantArticles(question, terms, specificTerms, versionTerms, coreConcepts);
         if (!articles.isEmpty()) {
-            return buildKnowledgeBasedAnswer(question, articles);
+            AiAnswerVO answer = buildKnowledgeBasedAnswer(question, articles);
+            if (isGroundedAnswerUsable(answer.getAnswer(), terms, coreConcepts)) {
+                return answer;
+            }
         }
 
         Long currentUserId = CurrentUserUtil.requireCurrentUserId();
         Optional<WebEvidence> webEvidence = webEvidenceService.searchAndStoreEvidence(question, currentUserId);
         if (webEvidence.isPresent()) {
-            return buildWebEvidenceBasedAnswer(webEvidence.get());
+            AiAnswerVO answer = buildWebEvidenceBasedAnswer(webEvidence.get());
+            if (isGroundedAnswerUsable(answer.getAnswer(), terms, coreConcepts)) {
+                return answer;
+            }
         }
 
         Optional<String> modelAnswer = llmGatewayService.generateDirectAnswer(question)
@@ -178,10 +202,11 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<String> terms = extractSearchTerms(question);
         List<String> specificTerms = extractSpecificTerms(terms);
         List<String> versionTerms = extractVersionTerms(terms);
+        List<String> coreConcepts = extractCoreConcepts(question, terms);
 
         List<DocumentSearchResultVO> preciseResults = documentChunkMapper.searchChunksByDocumentId(document.getId(), question)
                 .stream()
-                .filter(result -> isReliableInternalSource(result.getContent(), terms, specificTerms, versionTerms))
+                .filter(result -> isReliableInternalSource(result.getContent(), terms, specificTerms, versionTerms, coreConcepts))
                 .toList();
         if (!preciseResults.isEmpty()) {
             return preciseResults;
@@ -534,7 +559,8 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private List<KnowledgeArticle> findRelevantArticles(String question,
                                                         List<String> terms,
                                                         List<String> specificTerms,
-                                                        List<String> versionTerms) {
+                                                        List<String> versionTerms,
+                                                        List<String> coreConcepts) {
         if (terms.isEmpty()) {
             return List.of();
         }
@@ -543,7 +569,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 .filter(article -> !isLowQualityKnowledgeContent(article.getContent()))
                 .map(article -> new ArticleMatch(article, scoreArticle(article, terms)))
                 .filter(match -> match.score() >= 6)
-                .filter(match -> isReliableInternalSource(combinedArticleText(match.article()), terms, specificTerms, versionTerms))
+                .filter(match -> isReliableInternalSource(combinedArticleText(match.article()), terms, specificTerms, versionTerms, coreConcepts))
                 .sorted(Comparator.comparingInt(ArticleMatch::score).reversed())
                 .limit(5)
                 .map(ArticleMatch::article)
@@ -599,10 +625,39 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 .toList();
     }
 
+    private List<String> extractCoreConcepts(String question, List<String> terms) {
+        String normalizedQuestion = TextUtil.safeLower(question);
+        LinkedHashSet<String> concepts = new LinkedHashSet<>();
+
+        if (normalizedQuestion.contains("not before")) {
+            concepts.add("not before");
+        }
+        for (String term : terms) {
+            if (isCoreConceptTerm(term)) {
+                concepts.add(term);
+            }
+        }
+        return concepts.stream().limit(6).toList();
+    }
+
+    private boolean isCoreConceptTerm(String term) {
+        if (term == null || term.isBlank() || GENERIC_QUESTION_TERMS.contains(term)) {
+            return false;
+        }
+        if (SHORT_TECHNICAL_TERMS.contains(term)) {
+            return true;
+        }
+        if (BROAD_DOMAIN_TERMS.contains(term)) {
+            return false;
+        }
+        return term.matches(".*[0-9+#./-].*") || term.length() >= 8;
+    }
+
     private boolean isReliableInternalSource(String sourceText,
                                              List<String> terms,
                                              List<String> specificTerms,
-                                             List<String> versionTerms) {
+                                             List<String> versionTerms,
+                                             List<String> coreConcepts) {
         if (terms.isEmpty()) {
             return false;
         }
@@ -618,8 +673,63 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 : coverage >= 0.35 || matchedTerms >= 4;
         boolean versionsCovered = versionTerms.stream().allMatch(normalizedSource::contains);
         boolean specificCovered = specificTerms.isEmpty() || specificTerms.stream().anyMatch(normalizedSource::contains);
+        boolean coreCovered = coversCoreConcepts(normalizedSource, coreConcepts);
 
-        return enoughCoverage && versionsCovered && specificCovered;
+        return enoughCoverage && versionsCovered && specificCovered && coreCovered;
+    }
+
+    private boolean coversCoreConcepts(String normalizedSource, List<String> coreConcepts) {
+        if (coreConcepts == null || coreConcepts.isEmpty()) {
+            return true;
+        }
+
+        long matchedConcepts = coreConcepts.stream()
+                .filter(concept -> matchesConcept(normalizedSource, concept))
+                .count();
+        boolean shortTechnicalCovered = coreConcepts.stream()
+                .filter(concept -> concept.length() <= 5 || SHORT_TECHNICAL_TERMS.contains(concept))
+                .allMatch(concept -> matchesConcept(normalizedSource, concept));
+        double coverage = (double) matchedConcepts / (double) coreConcepts.size();
+
+        return shortTechnicalCovered && (coreConcepts.size() <= 2 ? matchedConcepts == coreConcepts.size() : coverage >= 0.80);
+    }
+
+    private boolean matchesConcept(String normalizedSource, String concept) {
+        if (normalizedSource == null || concept == null || concept.isBlank()) {
+            return false;
+        }
+        String normalizedConcept = TextUtil.safeLower(concept);
+        if (normalizedSource.contains(normalizedConcept)) {
+            return true;
+        }
+        return switch (normalizedConcept) {
+            case "nbf" -> normalizedSource.contains("not before");
+            case "not before" -> normalizedSource.contains("nbf");
+            case "exp" -> normalizedSource.contains("expiration") || normalizedSource.contains("expired") || normalizedSource.contains("expires");
+            case "iat" -> normalizedSource.contains("issued at");
+            case "aud" -> normalizedSource.contains("audience");
+            case "iss" -> normalizedSource.contains("issuer");
+            case "kid" -> normalizedSource.contains("key id");
+            case "jti" -> normalizedSource.contains("jwt id");
+            default -> false;
+        };
+    }
+
+    private boolean isGroundedAnswerUsable(String answer, List<String> terms, List<String> coreConcepts) {
+        if (answer == null || answer.isBlank()) {
+            return false;
+        }
+        String normalizedAnswer = TextUtil.safeLower(answer);
+        if (!coversCoreConcepts(normalizedAnswer, coreConcepts)) {
+            return false;
+        }
+        if (terms == null || terms.isEmpty()) {
+            return true;
+        }
+        long matchedTerms = terms.stream()
+                .filter(normalizedAnswer::contains)
+                .count();
+        return matchedTerms >= Math.min(2, terms.size());
     }
 
     private String combinedArticleText(KnowledgeArticle article) {
@@ -637,6 +747,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private record ArticleMatch(KnowledgeArticle article, int score) {
+    }
+
+    private record ScoredPoint(String point, int score) {
     }
 
     private String buildConciseWebEvidenceAnswer(WebEvidence evidence) {
@@ -713,14 +826,19 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
         List<String> lines = new ArrayList<>();
         candidates.stream()
-                .sorted(Comparator.comparingInt(point -> -scoreAnswerPoint(point, terms)))
+                .map(point -> new ScoredPoint(point, scoreAnswerPoint(point, terms)))
+                .filter(point -> terms.isEmpty() || point.score() > 0)
+                .sorted(Comparator.comparingInt(ScoredPoint::score).reversed())
                 .limit(5)
-                .forEach(lines::add);
+                .forEach(point -> lines.add(point.point()));
 
         if (!lines.isEmpty()) {
             return lines;
         }
 
+        if (!terms.isEmpty()) {
+            return List.of();
+        }
         return List.of(limitAnswerPoint(cleaned));
     }
 
