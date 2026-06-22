@@ -173,4 +173,13 @@ public interface DocumentChunkMapper {
               and status = 'ACTIVE'
             """)
     int archive(Long id);
+
+    @Update("""
+            update document_chunks
+            set status = 'ARCHIVED',
+                updated_time = current_timestamp
+            where document_id = #{documentId}
+              and status = 'ACTIVE'
+            """)
+    int archiveActiveByDocumentId(Long documentId);
 }

@@ -182,6 +182,10 @@ export const archiveKnowledgeDocument = (id) => requestJson(`/api/documents/${id
   method: 'PATCH',
 });
 
+export const rebuildKnowledgeLibrary = () => requestJson('/api/admin/knowledge-maintenance/rebuild', {
+  method: 'POST',
+});
+
 export const uploadKnowledgeArticle = ({ file, category, title }) => {
   const formData = new FormData();
   formData.append('file', file);

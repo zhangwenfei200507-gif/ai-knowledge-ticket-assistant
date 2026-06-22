@@ -60,6 +60,7 @@ import {
   getTicketDetail,
   getWebEvidence,
   logoutCurrentUser,
+  rebuildKnowledgeLibrary,
   rejectDocumentKnowledgeCandidate,
   rejectWebEvidence,
   resolveTicket,
@@ -1919,6 +1920,27 @@ Prevention controls:
     }
   };
 
+  const rebuildLibraryQuality = async () => {
+    const confirmed = window.confirm('Rebuild published Knowledge Packs and active retrieval chunks now? This will archive duplicate articles and replace active document chunks with freshly generated semantic chunks.');
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Rebuilding Knowledge Packs and semantic chunks...' });
+    try {
+      const result = await rebuildKnowledgeLibrary();
+      await Promise.all([
+        loadArticles(1),
+        loadAdminChunks(1),
+      ]);
+      loadOperationsCenter();
+      setActionStatus({
+        type: 'success',
+        text: `Rebuild complete: ${result.articlesRewritten} articles rewritten, ${result.duplicateArticlesArchived} duplicates archived, ${result.chunksCreated} chunks created.`,
+      });
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
   const renderCommandCenterPage = () => (
     <>
       <section className="metricsGrid">
@@ -2045,6 +2067,7 @@ Prevention controls:
         </div>
         <div>
           <button type="button" onClick={() => loadArticles(1)}>Refresh</button>
+          <button type="button" onClick={rebuildLibraryQuality}>Rebuild Quality</button>
           <button type="button" onClick={() => openModal('uploadArticle')}>New Article</button>
         </div>
       </div>
@@ -2131,6 +2154,7 @@ Prevention controls:
         </div>
         <div>
           <button type="button" onClick={() => loadAdminChunks(1)}>Refresh</button>
+          <button type="button" onClick={rebuildLibraryQuality}>Rebuild Chunks</button>
           <button type="button" onClick={() => openModal('uploadDocument')}>Upload Document</button>
         </div>
       </div>
