@@ -44,8 +44,8 @@ public interface TicketMapper {
               and (cast(#{priority} as varchar) is null or priority = #{priority})
               and (
                   cast(#{keyword} as varchar) is null
-                  or lower(title) like lower(concat('%', #{keyword}, '%'))
-                  or lower(description) like lower(concat('%', #{keyword}, '%'))
+                  or lower(title) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+                  or lower(description) like lower(concat('%', cast(#{keyword} as varchar), '%'))
               )
             order by created_time desc
             limit #{size} offset #{offset}
@@ -62,8 +62,8 @@ public interface TicketMapper {
               and (cast(#{priority} as varchar) is null or priority = #{priority})
               and (
                   cast(#{keyword} as varchar) is null
-                  or lower(title) like lower(concat('%', #{keyword}, '%'))
-                  or lower(description) like lower(concat('%', #{keyword}, '%'))
+                  or lower(title) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+                  or lower(description) like lower(concat('%', cast(#{keyword} as varchar), '%'))
               )
             """)
     Long countPage(@Param("keyword") String keyword,

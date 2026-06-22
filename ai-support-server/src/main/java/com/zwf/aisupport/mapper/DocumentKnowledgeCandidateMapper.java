@@ -59,14 +59,14 @@ public interface DocumentKnowledgeCandidateMapper {
         left join knowledge_articles ka on ka.id = dkc.suggested_article_id
         where dkc.status <> 'ARCHIVED'
           and (cast(#{status} as varchar) is null or dkc.status = #{status})
-          and (cast(#{category} as varchar) is null or lower(coalesce(dkc.category, '')) = lower(#{category}))
+          and (cast(#{category} as varchar) is null or lower(coalesce(dkc.category, '')) = lower(cast(#{category} as varchar)))
           and (
               cast(#{keyword} as varchar) is null
-              or lower(dkc.title) like lower(concat('%', #{keyword}, '%'))
-              or lower(dkc.content) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(dkc.category, '')) like lower(concat('%', #{keyword}, '%'))
-              or lower(d.original_filename) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(ka.title, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(dkc.title) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(dkc.content) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(dkc.category, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(d.original_filename) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(ka.title, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
         order by dkc.created_time desc
         limit #{size} offset #{offset}
@@ -84,14 +84,14 @@ public interface DocumentKnowledgeCandidateMapper {
         left join knowledge_articles ka on ka.id = dkc.suggested_article_id
         where dkc.status <> 'ARCHIVED'
           and (cast(#{status} as varchar) is null or dkc.status = #{status})
-          and (cast(#{category} as varchar) is null or lower(coalesce(dkc.category, '')) = lower(#{category}))
+          and (cast(#{category} as varchar) is null or lower(coalesce(dkc.category, '')) = lower(cast(#{category} as varchar)))
           and (
               cast(#{keyword} as varchar) is null
-              or lower(dkc.title) like lower(concat('%', #{keyword}, '%'))
-              or lower(dkc.content) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(dkc.category, '')) like lower(concat('%', #{keyword}, '%'))
-              or lower(d.original_filename) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(ka.title, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(dkc.title) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(dkc.content) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(dkc.category, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(d.original_filename) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(ka.title, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
         """)
     Long countPage(@Param("keyword") String keyword,

@@ -58,9 +58,9 @@ public interface AiQuestionLogMapper {
               and (cast(#{feedback} as varchar) is null or feedback = #{feedback})
               and (
                   cast(#{keyword} as varchar) is null
-                  or lower(question) like lower(concat('%', #{keyword}, '%'))
-                  or lower(answer) like lower(concat('%', #{keyword}, '%'))
-                  or lower(coalesce(source_title, '')) like lower(concat('%', #{keyword}, '%'))
+                  or lower(question) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+                  or lower(answer) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+                  or lower(coalesce(source_title, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
               )
             order by created_time desc
             limit #{size} offset #{offset}
@@ -77,9 +77,9 @@ public interface AiQuestionLogMapper {
               and (cast(#{feedback} as varchar) is null or feedback = #{feedback})
               and (
                   cast(#{keyword} as varchar) is null
-                  or lower(question) like lower(concat('%', #{keyword}, '%'))
-                  or lower(answer) like lower(concat('%', #{keyword}, '%'))
-                  or lower(coalesce(source_title, '')) like lower(concat('%', #{keyword}, '%'))
+                  or lower(question) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+                  or lower(answer) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+                  or lower(coalesce(source_title, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
               )
             """)
     Long countPage(@Param("keyword") String keyword,
@@ -91,8 +91,8 @@ public interface AiQuestionLogMapper {
             where source_type = 'NONE'
               and (
                   cast(#{keyword} as varchar) is null
-                  or lower(question) like lower(concat('%', #{keyword}, '%'))
-                  or lower(answer) like lower(concat('%', #{keyword}, '%'))
+                  or lower(question) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+                  or lower(answer) like lower(concat('%', cast(#{keyword} as varchar), '%'))
               )
             order by created_time desc
             limit #{size} offset #{offset}
@@ -106,8 +106,8 @@ public interface AiQuestionLogMapper {
             where source_type = 'NONE'
               and (
                   cast(#{keyword} as varchar) is null
-                  or lower(question) like lower(concat('%', #{keyword}, '%'))
-                  or lower(answer) like lower(concat('%', #{keyword}, '%'))
+                  or lower(question) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+                  or lower(answer) like lower(concat('%', cast(#{keyword} as varchar), '%'))
               )
             """)
     Long countKnowledgeGapsPage(@Param("keyword") String keyword);

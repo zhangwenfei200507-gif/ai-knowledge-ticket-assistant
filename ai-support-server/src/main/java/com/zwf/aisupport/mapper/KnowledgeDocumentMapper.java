@@ -30,12 +30,12 @@ public interface KnowledgeDocumentMapper {
     @Select("""
         select * from documents
         where (cast(#{status} as varchar) is null or status = #{status})
-          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(#{category}))
+          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(cast(#{category} as varchar)))
           and (
               cast(#{keyword} as varchar) is null
-              or lower(original_filename) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(category, '')) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(content_type, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(original_filename) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(category, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(content_type, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
         order by created_time desc
         limit #{size} offset #{offset}
@@ -49,12 +49,12 @@ public interface KnowledgeDocumentMapper {
     @Select("""
         select count(*) from documents
         where (cast(#{status} as varchar) is null or status = #{status})
-          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(#{category}))
+          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(cast(#{category} as varchar)))
           and (
               cast(#{keyword} as varchar) is null
-              or lower(original_filename) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(category, '')) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(content_type, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(original_filename) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(category, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(content_type, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
         """)
     Long countPage(@Param("keyword") String keyword,

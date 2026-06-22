@@ -54,9 +54,9 @@ public interface DocumentChunkMapper {
               and (cast(#{category} as varchar) is null or d.category = #{category})
               and (
                   cast(#{keyword} as varchar) is null
-                  or lower(dc.content) like lower(concat('%', #{keyword}, '%'))
-                  or lower(d.original_filename) like lower(concat('%', #{keyword}, '%'))
-                  or lower(coalesce(d.category, '')) like lower(concat('%', #{keyword}, '%'))
+                  or lower(dc.content) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+                  or lower(d.original_filename) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+                  or lower(coalesce(d.category, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
               )
             order by dc.updated_time desc, dc.created_time desc, dc.id desc
             limit #{size} offset #{offset}
@@ -78,9 +78,9 @@ public interface DocumentChunkMapper {
               and (cast(#{category} as varchar) is null or d.category = #{category})
               and (
                   cast(#{keyword} as varchar) is null
-                  or lower(dc.content) like lower(concat('%', #{keyword}, '%'))
-                  or lower(d.original_filename) like lower(concat('%', #{keyword}, '%'))
-                  or lower(coalesce(d.category, '')) like lower(concat('%', #{keyword}, '%'))
+                  or lower(dc.content) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+                  or lower(d.original_filename) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+                  or lower(coalesce(d.category, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
               )
             """)
     long countAdminPage(@Param("keyword") String keyword,
@@ -122,7 +122,7 @@ public interface DocumentChunkMapper {
           and dc.status = 'ACTIVE'
           and (
               to_tsvector('english', dc.content) @@ search_query.query
-              or lower(dc.content) like lower(concat('%', #{keyword}, '%'))
+              or lower(dc.content) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
         order by relevance_score desc, d.created_time desc, dc.chunk_index asc
         limit 5
@@ -148,7 +148,7 @@ public interface DocumentChunkMapper {
           and dc.document_id = #{documentId}
           and (
               to_tsvector('english', dc.content) @@ search_query.query
-              or lower(dc.content) like lower(concat('%', #{keyword}, '%'))
+              or lower(dc.content) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
         order by relevance_score desc, dc.chunk_index asc
         limit 5

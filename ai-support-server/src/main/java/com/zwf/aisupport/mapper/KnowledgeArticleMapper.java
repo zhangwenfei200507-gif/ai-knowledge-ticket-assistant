@@ -26,12 +26,12 @@ public interface KnowledgeArticleMapper {
     @Select("""
         select * from knowledge_articles
         where (cast(#{status} as varchar) is null or status = #{status})
-          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(#{category}))
+          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(cast(#{category} as varchar)))
           and (
               cast(#{keyword} as varchar) is null
-              or lower(title) like lower(concat('%', #{keyword}, '%'))
-              or lower(content) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(category, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(title) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(content) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(category, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
         order by updated_time desc
         limit #{size} offset #{offset}
@@ -45,12 +45,12 @@ public interface KnowledgeArticleMapper {
     @Select("""
         select count(*) from knowledge_articles
         where (cast(#{status} as varchar) is null or status = #{status})
-          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(#{category}))
+          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(cast(#{category} as varchar)))
           and (
               cast(#{keyword} as varchar) is null
-              or lower(title) like lower(concat('%', #{keyword}, '%'))
-              or lower(content) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(category, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(title) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(content) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(category, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
         """)
     Long countPage(@Param("keyword") String keyword,
@@ -64,8 +64,8 @@ public interface KnowledgeArticleMapper {
         select * from knowledge_articles
         where status = 'PUBLISHED'
           and (
-              lower(title) like lower(concat('%', #{keyword}, '%'))
-              or lower(content) like lower(concat('%', #{keyword}, '%'))
+              lower(title) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(content) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
         order by updated_time desc
         """)

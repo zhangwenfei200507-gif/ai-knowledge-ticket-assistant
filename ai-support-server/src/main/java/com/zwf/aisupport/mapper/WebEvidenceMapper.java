@@ -56,14 +56,14 @@ public interface WebEvidenceMapper {
         select * from web_evidence
         where status <> 'ARCHIVED'
           and (cast(#{status} as varchar) is null or status = #{status})
-          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(#{category}))
+          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(cast(#{category} as varchar)))
           and (cast(#{origin} as varchar) is null or evidence_origin = #{origin})
           and (
               cast(#{keyword} as varchar) is null
-              or lower(question) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(title, '')) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(domain, '')) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(suggested_article_content, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(question) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(title, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(domain, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(suggested_article_content, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
         order by created_time desc
         limit #{size} offset #{offset}
@@ -79,14 +79,14 @@ public interface WebEvidenceMapper {
         select count(*) from web_evidence
         where status <> 'ARCHIVED'
           and (cast(#{status} as varchar) is null or status = #{status})
-          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(#{category}))
+          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(cast(#{category} as varchar)))
           and (cast(#{origin} as varchar) is null or evidence_origin = #{origin})
           and (
               cast(#{keyword} as varchar) is null
-              or lower(question) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(title, '')) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(domain, '')) like lower(concat('%', #{keyword}, '%'))
-              or lower(coalesce(suggested_article_content, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(question) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(title, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(domain, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
+              or lower(coalesce(suggested_article_content, '')) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
         """)
     Long countPage(@Param("keyword") String keyword,
