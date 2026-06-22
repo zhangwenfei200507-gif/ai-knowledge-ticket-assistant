@@ -3,6 +3,7 @@ package com.zwf.aisupport.service.impl;
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.common.util.KnowledgeArticleVoMapper;
+import com.zwf.aisupport.common.util.PageRequestUtil;
 import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.dto.AiAskDTO;
 import com.zwf.aisupport.dto.AiQuestionLogFeedbackDTO;
@@ -278,14 +279,21 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return statsVO;
     }
     @Override
-    public List<KnowledgeGapVO> listKnowledgeGaps() {
+    public PageVO<KnowledgeGapVO> listKnowledgeGaps(String keyword, Integer page, Integer size) {
         CurrentUserUtil.requireAdmin("Only administrators can access knowledge gaps");
 
-        // Knowledge gaps help administrators decide which Knowledge Pack should be reorganized.
-        return aiQuestionLogMapper.findKnowledgeGaps()
+        int safePage = PageRequestUtil.page(page);
+        int safeSize = PageRequestUtil.size(size);
+        List<KnowledgeGapVO> items = aiQuestionLogMapper.findKnowledgeGapsPage(
+                        PageRequestUtil.optionalText(keyword),
+                        PageRequestUtil.offset(safePage, safeSize),
+                        safeSize
+                )
                 .stream()
                 .map(this::convertToKnowledgeGapVO)
                 .toList();
+        long total = aiQuestionLogMapper.countKnowledgeGapsPage(PageRequestUtil.optionalText(keyword));
+        return PageVO.of(items, safePage, safeSize, total);
     }
     @Override
     public KnowledgeArticleVO createArticleFromKnowledgeGap(Long logId, KnowledgeArticleCreateDTO createDTO) {
@@ -337,14 +345,27 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return vo;
     }
     @Override
-    public List<AiQuestionLogVO> listAllQuestionLogs() {
+    public PageVO<AiQuestionLogVO> listAllQuestionLogs(String keyword, String sourceType, String feedback, Integer page, Integer size) {
         CurrentUserUtil.requireAdmin("Only administrators can access AI question logs");
 
-        // Admin users can review AI usage across the whole platform.
-        return aiQuestionLogMapper.findAll()
+        int safePage = PageRequestUtil.page(page);
+        int safeSize = PageRequestUtil.size(size);
+        List<AiQuestionLogVO> items = aiQuestionLogMapper.findPage(
+                        PageRequestUtil.optionalText(keyword),
+                        PageRequestUtil.optionalText(sourceType),
+                        PageRequestUtil.optionalText(feedback),
+                        PageRequestUtil.offset(safePage, safeSize),
+                        safeSize
+                )
                 .stream()
                 .map(this::convertToAiQuestionLogVO)
                 .toList();
+        long total = aiQuestionLogMapper.countPage(
+                PageRequestUtil.optionalText(keyword),
+                PageRequestUtil.optionalText(sourceType),
+                PageRequestUtil.optionalText(feedback)
+        );
+        return PageVO.of(items, safePage, safeSize, total);
     }
 
     @Override

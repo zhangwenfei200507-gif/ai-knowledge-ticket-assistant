@@ -2,12 +2,13 @@ package com.zwf.aisupport.service;
 
 import com.zwf.aisupport.vo.DocumentKnowledgeCandidateVO;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
+import com.zwf.aisupport.vo.PageVO;
 
 import java.util.List;
 
 public interface DocumentKnowledgeCandidateService {
 
-    List<DocumentKnowledgeCandidateVO> listAll();
+    PageVO<DocumentKnowledgeCandidateVO> listAll(String keyword, String status, String category, Integer page, Integer size);
 
     KnowledgeArticleVO approveToArticle(Long id);
 

@@ -54,6 +54,48 @@ public interface WebEvidenceMapper {
 
     @Select("""
         select * from web_evidence
+        where status <> 'ARCHIVED'
+          and (#{status} is null or status = #{status})
+          and (#{category} is null or lower(coalesce(category, '')) = lower(#{category}))
+          and (#{origin} is null or evidence_origin = #{origin})
+          and (
+              #{keyword} is null
+              or lower(question) like lower(concat('%', #{keyword}, '%'))
+              or lower(coalesce(title, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(coalesce(domain, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(coalesce(suggested_article_content, '')) like lower(concat('%', #{keyword}, '%'))
+          )
+        order by created_time desc
+        limit #{size} offset #{offset}
+        """)
+    List<WebEvidence> findPage(@Param("keyword") String keyword,
+                               @Param("status") String status,
+                               @Param("category") String category,
+                               @Param("origin") String origin,
+                               @Param("offset") int offset,
+                               @Param("size") int size);
+
+    @Select("""
+        select count(*) from web_evidence
+        where status <> 'ARCHIVED'
+          and (#{status} is null or status = #{status})
+          and (#{category} is null or lower(coalesce(category, '')) = lower(#{category}))
+          and (#{origin} is null or evidence_origin = #{origin})
+          and (
+              #{keyword} is null
+              or lower(question) like lower(concat('%', #{keyword}, '%'))
+              or lower(coalesce(title, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(coalesce(domain, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(coalesce(suggested_article_content, '')) like lower(concat('%', #{keyword}, '%'))
+          )
+        """)
+    Long countPage(@Param("keyword") String keyword,
+                   @Param("status") String status,
+                   @Param("category") String category,
+                   @Param("origin") String origin);
+
+    @Select("""
+        select * from web_evidence
         where status = 'NEEDS_REVIEW'
         order by created_time desc
         """)

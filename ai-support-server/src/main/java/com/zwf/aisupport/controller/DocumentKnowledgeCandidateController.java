@@ -5,10 +5,9 @@ import com.zwf.aisupport.dto.ReviewContentUpdateDTO;
 import com.zwf.aisupport.service.DocumentKnowledgeCandidateService;
 import com.zwf.aisupport.vo.DocumentKnowledgeCandidateVO;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
+import com.zwf.aisupport.vo.PageVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/document-knowledge-candidates")
@@ -21,8 +20,12 @@ public class DocumentKnowledgeCandidateController {
     }
 
     @GetMapping
-    public Result<List<DocumentKnowledgeCandidateVO>> listAll() {
-        return Result.success(candidateService.listAll());
+    public Result<PageVO<DocumentKnowledgeCandidateVO>> listAll(@RequestParam(required = false) String keyword,
+                                                               @RequestParam(required = false) String status,
+                                                               @RequestParam(required = false) String category,
+                                                               @RequestParam(required = false) Integer page,
+                                                               @RequestParam(required = false) Integer size) {
+        return Result.success(candidateService.listAll(keyword, status, category, page, size));
     }
 
     @PostMapping("/{id}/approve")

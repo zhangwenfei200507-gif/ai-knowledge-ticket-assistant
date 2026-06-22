@@ -4,6 +4,7 @@ import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.common.util.KnowledgeArticleVoMapper;
 import com.zwf.aisupport.common.util.KnowledgeCategoryResolver;
+import com.zwf.aisupport.common.util.PageRequestUtil;
 import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.dto.WebEvidenceSearchDTO;
 import com.zwf.aisupport.entity.KnowledgeArticle;
@@ -12,6 +13,7 @@ import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.WebEvidenceMapper;
 import com.zwf.aisupport.service.WebEvidenceService;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
+import com.zwf.aisupport.vo.PageVO;
 import com.zwf.aisupport.vo.WebEvidenceVO;
 import org.springframework.stereotype.Service;
 
@@ -99,11 +101,28 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
     }
 
     @Override
-    public List<WebEvidenceVO> listAll() {
+    public PageVO<WebEvidenceVO> listAll(String keyword, String status, String category, String origin, Integer page, Integer size) {
         CurrentUserUtil.requireAdmin("Only administrators can manage web evidence");
-        return webEvidenceMapper.findAll().stream()
+        int safePage = PageRequestUtil.page(page);
+        int safeSize = PageRequestUtil.size(size);
+        List<WebEvidenceVO> items = webEvidenceMapper.findPage(
+                        PageRequestUtil.optionalText(keyword),
+                        PageRequestUtil.optionalText(status),
+                        PageRequestUtil.optionalText(category),
+                        PageRequestUtil.optionalText(origin),
+                        PageRequestUtil.offset(safePage, safeSize),
+                        safeSize
+                )
+                .stream()
                 .map(this::convertToVO)
                 .toList();
+        long total = webEvidenceMapper.countPage(
+                PageRequestUtil.optionalText(keyword),
+                PageRequestUtil.optionalText(status),
+                PageRequestUtil.optionalText(category),
+                PageRequestUtil.optionalText(origin)
+        );
+        return PageVO.of(items, safePage, safeSize, total);
     }
 
     @Override

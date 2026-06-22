@@ -6,6 +6,7 @@ import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
 import com.zwf.aisupport.vo.DocumentChunkVO;
 import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
+import com.zwf.aisupport.vo.PageVO;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -29,9 +30,12 @@ public class DocumentController {
     }
 
     @GetMapping
-    public Result<List<KnowledgeDocumentVO>> listDocuments() {
-        List<KnowledgeDocumentVO> documents = documentService.listDocuments();
-        return Result.success(documents);
+    public Result<PageVO<KnowledgeDocumentVO>> listDocuments(@RequestParam(required = false) String keyword,
+                                                             @RequestParam(required = false) String category,
+                                                             @RequestParam(required = false) String status,
+                                                             @RequestParam(required = false) Integer page,
+                                                             @RequestParam(required = false) Integer size) {
+        return Result.success(documentService.listDocuments(keyword, category, status, page, size));
     }
     @GetMapping("/chunks/search")
     public Result<List<DocumentSearchResultVO>> searchChunks(@RequestParam String keyword) {

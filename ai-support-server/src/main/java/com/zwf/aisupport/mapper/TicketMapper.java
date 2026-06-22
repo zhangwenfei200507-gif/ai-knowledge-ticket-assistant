@@ -38,6 +38,38 @@ public interface TicketMapper {
             """)
     List<Ticket> findAll();
 
+    @Select("""
+            select * from tickets
+            where (#{status} is null or status = #{status})
+              and (#{priority} is null or priority = #{priority})
+              and (
+                  #{keyword} is null
+                  or lower(title) like lower(concat('%', #{keyword}, '%'))
+                  or lower(description) like lower(concat('%', #{keyword}, '%'))
+              )
+            order by created_time desc
+            limit #{size} offset #{offset}
+            """)
+    List<Ticket> findPage(@Param("keyword") String keyword,
+                          @Param("status") String status,
+                          @Param("priority") String priority,
+                          @Param("offset") int offset,
+                          @Param("size") int size);
+
+    @Select("""
+            select count(*) from tickets
+            where (#{status} is null or status = #{status})
+              and (#{priority} is null or priority = #{priority})
+              and (
+                  #{keyword} is null
+                  or lower(title) like lower(concat('%', #{keyword}, '%'))
+                  or lower(description) like lower(concat('%', #{keyword}, '%'))
+              )
+            """)
+    Long countPage(@Param("keyword") String keyword,
+                   @Param("status") String status,
+                   @Param("priority") String priority);
+
     @Update("""
         update tickets
         set assigned_to = #{assignedTo},

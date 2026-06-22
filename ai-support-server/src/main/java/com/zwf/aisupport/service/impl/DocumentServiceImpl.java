@@ -2,6 +2,7 @@ package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
+import com.zwf.aisupport.common.util.PageRequestUtil;
 import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.common.util.UploadedTextExtractor;
 import com.zwf.aisupport.entity.DocumentChunk;
@@ -15,6 +16,7 @@ import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
 import com.zwf.aisupport.vo.DocumentChunkVO;
 import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
+import com.zwf.aisupport.vo.PageVO;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -84,11 +86,29 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
-    public List<KnowledgeDocumentVO> listDocuments() {
-        return knowledgeDocumentMapper.findActiveDocuments()
+    public PageVO<KnowledgeDocumentVO> listDocuments(String keyword, String category, String status, Integer page, Integer size) {
+        int safePage = PageRequestUtil.page(page);
+        int safeSize = PageRequestUtil.size(size);
+        String safeStatus = PageRequestUtil.optionalText(status);
+        if (safeStatus == null) {
+            safeStatus = "ACTIVE";
+        }
+        List<KnowledgeDocumentVO> items = knowledgeDocumentMapper.findPage(
+                        PageRequestUtil.optionalText(keyword),
+                        PageRequestUtil.optionalText(category),
+                        safeStatus,
+                        PageRequestUtil.offset(safePage, safeSize),
+                        safeSize
+                )
                 .stream()
                 .map(this::convertToKnowledgeDocumentVO)
                 .toList();
+        long total = knowledgeDocumentMapper.countPage(
+                PageRequestUtil.optionalText(keyword),
+                PageRequestUtil.optionalText(category),
+                safeStatus
+        );
+        return PageVO.of(items, safePage, safeSize, total);
     }
 
     @Override

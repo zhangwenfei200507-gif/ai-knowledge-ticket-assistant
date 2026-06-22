@@ -2,6 +2,7 @@ package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
+import com.zwf.aisupport.common.util.PageRequestUtil;
 import com.zwf.aisupport.dto.TicketAssignDTO;
 import com.zwf.aisupport.dto.TicketCreateDTO;
 import com.zwf.aisupport.dto.TicketStatusUpdateDTO;
@@ -9,6 +10,7 @@ import com.zwf.aisupport.entity.Ticket;
 import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.mapper.UserMapper;
 import com.zwf.aisupport.service.TicketService;
+import com.zwf.aisupport.vo.PageVO;
 import com.zwf.aisupport.vo.TicketVO;
 import org.springframework.stereotype.Service;
 
@@ -93,14 +95,27 @@ public class TicketServiceImpl implements TicketService {
         ticketMapper.updateStatus(id, status);
     }
     @Override
-    public List<TicketVO> listAllTickets() {
+    public PageVO<TicketVO> listAllTickets(String keyword, String status, String priority, Integer page, Integer size) {
         CurrentUserUtil.requireAdmin("Only administrators can access all tickets");
 
-        // Admin users can review all tickets for support management.
-        return ticketMapper.findAll()
+        int safePage = PageRequestUtil.page(page);
+        int safeSize = PageRequestUtil.size(size);
+        List<TicketVO> items = ticketMapper.findPage(
+                        PageRequestUtil.optionalText(keyword),
+                        PageRequestUtil.optionalText(status),
+                        PageRequestUtil.optionalText(priority),
+                        PageRequestUtil.offset(safePage, safeSize),
+                        safeSize
+                )
                 .stream()
                 .map(this::convertToTicketVO)
                 .toList();
+        long total = ticketMapper.countPage(
+                PageRequestUtil.optionalText(keyword),
+                PageRequestUtil.optionalText(status),
+                PageRequestUtil.optionalText(priority)
+        );
+        return PageVO.of(items, safePage, safeSize, total);
     }
     @Override
     public void assignTicket(Long id, TicketAssignDTO ticketAssignDTO) {

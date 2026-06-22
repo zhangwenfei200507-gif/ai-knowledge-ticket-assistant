@@ -18,7 +18,7 @@ public interface AiAssistantService {
 
     List<AiQuestionLogVO> listMyQuestionLogs();
 
-    List<AiQuestionLogVO> listAllQuestionLogs();
+    PageVO<AiQuestionLogVO> listAllQuestionLogs(String keyword, String sourceType, String feedback, Integer page, Integer size);
 
     void deleteQuestionLog(Long id);
 
@@ -26,7 +26,7 @@ public interface AiAssistantService {
 
     AiDashboardStatsVO getDashboardStats();
 
-    List<KnowledgeGapVO> listKnowledgeGaps();
+    PageVO<KnowledgeGapVO> listKnowledgeGaps(String keyword, Integer page, Integer size);
 
     KnowledgeArticleVO createArticleFromKnowledgeGap(Long logId, KnowledgeArticleCreateDTO createDTO);
 

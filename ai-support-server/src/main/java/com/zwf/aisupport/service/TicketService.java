@@ -3,6 +3,7 @@ package com.zwf.aisupport.service;
 import com.zwf.aisupport.dto.TicketAssignDTO;
 import com.zwf.aisupport.dto.TicketCreateDTO;
 import com.zwf.aisupport.dto.TicketStatusUpdateDTO;
+import com.zwf.aisupport.vo.PageVO;
 import com.zwf.aisupport.vo.TicketVO;
 
 import java.util.List;
@@ -17,7 +18,7 @@ public interface TicketService {
 
     void updateStatus(Long id, TicketStatusUpdateDTO ticketStatusUpdateDTO);
 
-    List<TicketVO> listAllTickets();
+    PageVO<TicketVO> listAllTickets(String keyword, String status, String priority, Integer page, Integer size);
 
     void assignTicket(Long id, TicketAssignDTO ticketAssignDTO);
 

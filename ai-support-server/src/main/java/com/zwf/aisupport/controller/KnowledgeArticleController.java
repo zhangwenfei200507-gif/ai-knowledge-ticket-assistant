@@ -6,6 +6,7 @@ import com.zwf.aisupport.dto.KnowledgeArticleUpdateDTO;
 import com.zwf.aisupport.service.KnowledgeArticleService;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.KnowledgeCategoryStatsVO;
+import com.zwf.aisupport.vo.PageVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -37,9 +38,12 @@ public class KnowledgeArticleController {
     }
 
     @GetMapping
-    public Result<List<KnowledgeArticleVO>> listPublishedArticles() {
-        List<KnowledgeArticleVO> articles = knowledgeArticleService.listPublishedArticles();
-        return Result.success(articles);
+    public Result<PageVO<KnowledgeArticleVO>> listPublishedArticles(@RequestParam(required = false) String keyword,
+                                                                    @RequestParam(required = false) String category,
+                                                                    @RequestParam(required = false) String status,
+                                                                    @RequestParam(required = false) Integer page,
+                                                                    @RequestParam(required = false) Integer size) {
+        return Result.success(knowledgeArticleService.listPublishedArticles(keyword, category, status, page, size));
     }
     @GetMapping("/search")
     public Result<List<KnowledgeArticleVO>> searchPublishedArticles(@RequestParam String keyword) {

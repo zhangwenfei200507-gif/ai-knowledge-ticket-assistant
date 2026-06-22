@@ -57,6 +57,54 @@ public interface DocumentKnowledgeCandidateMapper {
         from document_knowledge_candidates dkc
         join documents d on d.id = dkc.document_id
         left join knowledge_articles ka on ka.id = dkc.suggested_article_id
+        where dkc.status <> 'ARCHIVED'
+          and (#{status} is null or dkc.status = #{status})
+          and (#{category} is null or lower(coalesce(dkc.category, '')) = lower(#{category}))
+          and (
+              #{keyword} is null
+              or lower(dkc.title) like lower(concat('%', #{keyword}, '%'))
+              or lower(dkc.content) like lower(concat('%', #{keyword}, '%'))
+              or lower(coalesce(dkc.category, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(d.original_filename) like lower(concat('%', #{keyword}, '%'))
+              or lower(coalesce(ka.title, '')) like lower(concat('%', #{keyword}, '%'))
+          )
+        order by dkc.created_time desc
+        limit #{size} offset #{offset}
+        """)
+    List<DocumentKnowledgeCandidateVO> findPage(@Param("keyword") String keyword,
+                                                @Param("status") String status,
+                                                @Param("category") String category,
+                                                @Param("offset") int offset,
+                                                @Param("size") int size);
+
+    @Select("""
+        select count(*)
+        from document_knowledge_candidates dkc
+        join documents d on d.id = dkc.document_id
+        left join knowledge_articles ka on ka.id = dkc.suggested_article_id
+        where dkc.status <> 'ARCHIVED'
+          and (#{status} is null or dkc.status = #{status})
+          and (#{category} is null or lower(coalesce(dkc.category, '')) = lower(#{category}))
+          and (
+              #{keyword} is null
+              or lower(dkc.title) like lower(concat('%', #{keyword}, '%'))
+              or lower(dkc.content) like lower(concat('%', #{keyword}, '%'))
+              or lower(coalesce(dkc.category, '')) like lower(concat('%', #{keyword}, '%'))
+              or lower(d.original_filename) like lower(concat('%', #{keyword}, '%'))
+              or lower(coalesce(ka.title, '')) like lower(concat('%', #{keyword}, '%'))
+          )
+        """)
+    Long countPage(@Param("keyword") String keyword,
+                   @Param("status") String status,
+                   @Param("category") String category);
+
+    @Select("""
+        select dkc.*,
+               d.original_filename,
+               ka.title as suggested_article_title
+        from document_knowledge_candidates dkc
+        join documents d on d.id = dkc.document_id
+        left join knowledge_articles ka on ka.id = dkc.suggested_article_id
         where dkc.id = #{id}
         """)
     DocumentKnowledgeCandidateVO findVOById(Long id);

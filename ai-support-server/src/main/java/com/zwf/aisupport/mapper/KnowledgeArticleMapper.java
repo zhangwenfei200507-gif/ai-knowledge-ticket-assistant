@@ -23,6 +23,40 @@ public interface KnowledgeArticleMapper {
             """)
     List<KnowledgeArticle> findPublishedArticles();
 
+    @Select("""
+        select * from knowledge_articles
+        where (#{status} is null or status = #{status})
+          and (#{category} is null or lower(coalesce(category, '')) = lower(#{category}))
+          and (
+              #{keyword} is null
+              or lower(title) like lower(concat('%', #{keyword}, '%'))
+              or lower(content) like lower(concat('%', #{keyword}, '%'))
+              or lower(coalesce(category, '')) like lower(concat('%', #{keyword}, '%'))
+          )
+        order by updated_time desc
+        limit #{size} offset #{offset}
+        """)
+    List<KnowledgeArticle> findPage(@Param("keyword") String keyword,
+                                    @Param("category") String category,
+                                    @Param("status") String status,
+                                    @Param("offset") int offset,
+                                    @Param("size") int size);
+
+    @Select("""
+        select count(*) from knowledge_articles
+        where (#{status} is null or status = #{status})
+          and (#{category} is null or lower(coalesce(category, '')) = lower(#{category}))
+          and (
+              #{keyword} is null
+              or lower(title) like lower(concat('%', #{keyword}, '%'))
+              or lower(content) like lower(concat('%', #{keyword}, '%'))
+              or lower(coalesce(category, '')) like lower(concat('%', #{keyword}, '%'))
+          )
+        """)
+    Long countPage(@Param("keyword") String keyword,
+                   @Param("category") String category,
+                   @Param("status") String status);
+
     @Select("select * from knowledge_articles where id = #{id}")
     KnowledgeArticle findById(Long id);
 

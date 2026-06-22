@@ -4,6 +4,7 @@ import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
 import com.zwf.aisupport.vo.DocumentChunkVO;
 import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
+import com.zwf.aisupport.vo.PageVO;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -12,7 +13,7 @@ public interface DocumentService {
 
     KnowledgeDocumentVO upload(MultipartFile file, String category);
 
-    List<KnowledgeDocumentVO> listDocuments();
+    PageVO<KnowledgeDocumentVO> listDocuments(String keyword, String category, String status, Integer page, Integer size);
 
     List<DocumentChunkVO> listChunks(Long documentId);
 

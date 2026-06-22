@@ -194,6 +194,7 @@ const navItems = [
 
 const LIBRARY_PAGE_SIZE = 8;
 const REVIEW_PAGE_SIZE = 6;
+const pageItems = (pageResult) => pageResult?.items ?? [];
 
 function statusText(status) {
   if (!status) return 'Unknown';
@@ -900,7 +901,7 @@ function AdminOperationsCenter() {
         setLoadState('live');
         getDocumentKnowledgeCandidates()
           .then((candidateResult) => {
-            const loadedCandidates = candidateResult ?? [];
+            const loadedCandidates = pageItems(candidateResult);
             setDocumentCandidates(loadedCandidates);
             setSelectedDocumentCandidate((current) => current && loadedCandidates.find((item) => item.id === current.id)
               ? loadedCandidates.find((item) => item.id === current.id)
@@ -994,8 +995,9 @@ function AdminOperationsCenter() {
     setActionStatus({ type: 'loading', text: 'Loading stored knowledge articles...' });
     try {
       const result = await getKnowledgeArticles();
-      setArticles(result ?? []);
-      setSelectedArticle((result ?? [])[0] ?? null);
+      const items = pageItems(result);
+      setArticles(items);
+      setSelectedArticle(items[0] ?? null);
       setActionStatus({ type: '', text: '' });
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -1011,7 +1013,7 @@ function AdminOperationsCenter() {
     setActionStatus({ type: 'loading', text: 'Loading real AI question records...' });
     try {
       const result = await getAiQuestionLogs();
-      setAiLogs(result ?? []);
+      setAiLogs(pageItems(result));
       setAiLogPage(1);
       setActionStatus({ type: '', text: '' });
     } catch (error) {
@@ -1030,7 +1032,7 @@ function AdminOperationsCenter() {
     setActionStatus({ type: 'loading', text: 'Loading real ticket queue...' });
     try {
       const result = await getTickets();
-      setTickets(result ?? []);
+      setTickets(pageItems(result));
       setTicketPage(1);
       setActionStatus({ type: '', text: '' });
     } catch (error) {
@@ -1048,7 +1050,7 @@ function AdminOperationsCenter() {
     setActionStatus({ type: 'loading', text: 'Loading external web evidence queue...' });
     try {
       const result = await getWebEvidence();
-      const loadedEvidence = result ?? [];
+      const loadedEvidence = pageItems(result);
       setWebEvidence(loadedEvidence);
       setSelectedEvidence((current) => current && loadedEvidence.find((item) => item.id === current.id)
         ? loadedEvidence.find((item) => item.id === current.id)
@@ -1071,23 +1073,27 @@ function AdminOperationsCenter() {
         getWebEvidence(),
         getDocumentKnowledgeCandidates(),
       ]);
-      const unreadGaps = (gapResults ?? []).filter((gap) => !readNotificationKeys.includes(buildNotificationKeys([gap], [], [])[0]));
-      const unreadTickets = (ticketResults ?? [])
+      const gapItems = pageItems(gapResults);
+      const ticketItems = pageItems(ticketResults);
+      const evidenceItems = pageItems(evidenceResults);
+      const candidateItems = pageItems(documentCandidateResults);
+      const unreadGaps = gapItems.filter((gap) => !readNotificationKeys.includes(buildNotificationKeys([gap], [], [])[0]));
+      const unreadTickets = ticketItems
         .filter((ticket) => ['OPEN', 'IN_PROGRESS'].includes(ticket.status))
         .filter((ticket) => !readNotificationKeys.includes(buildNotificationKeys([], [ticket], [])[0]));
-      const unreadEvidence = (evidenceResults ?? [])
+      const unreadEvidence = evidenceItems
         .filter((item) => item.status === 'NEEDS_REVIEW')
         .filter((item) => !readNotificationKeys.includes(buildNotificationKeys([], [], [item])[0]));
-      const unreadDocumentCandidates = (documentCandidateResults ?? [])
+      const unreadDocumentCandidates = candidateItems
         .filter((item) => item.status === 'NEEDS_REVIEW')
         .filter((item) => !readNotificationKeys.includes(buildNotificationKeys([], [], [], [item])[0]));
-      setKnowledgeGaps(gapResults ?? []);
-      setTickets(ticketResults ?? []);
-      setWebEvidence(evidenceResults ?? []);
-      setDocumentCandidates(documentCandidateResults ?? []);
+      setKnowledgeGaps(gapItems);
+      setTickets(ticketItems);
+      setWebEvidence(evidenceItems);
+      setDocumentCandidates(candidateItems);
       setNotificationSnapshot({ gaps: unreadGaps, tickets: unreadTickets, evidence: unreadEvidence, documentCandidates: unreadDocumentCandidates });
-      setSelectedEvidence(unreadEvidence[0] ?? (evidenceResults ?? [])[0] ?? null);
-      setSelectedDocumentCandidate(unreadDocumentCandidates[0] ?? (documentCandidateResults ?? [])[0] ?? null);
+      setSelectedEvidence(unreadEvidence[0] ?? evidenceItems[0] ?? null);
+      setSelectedDocumentCandidate(unreadDocumentCandidates[0] ?? candidateItems[0] ?? null);
       markNotificationsRead(buildNotificationKeys(unreadGaps, unreadTickets, unreadEvidence, unreadDocumentCandidates));
       setActionStatus({ type: '', text: '' });
     } catch (error) {
@@ -1131,7 +1137,7 @@ function AdminOperationsCenter() {
     setActionStatus({ type: 'loading', text: 'Loading uploaded documents...' });
     try {
       const result = await getKnowledgeDocuments();
-      const loadedDocuments = result ?? [];
+      const loadedDocuments = pageItems(result);
       setDocuments(loadedDocuments);
       setSelectedDocument(loadedDocuments[0] ?? null);
       if (loadedDocuments[0]) {
@@ -1155,7 +1161,7 @@ function AdminOperationsCenter() {
     setActionStatus({ type: 'loading', text: 'Loading document learning candidates...' });
     try {
       const result = await getDocumentKnowledgeCandidates();
-      const loadedCandidates = result ?? [];
+      const loadedCandidates = pageItems(result);
       setDocumentCandidates(loadedCandidates);
       setCandidatePage(1);
       setSelectedDocumentCandidate((current) => current && loadedCandidates.find((item) => item.id === current.id)
@@ -1396,7 +1402,7 @@ function AdminOperationsCenter() {
     setActionStatus({ type: 'loading', text: 'Opening external evidence record...' });
     try {
       const result = await getWebEvidence();
-      const loadedEvidence = result ?? [];
+      const loadedEvidence = pageItems(result);
       setWebEvidence(loadedEvidence);
       setSelectedEvidence(loadedEvidence.find((item) => item.id === evidenceId) ?? loadedEvidence[0] ?? null);
       setActionStatus({ type: '', text: '' });
@@ -1595,7 +1601,7 @@ function AdminOperationsCenter() {
 
     try {
       const result = await getKnowledgeGaps();
-      const fullGap = (result ?? []).find((item) => item.logId === gap.logId);
+      const fullGap = pageItems(result).find((item) => item.logId === gap.logId);
       if (fullGap) {
         const mergedGap = { ...gap, ...fullGap };
         setSelectedGap(mergedGap);

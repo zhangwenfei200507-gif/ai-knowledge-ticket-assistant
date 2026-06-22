@@ -47,9 +47,12 @@ public class AiAssistantController {
     }
 
     @GetMapping("/logs")
-    public Result<List<AiQuestionLogVO>> listAllQuestionLogs() {
-        List<AiQuestionLogVO> logs = aiAssistantService.listAllQuestionLogs();
-        return Result.success(logs);
+    public Result<PageVO<AiQuestionLogVO>> listAllQuestionLogs(@RequestParam(required = false) String keyword,
+                                                               @RequestParam(required = false) String sourceType,
+                                                               @RequestParam(required = false) String feedback,
+                                                               @RequestParam(required = false) Integer page,
+                                                               @RequestParam(required = false) Integer size) {
+        return Result.success(aiAssistantService.listAllQuestionLogs(keyword, sourceType, feedback, page, size));
     }
 
     @DeleteMapping("/logs/{id}")
@@ -70,9 +73,10 @@ public class AiAssistantController {
         return Result.success(stats);
     }
     @GetMapping("/knowledge-gaps")
-    public Result<List<KnowledgeGapVO>> listKnowledgeGaps() {
-        List<KnowledgeGapVO> gaps = aiAssistantService.listKnowledgeGaps();
-        return Result.success(gaps);
+    public Result<PageVO<KnowledgeGapVO>> listKnowledgeGaps(@RequestParam(required = false) String keyword,
+                                                            @RequestParam(required = false) Integer page,
+                                                            @RequestParam(required = false) Integer size) {
+        return Result.success(aiAssistantService.listKnowledgeGaps(keyword, page, size));
     }
     @PostMapping("/knowledge-gaps/{logId}/article")
     public Result<KnowledgeArticleVO> createArticleFromKnowledgeGap(@PathVariable Long logId,

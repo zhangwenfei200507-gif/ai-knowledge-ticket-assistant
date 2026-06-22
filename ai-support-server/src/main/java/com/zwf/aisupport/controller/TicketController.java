@@ -5,6 +5,7 @@ import com.zwf.aisupport.dto.TicketAssignDTO;
 import com.zwf.aisupport.dto.TicketCreateDTO;
 import com.zwf.aisupport.dto.TicketStatusUpdateDTO;
 import com.zwf.aisupport.service.TicketService;
+import com.zwf.aisupport.vo.PageVO;
 import com.zwf.aisupport.vo.TicketVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -27,9 +28,12 @@ public class TicketController {
         return Result.success();
     }
     @GetMapping
-    public Result<List<TicketVO>> listAllTickets() {
-        List<TicketVO> tickets = ticketService.listAllTickets();
-        return Result.success(tickets);
+    public Result<PageVO<TicketVO>> listAllTickets(@RequestParam(required = false) String keyword,
+                                                   @RequestParam(required = false) String status,
+                                                   @RequestParam(required = false) String priority,
+                                                   @RequestParam(required = false) Integer page,
+                                                   @RequestParam(required = false) Integer size) {
+        return Result.success(ticketService.listAllTickets(keyword, status, priority, page, size));
     }
     @GetMapping("/assigned-to-me")
     public Result<List<TicketVO>> listAssignedToMe() {

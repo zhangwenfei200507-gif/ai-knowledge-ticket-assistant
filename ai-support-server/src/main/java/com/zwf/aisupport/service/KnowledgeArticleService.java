@@ -4,6 +4,7 @@ import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
 import com.zwf.aisupport.dto.KnowledgeArticleUpdateDTO;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.KnowledgeCategoryStatsVO;
+import com.zwf.aisupport.vo.PageVO;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -14,7 +15,7 @@ public interface KnowledgeArticleService {
 
     KnowledgeArticleVO upload(MultipartFile file, String category, String title);
 
-    List<KnowledgeArticleVO> listPublishedArticles();
+    PageVO<KnowledgeArticleVO> listPublishedArticles(String keyword, String category, String status, Integer page, Integer size);
 
     KnowledgeArticleVO getDetail(Long id);
 

@@ -3,6 +3,7 @@ package com.zwf.aisupport.service.impl;
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.common.util.KnowledgeArticleVoMapper;
+import com.zwf.aisupport.common.util.PageRequestUtil;
 import com.zwf.aisupport.entity.DocumentKnowledgeCandidate;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.mapper.DocumentKnowledgeCandidateMapper;
@@ -10,6 +11,7 @@ import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.service.DocumentKnowledgeCandidateService;
 import com.zwf.aisupport.vo.DocumentKnowledgeCandidateVO;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
+import com.zwf.aisupport.vo.PageVO;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -30,9 +32,23 @@ public class DocumentKnowledgeCandidateServiceImpl implements DocumentKnowledgeC
     }
 
     @Override
-    public List<DocumentKnowledgeCandidateVO> listAll() {
+    public PageVO<DocumentKnowledgeCandidateVO> listAll(String keyword, String status, String category, Integer page, Integer size) {
         CurrentUserUtil.requireAdmin("Only administrators can manage document knowledge candidates");
-        return candidateMapper.findAll();
+        int safePage = PageRequestUtil.page(page);
+        int safeSize = PageRequestUtil.size(size);
+        List<DocumentKnowledgeCandidateVO> items = candidateMapper.findPage(
+                PageRequestUtil.optionalText(keyword),
+                PageRequestUtil.optionalText(status),
+                PageRequestUtil.optionalText(category),
+                PageRequestUtil.offset(safePage, safeSize),
+                safeSize
+        );
+        long total = candidateMapper.countPage(
+                PageRequestUtil.optionalText(keyword),
+                PageRequestUtil.optionalText(status),
+                PageRequestUtil.optionalText(category)
+        );
+        return PageVO.of(items, safePage, safeSize, total);
     }
 
     @Override

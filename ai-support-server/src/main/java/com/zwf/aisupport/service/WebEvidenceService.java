@@ -3,6 +3,7 @@ package com.zwf.aisupport.service;
 import com.zwf.aisupport.dto.WebEvidenceSearchDTO;
 import com.zwf.aisupport.entity.WebEvidence;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
+import com.zwf.aisupport.vo.PageVO;
 import com.zwf.aisupport.vo.WebEvidenceVO;
 
 import java.util.List;
@@ -18,7 +19,7 @@ public interface WebEvidenceService {
 
     WebEvidenceVO searchManually(WebEvidenceSearchDTO searchDTO);
 
-    List<WebEvidenceVO> listAll();
+    PageVO<WebEvidenceVO> listAll(String keyword, String status, String category, String origin, Integer page, Integer size);
 
     KnowledgeArticleVO approveToArticle(Long id);
 

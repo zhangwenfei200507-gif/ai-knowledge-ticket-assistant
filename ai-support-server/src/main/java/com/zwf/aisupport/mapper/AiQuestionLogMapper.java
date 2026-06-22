@@ -52,6 +52,66 @@ public interface AiQuestionLogMapper {
             """)
     List<AiQuestionLog> findAll();
 
+    @Select("""
+            select * from ai_question_logs
+            where (#{sourceType} is null or source_type = #{sourceType})
+              and (#{feedback} is null or feedback = #{feedback})
+              and (
+                  #{keyword} is null
+                  or lower(question) like lower(concat('%', #{keyword}, '%'))
+                  or lower(answer) like lower(concat('%', #{keyword}, '%'))
+                  or lower(coalesce(source_title, '')) like lower(concat('%', #{keyword}, '%'))
+              )
+            order by created_time desc
+            limit #{size} offset #{offset}
+            """)
+    List<AiQuestionLog> findPage(@Param("keyword") String keyword,
+                                 @Param("sourceType") String sourceType,
+                                 @Param("feedback") String feedback,
+                                 @Param("offset") int offset,
+                                 @Param("size") int size);
+
+    @Select("""
+            select count(*) from ai_question_logs
+            where (#{sourceType} is null or source_type = #{sourceType})
+              and (#{feedback} is null or feedback = #{feedback})
+              and (
+                  #{keyword} is null
+                  or lower(question) like lower(concat('%', #{keyword}, '%'))
+                  or lower(answer) like lower(concat('%', #{keyword}, '%'))
+                  or lower(coalesce(source_title, '')) like lower(concat('%', #{keyword}, '%'))
+              )
+            """)
+    Long countPage(@Param("keyword") String keyword,
+                   @Param("sourceType") String sourceType,
+                   @Param("feedback") String feedback);
+
+    @Select("""
+            select * from ai_question_logs
+            where source_type = 'NONE'
+              and (
+                  #{keyword} is null
+                  or lower(question) like lower(concat('%', #{keyword}, '%'))
+                  or lower(answer) like lower(concat('%', #{keyword}, '%'))
+              )
+            order by created_time desc
+            limit #{size} offset #{offset}
+            """)
+    List<AiQuestionLog> findKnowledgeGapsPage(@Param("keyword") String keyword,
+                                              @Param("offset") int offset,
+                                              @Param("size") int size);
+
+    @Select("""
+            select count(*) from ai_question_logs
+            where source_type = 'NONE'
+              and (
+                  #{keyword} is null
+                  or lower(question) like lower(concat('%', #{keyword}, '%'))
+                  or lower(answer) like lower(concat('%', #{keyword}, '%'))
+              )
+            """)
+    Long countKnowledgeGapsPage(@Param("keyword") String keyword);
+
     @Select("select * from ai_question_logs where id = #{id}")
     AiQuestionLog findById(Long id);
 

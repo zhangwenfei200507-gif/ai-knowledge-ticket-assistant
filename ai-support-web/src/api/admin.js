@@ -46,30 +46,41 @@ const requestJson = async (path, options = {}) => {
   return body?.data ?? null;
 };
 
-export const getKnowledgeArticles = () => requestJson('/api/knowledge/articles');
+const buildQuery = (params = {}) => {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      searchParams.set(key, value);
+    }
+  });
+  const query = searchParams.toString();
+  return query ? `?${query}` : '';
+};
+
+export const getKnowledgeArticles = (params = {}) => requestJson(`/api/knowledge/articles${buildQuery(params)}`);
 
 export const searchKnowledgeArticles = (keyword) => requestJson(`/api/knowledge/articles/search?keyword=${encodeURIComponent(keyword)}`);
 
-export const getKnowledgeDocuments = () => requestJson('/api/documents');
+export const getKnowledgeDocuments = (params = {}) => requestJson(`/api/documents${buildQuery(params)}`);
 
 export const getDocumentChunks = (documentId) => requestJson(`/api/documents/${documentId}/chunks`);
 
 export const searchDocumentChunks = (keyword) => requestJson(`/api/documents/chunks/search?keyword=${encodeURIComponent(keyword)}`);
 
-export const getAiQuestionLogs = () => requestJson('/api/ai/logs');
+export const getAiQuestionLogs = (params = {}) => requestJson(`/api/ai/logs${buildQuery(params)}`);
 
 export const deleteAiQuestionLog = (id) => requestJson(`/api/ai/logs/${id}`, {
   method: 'DELETE',
 });
 
-export const getKnowledgeGaps = () => requestJson('/api/ai/knowledge-gaps');
+export const getKnowledgeGaps = (params = {}) => requestJson(`/api/ai/knowledge-gaps${buildQuery(params)}`);
 
 export const createArticleFromKnowledgeGap = (logId, payload) => requestJson(`/api/ai/knowledge-gaps/${logId}/article`, {
   method: 'POST',
   body: JSON.stringify(payload),
 });
 
-export const getTickets = () => requestJson('/api/tickets');
+export const getTickets = (params = {}) => requestJson(`/api/tickets${buildQuery(params)}`);
 
 export const getTicketDetail = (id) => requestJson(`/api/tickets/${id}`);
 
@@ -86,7 +97,7 @@ export const closeTicket = (id) => requestJson(`/api/tickets/${id}/close`, {
   method: 'PATCH',
 });
 
-export const getWebEvidence = () => requestJson('/api/admin/web-evidence');
+export const getWebEvidence = (params = {}) => requestJson(`/api/admin/web-evidence${buildQuery(params)}`);
 
 export const searchWebEvidence = (question) => requestJson('/api/admin/web-evidence/search', {
   method: 'POST',
@@ -114,7 +125,7 @@ export const deleteWebEvidence = (id) => requestJson(`/api/admin/web-evidence/${
   method: 'DELETE',
 });
 
-export const getDocumentKnowledgeCandidates = () => requestJson('/api/admin/document-knowledge-candidates');
+export const getDocumentKnowledgeCandidates = (params = {}) => requestJson(`/api/admin/document-knowledge-candidates${buildQuery(params)}`);
 
 export const approveDocumentKnowledgeCandidate = (id) => requestJson(`/api/admin/document-knowledge-candidates/${id}/approve`, {
   method: 'POST',

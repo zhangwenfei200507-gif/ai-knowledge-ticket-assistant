@@ -5,11 +5,10 @@ import com.zwf.aisupport.dto.ReviewContentUpdateDTO;
 import com.zwf.aisupport.dto.WebEvidenceSearchDTO;
 import com.zwf.aisupport.service.WebEvidenceService;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
+import com.zwf.aisupport.vo.PageVO;
 import com.zwf.aisupport.vo.WebEvidenceVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/web-evidence")
@@ -22,8 +21,13 @@ public class WebEvidenceController {
     }
 
     @GetMapping
-    public Result<List<WebEvidenceVO>> listAll() {
-        return Result.success(webEvidenceService.listAll());
+    public Result<PageVO<WebEvidenceVO>> listAll(@RequestParam(required = false) String keyword,
+                                                 @RequestParam(required = false) String status,
+                                                 @RequestParam(required = false) String category,
+                                                 @RequestParam(required = false) String origin,
+                                                 @RequestParam(required = false) Integer page,
+                                                 @RequestParam(required = false) Integer size) {
+        return Result.success(webEvidenceService.listAll(keyword, status, category, origin, page, size));
     }
 
     @PostMapping("/search")

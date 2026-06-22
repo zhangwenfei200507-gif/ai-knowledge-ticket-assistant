@@ -3,6 +3,7 @@ package com.zwf.aisupport.service.impl;
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.common.util.KnowledgeArticleVoMapper;
+import com.zwf.aisupport.common.util.PageRequestUtil;
 import com.zwf.aisupport.common.util.UploadedTextExtractor;
 import com.zwf.aisupport.dto.KnowledgeArticleCreateDTO;
 import com.zwf.aisupport.dto.KnowledgeArticleUpdateDTO;
@@ -11,6 +12,7 @@ import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.service.KnowledgeArticleService;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.KnowledgeCategoryStatsVO;
+import com.zwf.aisupport.vo.PageVO;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -62,11 +64,29 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
     }
 
     @Override
-    public List<KnowledgeArticleVO> listPublishedArticles() {
-        return knowledgeArticleMapper.findPublishedArticles()
+    public PageVO<KnowledgeArticleVO> listPublishedArticles(String keyword, String category, String status, Integer page, Integer size) {
+        int safePage = PageRequestUtil.page(page);
+        int safeSize = PageRequestUtil.size(size);
+        String safeStatus = PageRequestUtil.optionalText(status);
+        if (safeStatus == null) {
+            safeStatus = "PUBLISHED";
+        }
+        List<KnowledgeArticleVO> items = knowledgeArticleMapper.findPage(
+                        PageRequestUtil.optionalText(keyword),
+                        PageRequestUtil.optionalText(category),
+                        safeStatus,
+                        PageRequestUtil.offset(safePage, safeSize),
+                        safeSize
+                )
                 .stream()
                 .map(KnowledgeArticleVoMapper::toVO)
                 .toList();
+        long total = knowledgeArticleMapper.countPage(
+                PageRequestUtil.optionalText(keyword),
+                PageRequestUtil.optionalText(category),
+                safeStatus
+        );
+        return PageVO.of(items, safePage, safeSize, total);
     }
 
     @Override
@@ -81,7 +101,7 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
     @Override
     public List<KnowledgeArticleVO> searchPublishedArticles(String keyword) {
         if (keyword == null || keyword.isBlank()) {
-            return listPublishedArticles();
+            return listPublishedArticles(null, null, "PUBLISHED", 1, 100).getItems();
         }
 
         // Keyword search is the first step before adding AI semantic retrieval.
