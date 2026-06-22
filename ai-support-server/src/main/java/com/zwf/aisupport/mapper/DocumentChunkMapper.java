@@ -49,11 +49,11 @@ public interface DocumentChunkMapper {
             from document_chunks dc
             join documents d on d.id = dc.document_id
             where d.status = 'ACTIVE'
-              and (#{status} is null or dc.status = #{status})
-              and (#{documentId} is null or dc.document_id = #{documentId})
-              and (#{category} is null or d.category = #{category})
+              and (cast(#{status} as varchar) is null or dc.status = #{status})
+              and (cast(#{documentId} as bigint) is null or dc.document_id = #{documentId})
+              and (cast(#{category} as varchar) is null or d.category = #{category})
               and (
-                  #{keyword} is null
+                  cast(#{keyword} as varchar) is null
                   or lower(dc.content) like lower(concat('%', #{keyword}, '%'))
                   or lower(d.original_filename) like lower(concat('%', #{keyword}, '%'))
                   or lower(coalesce(d.category, '')) like lower(concat('%', #{keyword}, '%'))
@@ -73,11 +73,11 @@ public interface DocumentChunkMapper {
             from document_chunks dc
             join documents d on d.id = dc.document_id
             where d.status = 'ACTIVE'
-              and (#{status} is null or dc.status = #{status})
-              and (#{documentId} is null or dc.document_id = #{documentId})
-              and (#{category} is null or d.category = #{category})
+              and (cast(#{status} as varchar) is null or dc.status = #{status})
+              and (cast(#{documentId} as bigint) is null or dc.document_id = #{documentId})
+              and (cast(#{category} as varchar) is null or d.category = #{category})
               and (
-                  #{keyword} is null
+                  cast(#{keyword} as varchar) is null
                   or lower(dc.content) like lower(concat('%', #{keyword}, '%'))
                   or lower(d.original_filename) like lower(concat('%', #{keyword}, '%'))
                   or lower(coalesce(d.category, '')) like lower(concat('%', #{keyword}, '%'))

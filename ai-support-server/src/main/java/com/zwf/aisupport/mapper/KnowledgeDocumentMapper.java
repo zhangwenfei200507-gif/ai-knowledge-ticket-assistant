@@ -29,10 +29,10 @@ public interface KnowledgeDocumentMapper {
 
     @Select("""
         select * from documents
-        where (#{status} is null or status = #{status})
-          and (#{category} is null or lower(coalesce(category, '')) = lower(#{category}))
+        where (cast(#{status} as varchar) is null or status = #{status})
+          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(#{category}))
           and (
-              #{keyword} is null
+              cast(#{keyword} as varchar) is null
               or lower(original_filename) like lower(concat('%', #{keyword}, '%'))
               or lower(coalesce(category, '')) like lower(concat('%', #{keyword}, '%'))
               or lower(coalesce(content_type, '')) like lower(concat('%', #{keyword}, '%'))
@@ -48,10 +48,10 @@ public interface KnowledgeDocumentMapper {
 
     @Select("""
         select count(*) from documents
-        where (#{status} is null or status = #{status})
-          and (#{category} is null or lower(coalesce(category, '')) = lower(#{category}))
+        where (cast(#{status} as varchar) is null or status = #{status})
+          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(#{category}))
           and (
-              #{keyword} is null
+              cast(#{keyword} as varchar) is null
               or lower(original_filename) like lower(concat('%', #{keyword}, '%'))
               or lower(coalesce(category, '')) like lower(concat('%', #{keyword}, '%'))
               or lower(coalesce(content_type, '')) like lower(concat('%', #{keyword}, '%'))

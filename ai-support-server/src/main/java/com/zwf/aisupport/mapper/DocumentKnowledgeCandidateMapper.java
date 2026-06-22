@@ -58,10 +58,10 @@ public interface DocumentKnowledgeCandidateMapper {
         join documents d on d.id = dkc.document_id
         left join knowledge_articles ka on ka.id = dkc.suggested_article_id
         where dkc.status <> 'ARCHIVED'
-          and (#{status} is null or dkc.status = #{status})
-          and (#{category} is null or lower(coalesce(dkc.category, '')) = lower(#{category}))
+          and (cast(#{status} as varchar) is null or dkc.status = #{status})
+          and (cast(#{category} as varchar) is null or lower(coalesce(dkc.category, '')) = lower(#{category}))
           and (
-              #{keyword} is null
+              cast(#{keyword} as varchar) is null
               or lower(dkc.title) like lower(concat('%', #{keyword}, '%'))
               or lower(dkc.content) like lower(concat('%', #{keyword}, '%'))
               or lower(coalesce(dkc.category, '')) like lower(concat('%', #{keyword}, '%'))
@@ -83,10 +83,10 @@ public interface DocumentKnowledgeCandidateMapper {
         join documents d on d.id = dkc.document_id
         left join knowledge_articles ka on ka.id = dkc.suggested_article_id
         where dkc.status <> 'ARCHIVED'
-          and (#{status} is null or dkc.status = #{status})
-          and (#{category} is null or lower(coalesce(dkc.category, '')) = lower(#{category}))
+          and (cast(#{status} as varchar) is null or dkc.status = #{status})
+          and (cast(#{category} as varchar) is null or lower(coalesce(dkc.category, '')) = lower(#{category}))
           and (
-              #{keyword} is null
+              cast(#{keyword} as varchar) is null
               or lower(dkc.title) like lower(concat('%', #{keyword}, '%'))
               or lower(dkc.content) like lower(concat('%', #{keyword}, '%'))
               or lower(coalesce(dkc.category, '')) like lower(concat('%', #{keyword}, '%'))

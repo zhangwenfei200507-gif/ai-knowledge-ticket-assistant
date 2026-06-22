@@ -40,10 +40,10 @@ public interface TicketMapper {
 
     @Select("""
             select * from tickets
-            where (#{status} is null or status = #{status})
-              and (#{priority} is null or priority = #{priority})
+            where (cast(#{status} as varchar) is null or status = #{status})
+              and (cast(#{priority} as varchar) is null or priority = #{priority})
               and (
-                  #{keyword} is null
+                  cast(#{keyword} as varchar) is null
                   or lower(title) like lower(concat('%', #{keyword}, '%'))
                   or lower(description) like lower(concat('%', #{keyword}, '%'))
               )
@@ -58,10 +58,10 @@ public interface TicketMapper {
 
     @Select("""
             select count(*) from tickets
-            where (#{status} is null or status = #{status})
-              and (#{priority} is null or priority = #{priority})
+            where (cast(#{status} as varchar) is null or status = #{status})
+              and (cast(#{priority} as varchar) is null or priority = #{priority})
               and (
-                  #{keyword} is null
+                  cast(#{keyword} as varchar) is null
                   or lower(title) like lower(concat('%', #{keyword}, '%'))
                   or lower(description) like lower(concat('%', #{keyword}, '%'))
               )

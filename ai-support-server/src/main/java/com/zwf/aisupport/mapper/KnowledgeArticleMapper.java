@@ -25,10 +25,10 @@ public interface KnowledgeArticleMapper {
 
     @Select("""
         select * from knowledge_articles
-        where (#{status} is null or status = #{status})
-          and (#{category} is null or lower(coalesce(category, '')) = lower(#{category}))
+        where (cast(#{status} as varchar) is null or status = #{status})
+          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(#{category}))
           and (
-              #{keyword} is null
+              cast(#{keyword} as varchar) is null
               or lower(title) like lower(concat('%', #{keyword}, '%'))
               or lower(content) like lower(concat('%', #{keyword}, '%'))
               or lower(coalesce(category, '')) like lower(concat('%', #{keyword}, '%'))
@@ -44,10 +44,10 @@ public interface KnowledgeArticleMapper {
 
     @Select("""
         select count(*) from knowledge_articles
-        where (#{status} is null or status = #{status})
-          and (#{category} is null or lower(coalesce(category, '')) = lower(#{category}))
+        where (cast(#{status} as varchar) is null or status = #{status})
+          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(#{category}))
           and (
-              #{keyword} is null
+              cast(#{keyword} as varchar) is null
               or lower(title) like lower(concat('%', #{keyword}, '%'))
               or lower(content) like lower(concat('%', #{keyword}, '%'))
               or lower(coalesce(category, '')) like lower(concat('%', #{keyword}, '%'))

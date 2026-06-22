@@ -55,11 +55,11 @@ public interface WebEvidenceMapper {
     @Select("""
         select * from web_evidence
         where status <> 'ARCHIVED'
-          and (#{status} is null or status = #{status})
-          and (#{category} is null or lower(coalesce(category, '')) = lower(#{category}))
-          and (#{origin} is null or evidence_origin = #{origin})
+          and (cast(#{status} as varchar) is null or status = #{status})
+          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(#{category}))
+          and (cast(#{origin} as varchar) is null or evidence_origin = #{origin})
           and (
-              #{keyword} is null
+              cast(#{keyword} as varchar) is null
               or lower(question) like lower(concat('%', #{keyword}, '%'))
               or lower(coalesce(title, '')) like lower(concat('%', #{keyword}, '%'))
               or lower(coalesce(domain, '')) like lower(concat('%', #{keyword}, '%'))
@@ -78,11 +78,11 @@ public interface WebEvidenceMapper {
     @Select("""
         select count(*) from web_evidence
         where status <> 'ARCHIVED'
-          and (#{status} is null or status = #{status})
-          and (#{category} is null or lower(coalesce(category, '')) = lower(#{category}))
-          and (#{origin} is null or evidence_origin = #{origin})
+          and (cast(#{status} as varchar) is null or status = #{status})
+          and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(#{category}))
+          and (cast(#{origin} as varchar) is null or evidence_origin = #{origin})
           and (
-              #{keyword} is null
+              cast(#{keyword} as varchar) is null
               or lower(question) like lower(concat('%', #{keyword}, '%'))
               or lower(coalesce(title, '')) like lower(concat('%', #{keyword}, '%'))
               or lower(coalesce(domain, '')) like lower(concat('%', #{keyword}, '%'))

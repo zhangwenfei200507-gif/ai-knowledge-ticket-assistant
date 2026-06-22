@@ -54,10 +54,10 @@ public interface AiQuestionLogMapper {
 
     @Select("""
             select * from ai_question_logs
-            where (#{sourceType} is null or source_type = #{sourceType})
-              and (#{feedback} is null or feedback = #{feedback})
+            where (cast(#{sourceType} as varchar) is null or source_type = #{sourceType})
+              and (cast(#{feedback} as varchar) is null or feedback = #{feedback})
               and (
-                  #{keyword} is null
+                  cast(#{keyword} as varchar) is null
                   or lower(question) like lower(concat('%', #{keyword}, '%'))
                   or lower(answer) like lower(concat('%', #{keyword}, '%'))
                   or lower(coalesce(source_title, '')) like lower(concat('%', #{keyword}, '%'))
@@ -73,10 +73,10 @@ public interface AiQuestionLogMapper {
 
     @Select("""
             select count(*) from ai_question_logs
-            where (#{sourceType} is null or source_type = #{sourceType})
-              and (#{feedback} is null or feedback = #{feedback})
+            where (cast(#{sourceType} as varchar) is null or source_type = #{sourceType})
+              and (cast(#{feedback} as varchar) is null or feedback = #{feedback})
               and (
-                  #{keyword} is null
+                  cast(#{keyword} as varchar) is null
                   or lower(question) like lower(concat('%', #{keyword}, '%'))
                   or lower(answer) like lower(concat('%', #{keyword}, '%'))
                   or lower(coalesce(source_title, '')) like lower(concat('%', #{keyword}, '%'))
@@ -90,7 +90,7 @@ public interface AiQuestionLogMapper {
             select * from ai_question_logs
             where source_type = 'NONE'
               and (
-                  #{keyword} is null
+                  cast(#{keyword} as varchar) is null
                   or lower(question) like lower(concat('%', #{keyword}, '%'))
                   or lower(answer) like lower(concat('%', #{keyword}, '%'))
               )
@@ -105,7 +105,7 @@ public interface AiQuestionLogMapper {
             select count(*) from ai_question_logs
             where source_type = 'NONE'
               and (
-                  #{keyword} is null
+                  cast(#{keyword} as varchar) is null
                   or lower(question) like lower(concat('%', #{keyword}, '%'))
                   or lower(answer) like lower(concat('%', #{keyword}, '%'))
               )
