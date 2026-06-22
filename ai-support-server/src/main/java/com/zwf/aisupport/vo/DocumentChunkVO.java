@@ -11,5 +11,7 @@ public class DocumentChunkVO {
     private Long documentId;
     private Integer chunkIndex;
     private String content;
+    private String status;
     private LocalDateTime createdTime;
+    private LocalDateTime updatedTime;
 }

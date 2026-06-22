@@ -65,6 +65,17 @@ export const getKnowledgeDocuments = (params = {}) => requestJson(`/api/document
 
 export const getDocumentChunks = (documentId) => requestJson(`/api/documents/${documentId}/chunks`);
 
+export const getAdminChunks = (params = {}) => requestJson(`/api/admin/chunks${buildQuery(params)}`);
+
+export const updateAdminChunk = (id, payload) => requestJson(`/api/admin/chunks/${id}`, {
+  method: 'PUT',
+  body: JSON.stringify(payload),
+});
+
+export const archiveAdminChunk = (id) => requestJson(`/api/admin/chunks/${id}/archive`, {
+  method: 'PATCH',
+});
+
 export const searchDocumentChunks = (keyword) => requestJson(`/api/documents/chunks/search?keyword=${encodeURIComponent(keyword)}`);
 
 export const getAiQuestionLogs = (params = {}) => requestJson(`/api/ai/logs${buildQuery(params)}`);

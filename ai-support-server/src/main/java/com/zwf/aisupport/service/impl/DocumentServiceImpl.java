@@ -5,6 +5,7 @@ import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.common.util.PageRequestUtil;
 import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.common.util.UploadedTextExtractor;
+import com.zwf.aisupport.dto.DocumentChunkUpdateDTO;
 import com.zwf.aisupport.entity.DocumentChunk;
 import com.zwf.aisupport.entity.DocumentKnowledgeCandidate;
 import com.zwf.aisupport.entity.KnowledgeDocument;
@@ -13,6 +14,7 @@ import com.zwf.aisupport.mapper.DocumentKnowledgeCandidateMapper;
 import com.zwf.aisupport.mapper.KnowledgeDocumentMapper;
 import com.zwf.aisupport.service.DocumentService;
 import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
+import com.zwf.aisupport.vo.DocumentChunkAdminVO;
 import com.zwf.aisupport.vo.DocumentChunkVO;
 import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
@@ -122,6 +124,58 @@ public class DocumentServiceImpl implements DocumentService {
                 .stream()
                 .map(this::convertToDocumentChunkVO)
                 .toList();
+    }
+
+    @Override
+    public PageVO<DocumentChunkAdminVO> listChunksForAdmin(String keyword,
+                                                          Long documentId,
+                                                          String category,
+                                                          String status,
+                                                          Integer page,
+                                                          Integer size) {
+        CurrentUserUtil.requireAdmin("Only administrators can manage document chunks");
+
+        int safePage = PageRequestUtil.page(page);
+        int safeSize = PageRequestUtil.size(size);
+        String safeStatus = normalizeChunkStatus(status);
+        List<DocumentChunkAdminVO> items = documentChunkMapper.findAdminPage(
+                PageRequestUtil.optionalText(keyword),
+                documentId,
+                PageRequestUtil.optionalText(category),
+                safeStatus,
+                PageRequestUtil.offset(safePage, safeSize),
+                safeSize
+        );
+        long total = documentChunkMapper.countAdminPage(
+                PageRequestUtil.optionalText(keyword),
+                documentId,
+                PageRequestUtil.optionalText(category),
+                safeStatus
+        );
+        return PageVO.of(items, safePage, safeSize, total);
+    }
+
+    @Override
+    public DocumentChunkAdminVO updateChunk(Long chunkId, DocumentChunkUpdateDTO updateDTO) {
+        CurrentUserUtil.requireAdmin("Only administrators can update document chunks");
+        requireActiveChunk(chunkId);
+
+        String content = updateDTO.getContent().trim();
+        if (documentChunkMapper.updateContent(chunkId, content) == 0) {
+            throw new BusinessException("Chunk update failed");
+        }
+
+        return findAdminChunkById(chunkId);
+    }
+
+    @Override
+    public void archiveChunk(Long chunkId) {
+        CurrentUserUtil.requireAdmin("Only administrators can archive document chunks");
+        requireActiveChunk(chunkId);
+
+        if (documentChunkMapper.archive(chunkId) == 0) {
+            throw new BusinessException("Chunk archive failed");
+        }
     }
 
     @Override
@@ -239,8 +293,34 @@ public class DocumentServiceImpl implements DocumentService {
         vo.setDocumentId(chunk.getDocumentId());
         vo.setChunkIndex(chunk.getChunkIndex());
         vo.setContent(chunk.getContent());
+        vo.setStatus(chunk.getStatus());
         vo.setCreatedTime(chunk.getCreatedTime());
+        vo.setUpdatedTime(chunk.getUpdatedTime());
         return vo;
+    }
+
+    private DocumentChunk requireActiveChunk(Long chunkId) {
+        DocumentChunk chunk = documentChunkMapper.findById(chunkId);
+        if (chunk == null || !"ACTIVE".equals(chunk.getStatus())) {
+            throw new BusinessException("Chunk not found");
+        }
+        return chunk;
+    }
+
+    private String normalizeChunkStatus(String status) {
+        String safeStatus = PageRequestUtil.optionalText(status);
+        if (safeStatus == null) {
+            return "ACTIVE";
+        }
+        return safeStatus.toUpperCase();
+    }
+
+    private DocumentChunkAdminVO findAdminChunkById(Long chunkId) {
+        DocumentChunkAdminVO chunk = documentChunkMapper.findAdminById(chunkId);
+        if (chunk == null) {
+            throw new BusinessException("Chunk not found");
+        }
+        return chunk;
     }
 
     private record CandidateDraft(DocumentChunk chunk, int score) {

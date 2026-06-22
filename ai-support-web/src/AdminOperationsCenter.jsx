@@ -35,6 +35,7 @@ import {
 import {
   approveDocumentKnowledgeCandidate,
   approveWebEvidence,
+  archiveAdminChunk,
   archiveDocumentKnowledgeCandidate,
   archiveKnowledgeArticle,
   archiveKnowledgeDocument,
@@ -47,6 +48,7 @@ import {
   deleteKnowledgeGap,
   deleteWebEvidence,
   getAiQuestionLogs,
+  getAdminChunks,
   getCurrentUser,
   getDocumentKnowledgeCandidates,
   getDocumentChunks,
@@ -65,6 +67,7 @@ import {
   searchKnowledgeArticles,
   searchWebEvidence,
   updateDocumentKnowledgeCandidate,
+  updateAdminChunk,
   updateKnowledgeArticle,
   updateTicketStatus,
   updateWebEvidenceSuggestion,
@@ -185,6 +188,7 @@ const navItems = [
   ['command', 'Command Center', Home],
   ['knowledge', 'Knowledge Library', BookOpen],
   ['documents', 'Document Library', FileText],
+  ['chunks', 'Chunk Library', Database],
   ['documentLearning', 'Knowledge Review', Target],
   ['webEvidence', 'Web Evidence', Globe2],
   ['ai', 'AI Activity', Bot],
@@ -817,13 +821,17 @@ function AdminOperationsCenter() {
   const [selectedArticle, setSelectedArticle] = useState(null);
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [selectedChunks, setSelectedChunks] = useState([]);
+  const [adminChunks, setAdminChunks] = useState([]);
+  const [selectedAdminChunk, setSelectedAdminChunk] = useState(null);
   const [documentCandidates, setDocumentCandidates] = useState([]);
   const [selectedDocumentCandidate, setSelectedDocumentCandidate] = useState(null);
   const [articleSearch, setArticleSearch] = useState('');
   const [documentSearch, setDocumentSearch] = useState('');
+  const [chunkSearch, setChunkSearch] = useState('');
   const [candidateSearch, setCandidateSearch] = useState('');
   const [articlePage, setArticlePage] = useState(1);
   const [documentPage, setDocumentPage] = useState(1);
+  const [chunkPage, setChunkPage] = useState(1);
   const [candidatePage, setCandidatePage] = useState(1);
   const [aiLogPage, setAiLogPage] = useState(1);
   const [ticketPage, setTicketPage] = useState(1);
@@ -831,6 +839,7 @@ function AdminOperationsCenter() {
   const [gapPage, setGapPage] = useState(1);
   const [articlePageInfo, setArticlePageInfo] = useState(() => pageInfo(null, LIBRARY_PAGE_SIZE));
   const [documentPageInfo, setDocumentPageInfo] = useState(() => pageInfo(null, LIBRARY_PAGE_SIZE));
+  const [chunkPageInfo, setChunkPageInfo] = useState(() => pageInfo(null, LIBRARY_PAGE_SIZE));
   const [candidatePageInfo, setCandidatePageInfo] = useState(() => pageInfo(null, REVIEW_PAGE_SIZE));
   const [aiLogPageInfo, setAiLogPageInfo] = useState(() => pageInfo(null, REVIEW_PAGE_SIZE));
   const [ticketPageInfo, setTicketPageInfo] = useState(() => pageInfo(null, REVIEW_PAGE_SIZE));
@@ -839,6 +848,7 @@ function AdminOperationsCenter() {
   const [globalSearch, setGlobalSearch] = useState('');
   const [globalSearchResults, setGlobalSearchResults] = useState({ articles: [], chunks: [] });
   const [articleEditor, setArticleEditor] = useState({ id: null, title: '', category: '', content: '' });
+  const [chunkEditor, setChunkEditor] = useState({ id: null, content: '' });
   const [reviewEditor, setReviewEditor] = useState({ type: '', id: null, title: '', category: '', content: '' });
   const [aiLogs, setAiLogs] = useState([]);
   const [selectedAiLog, setSelectedAiLog] = useState(null);
@@ -902,6 +912,7 @@ function AdminOperationsCenter() {
 
   const pagedArticles = articles;
   const pagedDocuments = documents;
+  const pagedAdminChunks = adminChunks;
   const pagedDocumentCandidates = documentCandidates;
   const pagedAiLogs = aiLogs;
 
@@ -1124,6 +1135,25 @@ function AdminOperationsCenter() {
     await loadDocuments();
   };
 
+  const loadAdminChunks = async (page = chunkPage) => {
+    setActionStatus({ type: 'loading', text: 'Loading searchable retrieval chunks...' });
+    try {
+      const result = await getAdminChunks({ page, size: LIBRARY_PAGE_SIZE, keyword: chunkSearch, status: 'ACTIVE' });
+      const items = pageItems(result);
+      setAdminChunks(items);
+      setChunkPageInfo(pageInfo(result, LIBRARY_PAGE_SIZE));
+      setChunkPage(result?.page ?? page);
+      setSelectedAdminChunk((current) => current && items.find((item) => item.id === current.id)
+        ? items.find((item) => item.id === current.id)
+        : items[0] ?? null);
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setAdminChunks([]);
+      setSelectedAdminChunk(null);
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
   const loadDocumentCandidates = async (page = candidatePage) => {
     setActionStatus({ type: 'loading', text: 'Loading document learning candidates...' });
     try {
@@ -1191,29 +1221,30 @@ function AdminOperationsCenter() {
   };
 
   const openSearchChunk = (chunk) => {
-    setDocuments([{
-      id: chunk.documentId,
-      originalFilename: chunk.originalFilename,
-      category: chunk.category,
-      fileSize: 0,
-      status: 'ACTIVE',
-    }]);
-    setSelectedDocument({
-      id: chunk.documentId,
-      originalFilename: chunk.originalFilename,
-      category: chunk.category,
-      fileSize: 0,
-      status: 'ACTIVE',
-    });
-    setSelectedChunks([{
+    const selected = {
       id: chunk.chunkId,
       documentId: chunk.documentId,
+      originalFilename: chunk.originalFilename,
+      category: chunk.category,
       chunkIndex: chunk.chunkIndex,
       content: chunk.content,
-    }]);
-    setDocumentSearch('');
+      status: 'ACTIVE',
+    };
+    setAdminChunks([selected]);
+    setSelectedAdminChunk(selected);
+    setChunkSearch('');
     setActionStatus({ type: '', text: '' });
-    setActiveModal('documentLibrary');
+    setActiveModal(null);
+    setActivePage('chunks');
+  };
+
+  const openChunkEditor = (chunk) => {
+    if (!chunk) return;
+    setChunkEditor({
+      id: chunk.id,
+      content: chunk.content || '',
+    });
+    openModal('editChunk');
   };
 
   const openArticleEditor = (article) => {
@@ -1302,6 +1333,10 @@ function AdminOperationsCenter() {
       documents: async () => {
         setActivePage('documents');
         await loadDocuments();
+      },
+      chunks: async () => {
+        setActivePage('chunks');
+        await loadAdminChunks();
       },
       documentLearning: async () => {
         setActivePage('documentLearning');
@@ -1802,6 +1837,28 @@ Prevention controls:
     }
   };
 
+  const submitChunkEdit = async (event) => {
+    event.preventDefault();
+    if (!chunkEditor.content.trim()) {
+      setActionStatus({ type: 'error', text: 'Chunk content is required.' });
+      return;
+    }
+
+    setActionStatus({ type: 'loading', text: 'Saving retrieval chunk...' });
+    try {
+      const updated = await updateAdminChunk(chunkEditor.id, {
+        content: chunkEditor.content.trim(),
+      });
+      setAdminChunks((current) => current.map((chunk) => chunk.id === updated.id ? updated : chunk));
+      setSelectedAdminChunk(updated);
+      setActionStatus({ type: 'success', text: 'Chunk updated. Future document retrieval will use the revised passage.' });
+      setActiveModal(null);
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
   const archiveSelectedArticle = async () => {
     if (!selectedArticle) return;
     const confirmed = window.confirm(`Archive article "${selectedArticle.title}"? It will no longer be used as an AI answer source.`);
@@ -1838,6 +1895,24 @@ Prevention controls:
         setSelectedChunks([]);
       }
       setActionStatus({ type: 'success', text: 'Document archived. Its chunks are removed from active retrieval.' });
+      loadOperationsCenter();
+    } catch (error) {
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
+  const archiveSelectedChunk = async () => {
+    if (!selectedAdminChunk) return;
+    const confirmed = window.confirm(`Archive chunk ${selectedAdminChunk.chunkIndex} from "${selectedAdminChunk.originalFilename}"? It will no longer be used by AI retrieval.`);
+    if (!confirmed) return;
+
+    setActionStatus({ type: 'loading', text: 'Archiving retrieval chunk...' });
+    try {
+      await archiveAdminChunk(selectedAdminChunk.id);
+      const remaining = adminChunks.filter((chunk) => chunk.id !== selectedAdminChunk.id);
+      setAdminChunks(remaining);
+      setSelectedAdminChunk(remaining[0] ?? null);
+      setActionStatus({ type: 'success', text: 'Chunk archived and removed from active retrieval.' });
       loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -2046,6 +2121,49 @@ Prevention controls:
     </section>
   );
 
+  const renderChunkPage = () => (
+    <section className="adminPageSurface">
+      <div className="adminPageHeader">
+        <div>
+          <span>Chunk Library</span>
+          <h2>Semantic Retrieval Chunks</h2>
+          <p>Govern the precise passages used by document retrieval. Chunks are compact evidence units; durable knowledge belongs in Knowledge Packs after review.</p>
+        </div>
+        <div>
+          <button type="button" onClick={() => loadAdminChunks(1)}>Refresh</button>
+          <button type="button" onClick={() => openModal('uploadDocument')}>Upload Document</button>
+        </div>
+      </div>
+      <div className="knowledgeLibrary embedded">
+        <div className="libraryList">
+          <div className="libraryToolbar">
+            <strong>{chunkPageInfo.total} Active Chunks</strong>
+            <button type="button" onClick={() => loadAdminChunks(1)}>Reload</button>
+          </div>
+          <input className="librarySearch" value={chunkSearch} placeholder="Search chunk content, filename, category..." onChange={(event) => setChunkSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadAdminChunks(1); }} />
+          {actionStatus.text && activePage === 'chunks' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+          {pagedAdminChunks.length ? pagedAdminChunks.map((chunk) => (
+            <button className={selectedAdminChunk?.id === chunk.id ? 'active' : ''} type="button" key={chunk.id} onClick={() => setSelectedAdminChunk(chunk)}>
+              <strong>{chunk.originalFilename || `Document #${chunk.documentId}`}</strong>
+              <span>{chunk.category || 'Uncategorized'} / Chunk {chunk.chunkIndex} / {statusText(chunk.status)}</span>
+            </button>
+          )) : <EmptyState text="No active retrieval chunks yet. Upload a document to create searchable evidence." />}
+          <LibraryPager page={chunkPageInfo.page} pageCount={chunkPageInfo.pageCount} total={chunkPageInfo.total} onPageChange={loadAdminChunks} />
+        </div>
+        <KnowledgeReader
+          chunks={selectedAdminChunk ? [selectedAdminChunk] : []}
+          actions={selectedAdminChunk && (
+            <>
+              <button type="button" onClick={() => openChunkEditor(selectedAdminChunk)}>Edit</button>
+              <button type="button" onClick={() => copyToClipboard(selectedAdminChunk.content, 'Chunk content copied.')}>Copy</button>
+              <button className="danger" type="button" onClick={archiveSelectedChunk}>Archive</button>
+            </>
+          )}
+        />
+      </div>
+    </section>
+  );
+
   const renderDocumentLearningPage = () => {
     const pendingCount = documentCandidates.filter((candidate) => candidate.status === 'NEEDS_REVIEW').length;
     const isReorganizeCandidate = (candidate) => ['REORGANIZE_KNOWLEDGE', 'MERGE_ARTICLE'].includes(candidate?.suggestedAction);
@@ -2219,6 +2337,7 @@ Prevention controls:
   const renderActivePage = () => {
     if (activePage === 'knowledge') return renderKnowledgePage();
     if (activePage === 'documents') return renderDocumentPage();
+    if (activePage === 'chunks') return renderChunkPage();
     if (activePage === 'documentLearning') return renderDocumentLearningPage();
     if (activePage === 'webEvidence') return renderWebEvidencePage();
     if (activePage === 'ai') return renderAiPage();
@@ -2459,6 +2578,23 @@ Prevention controls:
             <div className="formButtonRow">
               <button className="adminSubmitButton" type="submit">Save Changes</button>
               <button className="secondaryAdminButton" type="button" onClick={() => setActiveModal('articleLibrary')}>Cancel</button>
+            </div>
+            {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
+          </form>
+        </AdminModal>
+      );
+    }
+
+    if (activeModal === 'editChunk') {
+      return (
+        <AdminModal title="Edit Retrieval Chunk" onClose={closeModal}>
+          <form className="adminActionForm wide" onSubmit={submitChunkEdit}>
+            <Field label="Chunk content">
+              <textarea value={chunkEditor.content} rows={16} onChange={(event) => setChunkEditor((current) => ({ ...current, content: event.target.value }))} />
+            </Field>
+            <div className="formButtonRow">
+              <button className="adminSubmitButton" type="submit">Save Chunk</button>
+              <button className="secondaryAdminButton" type="button" onClick={closeModal}>Cancel</button>
             </div>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
           </form>
@@ -2822,6 +2958,7 @@ Prevention controls:
           <button type="button" onClick={openGlobalSearch}><Search size={15} />Search Knowledge</button>
           <button type="button" onClick={async () => { setActivePage('knowledge'); await loadArticles(); }}><BookOpen size={15} />Manage Articles</button>
           <button type="button" onClick={async () => { setActivePage('documents'); await loadDocuments(); }}><FileText size={15} />Manage Documents</button>
+          <button type="button" onClick={async () => { setActivePage('chunks'); await loadAdminChunks(); }}><Database size={15} />Manage Chunks</button>
           <button type="button" onClick={async () => { setActivePage('gaps'); await loadKnowledgeGaps(1); }}><Target size={15} />Review Gaps</button>
           <button type="button" onClick={async () => { setActivePage('tickets'); await loadTickets(); }}><Ticket size={15} />Open Tickets</button>
         </div>

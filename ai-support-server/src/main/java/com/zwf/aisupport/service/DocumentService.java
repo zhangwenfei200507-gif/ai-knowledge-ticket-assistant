@@ -1,6 +1,8 @@
 package com.zwf.aisupport.service;
 
+import com.zwf.aisupport.dto.DocumentChunkUpdateDTO;
 import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
+import com.zwf.aisupport.vo.DocumentChunkAdminVO;
 import com.zwf.aisupport.vo.DocumentChunkVO;
 import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
@@ -16,6 +18,17 @@ public interface DocumentService {
     PageVO<KnowledgeDocumentVO> listDocuments(String keyword, String category, String status, Integer page, Integer size);
 
     List<DocumentChunkVO> listChunks(Long documentId);
+
+    PageVO<DocumentChunkAdminVO> listChunksForAdmin(String keyword,
+                                                    Long documentId,
+                                                    String category,
+                                                    String status,
+                                                    Integer page,
+                                                    Integer size);
+
+    DocumentChunkAdminVO updateChunk(Long chunkId, DocumentChunkUpdateDTO updateDTO);
+
+    void archiveChunk(Long chunkId);
 
     List<DocumentSearchResultVO> searchChunks(String keyword);
 
