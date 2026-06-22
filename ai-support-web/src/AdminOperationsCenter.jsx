@@ -195,6 +195,12 @@ const navItems = [
 const LIBRARY_PAGE_SIZE = 8;
 const REVIEW_PAGE_SIZE = 6;
 const pageItems = (pageResult) => pageResult?.items ?? [];
+const pageInfo = (pageResult, fallbackSize) => ({
+  page: pageResult?.page ?? 1,
+  size: pageResult?.size ?? fallbackSize,
+  total: pageResult?.total ?? 0,
+  pageCount: pageResult?.pageCount ?? 1,
+});
 
 function statusText(status) {
   if (!status) return 'Unknown';
@@ -249,21 +255,6 @@ function LibraryPager({ page, pageCount, total, onPageChange }) {
       <button type="button" disabled={page >= pageCount} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>Next</button>
     </div>
   );
-}
-
-function usePagedItems(items, pageSize = REVIEW_PAGE_SIZE) {
-  const [page, setPage] = useState(1);
-  const pageCount = Math.max(1, Math.ceil((items?.length ?? 0) / pageSize));
-  const safePage = Math.min(page, pageCount);
-  const pagedItems = (items ?? []).slice((safePage - 1) * pageSize, safePage * pageSize);
-
-  useEffect(() => {
-    if (page > pageCount) {
-      setPage(pageCount);
-    }
-  }, [page, pageCount]);
-
-  return { page: safePage, pageCount, pagedItems, setPage };
 }
 
 function ReviewPager({ page, pageCount, total, onPageChange }) {
@@ -401,16 +392,14 @@ function WebEvidenceWorkspace({
   onReject,
   onArchive,
   onDelete,
+  pageMeta,
+  statusFilter,
+  onStatusFilterChange,
+  onPageChange,
 }) {
-  const [statusFilter, setStatusFilter] = useState('ALL');
   const pendingCount = evidence.filter((item) => item.status === 'NEEDS_REVIEW').length;
   const convertedCount = evidence.filter((item) => item.status === 'CONVERTED').length;
   const rejectedCount = evidence.filter((item) => item.status === 'REJECTED').length;
-  const filteredEvidence = useMemo(
-    () => statusFilter === 'ALL' ? evidence : evidence.filter((item) => item.status === statusFilter),
-    [evidence, statusFilter]
-  );
-  const { page, pageCount, pagedItems, setPage } = usePagedItems(filteredEvidence);
 
   return (
     <section className="webEvidenceWorkspace">
@@ -438,23 +427,23 @@ function WebEvidenceWorkspace({
       <div className="webEvidenceReviewGrid">
         <div className="webEvidenceQueue">
           <div className="libraryToolbar">
-            <strong>{filteredEvidence.length} Evidence Records</strong>
-            <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}>
-              <option value="ALL">All Status</option>
+            <strong>{pageMeta.total} Evidence Records</strong>
+            <select value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value)}>
+              <option value="">All Status</option>
               <option value="NEEDS_REVIEW">Needs Review</option>
               <option value="CONVERTED">Converted</option>
               <option value="REJECTED">Rejected</option>
             </select>
             <button type="button" onClick={onRefresh}>Refresh</button>
           </div>
-          {pagedItems.length ? pagedItems.map((item) => (
+          {evidence.length ? evidence.map((item) => (
             <button className={selectedEvidence?.id === item.id ? 'active' : ''} type="button" key={item.id} onClick={() => onSelect(item)}>
               <strong>{item.title || item.question}</strong>
               <span>{item.domain || 'Unknown domain'} · {statusText(item.status)} · {statusText(item.evidenceOrigin || 'WEB_SEARCH')} · {item.category || 'General'}</span>
               <p>{item.question}</p>
             </button>
           )) : <EmptyState text="No external evidence yet. Ask an unknown question or run a manual web search." />}
-          <ReviewPager page={page} pageCount={pageCount} total={filteredEvidence.length} onPageChange={setPage} />
+          <ReviewPager page={pageMeta.page} pageCount={pageMeta.pageCount} total={pageMeta.total} onPageChange={onPageChange} />
         </div>
 
         <article className="webEvidenceDetail">
@@ -548,34 +537,21 @@ function MetricLine({ label, value, danger }) {
   );
 }
 
-function KnowledgeGaps({ data, onView, onDelete }) {
+function KnowledgeGaps({ data, onView, onDelete, keyword, onKeywordChange, onSearch, pageMeta, onPageChange }) {
   const gaps = data?.gaps ?? [];
-  const [keyword, setKeyword] = useState('');
-  const filteredGaps = useMemo(() => {
-    const normalized = keyword.trim().toLowerCase();
-    if (!normalized) return gaps;
-    return gaps.filter((gap) => [
-      gap.question,
-      gap.answer,
-      gap.category,
-      gap.priority,
-      gap.suggestedArticle,
-    ].some((value) => String(value ?? '').toLowerCase().includes(normalized)));
-  }, [gaps, keyword]);
-  const { page, pageCount, pagedItems, setPage } = usePagedItems(filteredGaps);
 
-  if (!gaps.length) {
+  if (!gaps.length && !keyword) {
     return <EmptyState text="No knowledge gaps yet." />;
   }
 
   return (
     <>
       <div className="libraryToolbar">
-        <strong>{filteredGaps.length} Gap Records</strong>
-        <input className="librarySearch compact" value={keyword} placeholder="Search gaps..." onChange={(event) => { setKeyword(event.target.value); setPage(1); }} />
+        <strong>{pageMeta.total} Gap Records</strong>
+        <input className="librarySearch compact" value={keyword} placeholder="Search gaps..." onChange={(event) => onKeywordChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') onSearch(); }} />
       </div>
       <div className="actionRecordGrid">
-      {pagedItems.map((gap) => (
+      {gaps.length ? gaps.map((gap) => (
         <button type="button" key={`${gap.logId}-${gap.question}`} onClick={() => onView(gap)}>
           <div>
             <strong>{gap.question}</strong>
@@ -585,9 +561,9 @@ function KnowledgeGaps({ data, onView, onDelete }) {
           <b className={`priorityPill ${gap.priority?.toLowerCase()}`}>{gap.priority || 'Review'}</b>
           <em onClick={(event) => { event.stopPropagation(); onDelete(gap); }}>Delete</em>
         </button>
-      ))}
+      )) : <EmptyState text="No matching knowledge gaps." />}
       </div>
-      <ReviewPager page={page} pageCount={pageCount} total={filteredGaps.length} onPageChange={setPage} />
+      <ReviewPager page={pageMeta.page} pageCount={pageMeta.pageCount} total={pageMeta.total} onPageChange={onPageChange} />
     </>
   );
 }
@@ -706,13 +682,6 @@ function formatDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleString();
-}
-
-function isWithinDaysValue(value, days) {
-  if (!value) return false;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return false;
-  return Date.now() - date.getTime() <= days * 24 * 60 * 60 * 1000;
 }
 
 function formatFileSize(value) {
@@ -858,6 +827,15 @@ function AdminOperationsCenter() {
   const [candidatePage, setCandidatePage] = useState(1);
   const [aiLogPage, setAiLogPage] = useState(1);
   const [ticketPage, setTicketPage] = useState(1);
+  const [webEvidencePage, setWebEvidencePage] = useState(1);
+  const [gapPage, setGapPage] = useState(1);
+  const [articlePageInfo, setArticlePageInfo] = useState(() => pageInfo(null, LIBRARY_PAGE_SIZE));
+  const [documentPageInfo, setDocumentPageInfo] = useState(() => pageInfo(null, LIBRARY_PAGE_SIZE));
+  const [candidatePageInfo, setCandidatePageInfo] = useState(() => pageInfo(null, REVIEW_PAGE_SIZE));
+  const [aiLogPageInfo, setAiLogPageInfo] = useState(() => pageInfo(null, REVIEW_PAGE_SIZE));
+  const [ticketPageInfo, setTicketPageInfo] = useState(() => pageInfo(null, REVIEW_PAGE_SIZE));
+  const [webEvidencePageInfo, setWebEvidencePageInfo] = useState(() => pageInfo(null, REVIEW_PAGE_SIZE));
+  const [gapPageInfo, setGapPageInfo] = useState(() => pageInfo(null, REVIEW_PAGE_SIZE));
   const [globalSearch, setGlobalSearch] = useState('');
   const [globalSearchResults, setGlobalSearchResults] = useState({ articles: [], chunks: [] });
   const [articleEditor, setArticleEditor] = useState({ id: null, title: '', category: '', content: '' });
@@ -874,6 +852,10 @@ function AdminOperationsCenter() {
   const [webEvidence, setWebEvidence] = useState([]);
   const [selectedEvidence, setSelectedEvidence] = useState(null);
   const [webEvidenceSearch, setWebEvidenceSearch] = useState('');
+  const [webEvidenceStatus, setWebEvidenceStatus] = useState('');
+  const [gapSearch, setGapSearch] = useState('');
+  const [aiLogSearch, setAiLogSearch] = useState('');
+  const [ticketSearch, setTicketSearch] = useState('');
   const [profile, setProfile] = useState(null);
   const [metricContext, setMetricContext] = useState(null);
   const [activePage, setActivePage] = useState('command');
@@ -903,6 +885,7 @@ function AdminOperationsCenter() {
           .then((candidateResult) => {
             const loadedCandidates = pageItems(candidateResult);
             setDocumentCandidates(loadedCandidates);
+            setCandidatePageInfo(pageInfo(candidateResult, REVIEW_PAGE_SIZE));
             setSelectedDocumentCandidate((current) => current && loadedCandidates.find((item) => item.id === current.id)
               ? loadedCandidates.find((item) => item.id === current.id)
               : current);
@@ -917,49 +900,10 @@ function AdminOperationsCenter() {
       });
   }, []);
 
-  const filteredArticles = useMemo(() => {
-    const keyword = articleSearch.trim().toLowerCase();
-    if (!keyword) return articles;
-    return articles.filter((article) => [
-      article.title,
-      article.category,
-      article.content,
-      article.status,
-    ].some((value) => String(value ?? '').toLowerCase().includes(keyword)));
-  }, [articles, articleSearch]);
-
-  const filteredDocuments = useMemo(() => {
-    const keyword = documentSearch.trim().toLowerCase();
-    if (!keyword) return documents;
-    return documents.filter((document) => [
-      document.originalFilename,
-      document.category,
-      document.contentType,
-      document.status,
-    ].some((value) => String(value ?? '').toLowerCase().includes(keyword)));
-  }, [documents, documentSearch]);
-
-  const filteredDocumentCandidates = useMemo(() => {
-    const keyword = candidateSearch.trim().toLowerCase();
-    if (!keyword) return documentCandidates;
-    return documentCandidates.filter((candidate) => [
-      candidate.title,
-      candidate.content,
-      candidate.category,
-      candidate.status,
-      candidate.suggestedArticleTitle,
-      candidate.originalFilename,
-    ].some((value) => String(value ?? '').toLowerCase().includes(keyword)));
-  }, [documentCandidates, candidateSearch]);
-
-  const articlePageCount = Math.max(1, Math.ceil(filteredArticles.length / LIBRARY_PAGE_SIZE));
-  const documentPageCount = Math.max(1, Math.ceil(filteredDocuments.length / LIBRARY_PAGE_SIZE));
-  const pagedArticles = filteredArticles.slice((articlePage - 1) * LIBRARY_PAGE_SIZE, articlePage * LIBRARY_PAGE_SIZE);
-  const pagedDocuments = filteredDocuments.slice((documentPage - 1) * LIBRARY_PAGE_SIZE, documentPage * LIBRARY_PAGE_SIZE);
-  const candidatePageCount = Math.max(1, Math.ceil(filteredDocumentCandidates.length / REVIEW_PAGE_SIZE));
-  const pagedDocumentCandidates = filteredDocumentCandidates.slice((candidatePage - 1) * REVIEW_PAGE_SIZE, candidatePage * REVIEW_PAGE_SIZE);
-  const aiLogPageCount = Math.max(1, Math.ceil(aiLogs.length / REVIEW_PAGE_SIZE));
-  const pagedAiLogs = aiLogs.slice((aiLogPage - 1) * REVIEW_PAGE_SIZE, aiLogPage * REVIEW_PAGE_SIZE);
+  const pagedArticles = articles;
+  const pagedDocuments = documents;
+  const pagedDocumentCandidates = documentCandidates;
+  const pagedAiLogs = aiLogs;
 
   const dashboardNotificationKeys = useMemo(() => buildNotificationKeys(
     data.knowledgeGapLoop?.gaps ?? [],
@@ -991,12 +935,14 @@ function AdminOperationsCenter() {
     setActiveModal(modal);
   };
 
-  const loadArticles = async () => {
+  const loadArticles = async (page = articlePage) => {
     setActionStatus({ type: 'loading', text: 'Loading stored knowledge articles...' });
     try {
-      const result = await getKnowledgeArticles();
+      const result = await getKnowledgeArticles({ page, size: LIBRARY_PAGE_SIZE, keyword: articleSearch, status: 'PUBLISHED' });
       const items = pageItems(result);
       setArticles(items);
+      setArticlePageInfo(pageInfo(result, LIBRARY_PAGE_SIZE));
+      setArticlePage(result?.page ?? page);
       setSelectedArticle(items[0] ?? null);
       setActionStatus({ type: '', text: '' });
     } catch (error) {
@@ -1009,12 +955,13 @@ function AdminOperationsCenter() {
     await loadArticles();
   };
 
-  const loadAiLogs = async () => {
+  const loadAiLogs = async (page = aiLogPage) => {
     setActionStatus({ type: 'loading', text: 'Loading real AI question records...' });
     try {
-      const result = await getAiQuestionLogs();
+      const result = await getAiQuestionLogs({ page, size: REVIEW_PAGE_SIZE, keyword: aiLogSearch });
       setAiLogs(pageItems(result));
-      setAiLogPage(1);
+      setAiLogPageInfo(pageInfo(result, REVIEW_PAGE_SIZE));
+      setAiLogPage(result?.page ?? page);
       setActionStatus({ type: '', text: '' });
     } catch (error) {
       setAiLogs([]);
@@ -1028,12 +975,13 @@ function AdminOperationsCenter() {
     await loadAiLogs();
   };
 
-  const loadTickets = async () => {
+  const loadTickets = async (page = ticketPage) => {
     setActionStatus({ type: 'loading', text: 'Loading real ticket queue...' });
     try {
-      const result = await getTickets();
+      const result = await getTickets({ page, size: REVIEW_PAGE_SIZE, keyword: ticketSearch });
       setTickets(pageItems(result));
-      setTicketPage(1);
+      setTicketPageInfo(pageInfo(result, REVIEW_PAGE_SIZE));
+      setTicketPage(result?.page ?? page);
       setActionStatus({ type: '', text: '' });
     } catch (error) {
       setTickets([]);
@@ -1046,12 +994,14 @@ function AdminOperationsCenter() {
     await loadTickets();
   };
 
-  const loadWebEvidence = async () => {
+  const loadWebEvidence = async (page = webEvidencePage, status = webEvidenceStatus) => {
     setActionStatus({ type: 'loading', text: 'Loading external web evidence queue...' });
     try {
-      const result = await getWebEvidence();
+      const result = await getWebEvidence({ page, size: REVIEW_PAGE_SIZE, status });
       const loadedEvidence = pageItems(result);
       setWebEvidence(loadedEvidence);
+      setWebEvidencePageInfo(pageInfo(result, REVIEW_PAGE_SIZE));
+      setWebEvidencePage(result?.page ?? page);
       setSelectedEvidence((current) => current && loadedEvidence.find((item) => item.id === current.id)
         ? loadedEvidence.find((item) => item.id === current.id)
         : loadedEvidence[0] ?? null);
@@ -1106,6 +1056,21 @@ function AdminOperationsCenter() {
     }
   };
 
+  const loadKnowledgeGaps = async (page = gapPage) => {
+    setActionStatus({ type: 'loading', text: 'Loading knowledge gaps...' });
+    try {
+      const result = await getKnowledgeGaps({ page, size: REVIEW_PAGE_SIZE, keyword: gapSearch });
+      const items = pageItems(result);
+      setKnowledgeGaps(items);
+      setGapPageInfo(pageInfo(result, REVIEW_PAGE_SIZE));
+      setGapPage(result?.page ?? page);
+      setActionStatus({ type: '', text: '' });
+    } catch (error) {
+      setKnowledgeGaps([]);
+      setActionStatus({ type: 'error', text: error.message });
+    }
+  };
+
   const openProfile = async () => {
     openModal('profile');
     setActionStatus({ type: 'loading', text: 'Loading account details...' });
@@ -1133,12 +1098,14 @@ function AdminOperationsCenter() {
     window.location.reload();
   };
 
-  const loadDocuments = async () => {
+  const loadDocuments = async (page = documentPage) => {
     setActionStatus({ type: 'loading', text: 'Loading uploaded documents...' });
     try {
-      const result = await getKnowledgeDocuments();
+      const result = await getKnowledgeDocuments({ page, size: LIBRARY_PAGE_SIZE, keyword: documentSearch, status: 'ACTIVE' });
       const loadedDocuments = pageItems(result);
       setDocuments(loadedDocuments);
+      setDocumentPageInfo(pageInfo(result, LIBRARY_PAGE_SIZE));
+      setDocumentPage(result?.page ?? page);
       setSelectedDocument(loadedDocuments[0] ?? null);
       if (loadedDocuments[0]) {
         const chunks = await getDocumentChunks(loadedDocuments[0].id);
@@ -1157,13 +1124,14 @@ function AdminOperationsCenter() {
     await loadDocuments();
   };
 
-  const loadDocumentCandidates = async () => {
+  const loadDocumentCandidates = async (page = candidatePage) => {
     setActionStatus({ type: 'loading', text: 'Loading document learning candidates...' });
     try {
-      const result = await getDocumentKnowledgeCandidates();
+      const result = await getDocumentKnowledgeCandidates({ page, size: REVIEW_PAGE_SIZE, keyword: candidateSearch });
       const loadedCandidates = pageItems(result);
       setDocumentCandidates(loadedCandidates);
-      setCandidatePage(1);
+      setCandidatePageInfo(pageInfo(result, REVIEW_PAGE_SIZE));
+      setCandidatePage(result?.page ?? page);
       setSelectedDocumentCandidate((current) => current && loadedCandidates.find((item) => item.id === current.id)
         ? loadedCandidates.find((item) => item.id === current.id)
         : loadedCandidates[0] ?? null);
@@ -1347,9 +1315,9 @@ function AdminOperationsCenter() {
         setActivePage('ai');
         await loadAiLogs();
       },
-      gaps: () => {
+      gaps: async () => {
         setActivePage('gaps');
-        setActionStatus({ type: '', text: '' });
+        await loadKnowledgeGaps();
       },
       tickets: async () => {
         setActivePage('tickets');
@@ -1669,7 +1637,7 @@ Prevention controls:
     setActionStatus({ type: 'loading', text: 'Deleting knowledge gap...' });
     try {
       await deleteKnowledgeGap(gap.logId);
-      setKnowledgeGaps((current) => current.filter((item) => item.logId !== gap.logId));
+      await loadKnowledgeGaps(gapPage);
       setSelectedGap(null);
       setActiveModal(null);
       setActionStatus({ type: 'success', text: 'Knowledge gap deleted.' });
@@ -1900,7 +1868,7 @@ Prevention controls:
           <div>
             <button type="button" onClick={async () => { setActivePage('documentLearning'); await loadDocumentCandidates(); }}>File Insights</button>
             <button type="button" onClick={openWebEvidencePage}>Web Review</button>
-            <button type="button" onClick={() => setActivePage('gaps')}>Review Gaps</button>
+            <button type="button" onClick={async () => { setActivePage('gaps'); await loadKnowledgeGaps(1); }}>Review Gaps</button>
             <button type="button" onClick={async () => { setActivePage('tickets'); await loadTickets(); }}>Tickets</button>
           </div>
         </article>
@@ -1966,7 +1934,7 @@ Prevention controls:
           </div>
           <div className="attentionList">
             {(data.knowledgeGapLoop?.gaps ?? []).slice(0, 2).map((gap) => (
-              <button type="button" key={gap.logId} onClick={() => setActivePage('gaps')}>
+              <button type="button" key={gap.logId} onClick={async () => { setActivePage('gaps'); await loadKnowledgeGaps(1); }}>
                 <strong>{gap.priority}</strong>
                 <span>{gap.question}</span>
               </button>
@@ -2001,17 +1969,17 @@ Prevention controls:
           <p>Maintain reviewed, durable articles used by AI as long-term answer sources. Short document chunks stay in the document library as retrieval evidence.</p>
         </div>
         <div>
-          <button type="button" onClick={loadArticles}>Refresh</button>
+          <button type="button" onClick={() => loadArticles(1)}>Refresh</button>
           <button type="button" onClick={() => openModal('uploadArticle')}>New Article</button>
         </div>
       </div>
       <div className="knowledgeLibrary embedded">
         <div className="libraryList">
           <div className="libraryToolbar">
-            <strong>{articles.length} Articles</strong>
+            <strong>{articlePageInfo.total} Articles</strong>
             <button type="button" onClick={() => openModal('uploadArticle')}>Upload New</button>
           </div>
-          <input className="librarySearch" value={articleSearch} placeholder="Search title, category, content..." onChange={(event) => { setArticleSearch(event.target.value); setArticlePage(1); }} />
+          <input className="librarySearch" value={articleSearch} placeholder="Search title, category, content..." onChange={(event) => setArticleSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadArticles(1); }} />
           {actionStatus.text && activePage === 'knowledge' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
           {pagedArticles.length ? pagedArticles.map((article) => (
             <button className={selectedArticle?.id === article.id ? 'active' : ''} type="button" key={article.id} onClick={() => setSelectedArticle(article)}>
@@ -2019,7 +1987,7 @@ Prevention controls:
               <span>{article.category || 'Uncategorized'} · {statusText(article.status)}</span>
             </button>
           )) : <EmptyState text="No knowledge articles uploaded yet." />}
-          <LibraryPager page={articlePage} pageCount={articlePageCount} total={filteredArticles.length} onPageChange={setArticlePage} />
+          <LibraryPager page={articlePageInfo.page} pageCount={articlePageInfo.pageCount} total={articlePageInfo.total} onPageChange={loadArticles} />
         </div>
         <KnowledgeReader
           article={selectedArticle}
@@ -2044,17 +2012,17 @@ Prevention controls:
           <p>Inspect source files and their searchable chunks. Chunks are retrieval evidence, not published articles.</p>
         </div>
         <div>
-          <button type="button" onClick={loadDocuments}>Refresh</button>
+          <button type="button" onClick={() => loadDocuments(1)}>Refresh</button>
           <button type="button" onClick={() => openModal('uploadDocument')}>Upload Document</button>
         </div>
       </div>
       <div className="knowledgeLibrary embedded">
         <div className="libraryList">
           <div className="libraryToolbar">
-            <strong>{documents.length} Documents</strong>
+            <strong>{documentPageInfo.total} Documents</strong>
             <button type="button" onClick={() => openModal('uploadDocument')}>Upload New</button>
           </div>
-          <input className="librarySearch" value={documentSearch} placeholder="Search filename, category, type..." onChange={(event) => { setDocumentSearch(event.target.value); setDocumentPage(1); }} />
+          <input className="librarySearch" value={documentSearch} placeholder="Search filename, category, type..." onChange={(event) => setDocumentSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadDocuments(1); }} />
           {actionStatus.text && activePage === 'documents' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
           {pagedDocuments.length ? pagedDocuments.map((document) => (
             <button className={selectedDocument?.id === document.id ? 'active' : ''} type="button" key={document.id} onClick={() => viewDocumentChunks(document)}>
@@ -2062,7 +2030,7 @@ Prevention controls:
               <span>{document.category || 'Uncategorized'} · {formatFileSize(document.fileSize)} · {statusText(document.status)}</span>
             </button>
           )) : <EmptyState text="No documents uploaded yet." />}
-          <LibraryPager page={documentPage} pageCount={documentPageCount} total={filteredDocuments.length} onPageChange={setDocumentPage} />
+          <LibraryPager page={documentPageInfo.page} pageCount={documentPageInfo.pageCount} total={documentPageInfo.total} onPageChange={loadDocuments} />
         </div>
         <KnowledgeReader
           chunks={selectedChunks}
@@ -2090,7 +2058,7 @@ Prevention controls:
             <p>Review knowledge extracted from uploaded files, reorganize the closest existing Knowledge Pack first, and create a new pack only when the topic is truly new.</p>
           </div>
           <div>
-            <button type="button" onClick={loadDocumentCandidates}>Refresh</button>
+            <button type="button" onClick={() => loadDocumentCandidates(1)}>Refresh</button>
             <button type="button" onClick={() => openModal('ask')}>Ask With File</button>
           </div>
         </div>
@@ -2098,9 +2066,9 @@ Prevention controls:
           <div className="libraryList">
             <div className="libraryToolbar">
               <strong>{pendingCount} Pending</strong>
-              <button type="button" onClick={loadDocumentCandidates}>Reload</button>
+              <button type="button" onClick={() => loadDocumentCandidates(1)}>Reload</button>
             </div>
-            <input className="librarySearch" value={candidateSearch} placeholder="Search review candidates..." onChange={(event) => { setCandidateSearch(event.target.value); setCandidatePage(1); }} />
+            <input className="librarySearch" value={candidateSearch} placeholder="Search review candidates..." onChange={(event) => setCandidateSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadDocumentCandidates(1); }} />
             {actionStatus.text && activePage === 'documentLearning' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
             {pagedDocumentCandidates.length ? pagedDocumentCandidates.map((candidate) => (
               <button
@@ -2113,7 +2081,7 @@ Prevention controls:
                 <span>{candidate.category || 'General'} / {statusText(candidate.status)} / {isReorganizeCandidate(candidate) ? `Reorganize ${candidate.suggestedArticleTitle || 'Knowledge Pack'}` : 'New Knowledge Pack'} / {candidate.originalFilename}</span>
               </button>
             )) : <EmptyState text="No knowledge review candidates yet. Ask AI with a CloudOps file to create reviewable insights." />}
-            <ReviewPager page={candidatePage} pageCount={candidatePageCount} total={filteredDocumentCandidates.length} onPageChange={setCandidatePage} />
+            <ReviewPager page={candidatePageInfo.page} pageCount={candidatePageInfo.pageCount} total={candidatePageInfo.total} onPageChange={loadDocumentCandidates} />
           </div>
           <KnowledgeReader
             article={selectedDocumentCandidate && {
@@ -2148,13 +2116,14 @@ Prevention controls:
           <p>Review real AI usage, source grounding, and answer quality signals.</p>
         </div>
         <div>
-          <button type="button" onClick={loadAiLogs}>Refresh Logs</button>
+          <button type="button" onClick={() => loadAiLogs(1)}>Refresh Logs</button>
           <button type="button" onClick={() => openModal('ask')}>Ask AI</button>
         </div>
       </div>
       <div className="pageSplitGrid">
         <ReasoningLayer data={data.reasoningLayer} />
         <div className="topRecordList">
+          <input className="librarySearch" value={aiLogSearch} placeholder="Search AI logs..." onChange={(event) => setAiLogSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadAiLogs(1); }} />
           {pagedAiLogs.length ? pagedAiLogs.map((log) => (
             <button className="recordButton" type="button" key={log.id} onClick={() => openAiLogDetail(log)}>
               <strong>{log.question}</strong>
@@ -2163,7 +2132,7 @@ Prevention controls:
               <em onClick={(event) => { event.stopPropagation(); deleteSelectedAiLog(log); }}>Delete</em>
             </button>
           )) : <EmptyState text="No AI question logs loaded yet." />}
-          <ReviewPager page={aiLogPage} pageCount={aiLogPageCount} total={aiLogs.length} onPageChange={setAiLogPage} />
+          <ReviewPager page={aiLogPageInfo.page} pageCount={aiLogPageInfo.pageCount} total={aiLogPageInfo.total} onPageChange={loadAiLogs} />
         </div>
       </div>
     </section>
@@ -2184,6 +2153,13 @@ Prevention controls:
       onReject={rejectSelectedEvidence}
       onArchive={archiveSelectedEvidence}
       onDelete={deleteSelectedEvidence}
+      pageMeta={webEvidencePageInfo}
+      statusFilter={webEvidenceStatus}
+      onStatusFilterChange={(status) => {
+        setWebEvidenceStatus(status);
+        loadWebEvidence(1, status);
+      }}
+      onPageChange={loadWebEvidence}
     />
   );
 
@@ -2196,17 +2172,23 @@ Prevention controls:
           <p>Turn repeated misses into durable internal knowledge.</p>
         </div>
         <div>
-          <button type="button" onClick={loadOperationsCenter}>Refresh</button>
+          <button type="button" onClick={() => loadKnowledgeGaps(1)}>Refresh</button>
         </div>
       </div>
-      <KnowledgeGaps data={{ gaps: knowledgeGaps.length ? knowledgeGaps : data.knowledgeGapLoop?.gaps ?? [] }} onView={openGapDetail} onDelete={deleteSelectedGap} />
+      <KnowledgeGaps
+        data={{ gaps: knowledgeGaps.length ? knowledgeGaps : data.knowledgeGapLoop?.gaps ?? [] }}
+        onView={openGapDetail}
+        onDelete={deleteSelectedGap}
+        keyword={gapSearch}
+        onKeywordChange={setGapSearch}
+        onSearch={() => loadKnowledgeGaps(1)}
+        pageMeta={gapPageInfo}
+        onPageChange={loadKnowledgeGaps}
+      />
     </section>
   );
 
   const renderTicketsPage = () => {
-    const openTicketRows = tickets.length ? tickets : (data.ticketEscalation?.tickets ?? []);
-    const ticketPageCount = Math.max(1, Math.ceil(openTicketRows.length / REVIEW_PAGE_SIZE));
-    const pagedTickets = openTicketRows.slice((ticketPage - 1) * REVIEW_PAGE_SIZE, ticketPage * REVIEW_PAGE_SIZE);
     return (
       <section className="adminPageSurface">
         <div className="adminPageHeader">
@@ -2216,18 +2198,19 @@ Prevention controls:
             <p>Track real open support work created by users or AI escalation.</p>
           </div>
           <div>
-            <button type="button" onClick={loadTickets}>Refresh Tickets</button>
+            <button type="button" onClick={() => loadTickets(1)}>Refresh Tickets</button>
           </div>
         </div>
         <div className="topRecordList full">
-          {pagedTickets.length ? pagedTickets.map((ticket) => (
+          <input className="librarySearch" value={ticketSearch} placeholder="Search tickets..." onChange={(event) => setTicketSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadTickets(1); }} />
+          {tickets.length ? tickets.map((ticket) => (
             <button className="recordButton" type="button" key={ticket.id || ticket.ticketId || ticket.title} onClick={() => openTicketDetail(ticket)}>
               <strong>{ticket.title}</strong>
               <span>{ticket.priority} · {ticket.status || ticket.owner || 'Open'} · {formatDateTime(ticket.createdTime)}</span>
               <p>{ticket.description || `Owner: ${ticket.owner || 'Unassigned'} · SLA: ${ticket.sla || '-'}`}</p>
             </button>
           )) : <EmptyState text="No open tickets." />}
-          <ReviewPager page={ticketPage} pageCount={ticketPageCount} total={openTicketRows.length} onPageChange={setTicketPage} />
+          <ReviewPager page={ticketPageInfo.page} pageCount={ticketPageInfo.pageCount} total={ticketPageInfo.total} onPageChange={loadTickets} />
         </div>
       </section>
     );
@@ -2342,7 +2325,7 @@ Prevention controls:
             </div>
             <div className="formButtonRow">
               <button className="adminSubmitButton" type="button" onClick={() => copyToClipboard(selectedAiLog.answer, 'AI answer copied.')}>Copy Answer</button>
-              {selectedAiLog.sourceType === 'NONE' && <button className="secondaryAdminButton" type="button" onClick={() => { closeModal(); setActivePage('gaps'); }}>Open Knowledge Gaps</button>}
+              {selectedAiLog.sourceType === 'NONE' && <button className="secondaryAdminButton" type="button" onClick={async () => { closeModal(); setActivePage('gaps'); await loadKnowledgeGaps(1); }}>Open Knowledge Gaps</button>}
               {selectedAiLog.sourceType === 'WEB' && <button className="secondaryAdminButton" type="button" onClick={openWebEvidencePage}>Open Web Evidence</button>}
               <button className="danger" type="button" onClick={() => deleteSelectedAiLog(selectedAiLog)}>Delete Log</button>
             </div>
@@ -2515,7 +2498,7 @@ Prevention controls:
                 <strong>{articles.length} Articles</strong>
                 <button type="button" onClick={() => openModal('uploadArticle')}>Upload New</button>
               </div>
-              <input className="librarySearch" value={articleSearch} placeholder="Search title, category, content..." onChange={(event) => { setArticleSearch(event.target.value); setArticlePage(1); }} />
+              <input className="librarySearch" value={articleSearch} placeholder="Search title, category, content..." onChange={(event) => setArticleSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadArticles(1); }} />
               {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
               {pagedArticles.length ? pagedArticles.map((article) => (
                 <button
@@ -2528,7 +2511,7 @@ Prevention controls:
                   <span>{article.category || 'Uncategorized'} · {statusText(article.status)}</span>
                 </button>
               )) : <EmptyState text="No knowledge articles uploaded yet." />}
-              <LibraryPager page={articlePage} pageCount={articlePageCount} total={filteredArticles.length} onPageChange={setArticlePage} />
+              <LibraryPager page={articlePageInfo.page} pageCount={articlePageInfo.pageCount} total={articlePageInfo.total} onPageChange={loadArticles} />
             </div>
             <KnowledgeReader
               article={selectedArticle}
@@ -2554,7 +2537,7 @@ Prevention controls:
                 <strong>{documents.length} Documents</strong>
                 <button type="button" onClick={() => openModal('uploadDocument')}>Upload New</button>
               </div>
-              <input className="librarySearch" value={documentSearch} placeholder="Search filename, category, type..." onChange={(event) => { setDocumentSearch(event.target.value); setDocumentPage(1); }} />
+              <input className="librarySearch" value={documentSearch} placeholder="Search filename, category, type..." onChange={(event) => setDocumentSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadDocuments(1); }} />
               {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
               {pagedDocuments.length ? pagedDocuments.map((document) => (
                 <button
@@ -2567,7 +2550,7 @@ Prevention controls:
                   <span>{document.category || 'Uncategorized'} · {formatFileSize(document.fileSize)} · {statusText(document.status)}</span>
                 </button>
               )) : <EmptyState text="No documents uploaded yet." />}
-              <LibraryPager page={documentPage} pageCount={documentPageCount} total={filteredDocuments.length} onPageChange={setDocumentPage} />
+              <LibraryPager page={documentPageInfo.page} pageCount={documentPageInfo.pageCount} total={documentPageInfo.total} onPageChange={loadDocuments} />
             </div>
             <KnowledgeReader
               chunks={selectedChunks}
@@ -2606,11 +2589,6 @@ Prevention controls:
     }
 
     if (activeModal === 'aiLogs') {
-      const filteredLogs = metricContext === 'questions'
-        ? aiLogs.filter((log) => isWithinDaysValue(log.createdTime, 7))
-        : aiLogs;
-      const modalAiLogPageCount = Math.max(1, Math.ceil(filteredLogs.length / REVIEW_PAGE_SIZE));
-      const modalPagedLogs = filteredLogs.slice((aiLogPage - 1) * REVIEW_PAGE_SIZE, aiLogPage * REVIEW_PAGE_SIZE);
       return (
         <AdminModal title={metricContext === 'confidence' ? 'Answer Confidence Sources' : 'Questions Answered In 7 Days'} onClose={closeModal}>
           <div className="topDetailPanel">
@@ -2621,7 +2599,7 @@ Prevention controls:
             </p>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
             <div className="topRecordList">
-              {modalPagedLogs.length ? modalPagedLogs.map((log) => (
+              {aiLogs.length ? aiLogs.map((log) => (
                 <button className="recordButton" type="button" key={log.id} onClick={() => openAiLogDetail(log)}>
                   <strong>{log.question}</strong>
                   <span>{statusText(log.sourceType)} · {formatDateTime(log.createdTime)}</span>
@@ -2629,7 +2607,7 @@ Prevention controls:
                   <em onClick={(event) => { event.stopPropagation(); deleteSelectedAiLog(log); }}>Delete</em>
                 </button>
               )) : <EmptyState text="No matching AI records yet." />}
-              <ReviewPager page={aiLogPage} pageCount={modalAiLogPageCount} total={filteredLogs.length} onPageChange={setAiLogPage} />
+              <ReviewPager page={aiLogPageInfo.page} pageCount={aiLogPageInfo.pageCount} total={aiLogPageInfo.total} onPageChange={loadAiLogs} />
             </div>
           </div>
         </AdminModal>
@@ -2637,23 +2615,20 @@ Prevention controls:
     }
 
     if (activeModal === 'ticketList') {
-      const openTicketRows = tickets.filter((ticket) => ['OPEN', 'IN_PROGRESS'].includes(ticket.status));
-      const modalTicketPageCount = Math.max(1, Math.ceil(openTicketRows.length / REVIEW_PAGE_SIZE));
-      const modalPagedTickets = openTicketRows.slice((ticketPage - 1) * REVIEW_PAGE_SIZE, ticketPage * REVIEW_PAGE_SIZE);
       return (
         <AdminModal title="Open Ticket Queue" onClose={closeModal}>
           <div className="topDetailPanel">
             <p className="topDetailLead">Open tickets are loaded from the real ticket queue and update as tickets are created or resolved.</p>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
             <div className="topRecordList">
-              {modalPagedTickets.length ? modalPagedTickets.map((ticket) => (
+              {tickets.length ? tickets.map((ticket) => (
                 <button className="recordButton" type="button" key={ticket.id} onClick={() => openTicketDetail(ticket)}>
                   <strong>{ticket.title}</strong>
                   <span>{ticket.priority} · {ticket.status} · {formatDateTime(ticket.createdTime)}</span>
                   <p>{ticket.description}</p>
                 </button>
               )) : <EmptyState text="No open tickets." />}
-              <ReviewPager page={ticketPage} pageCount={modalTicketPageCount} total={openTicketRows.length} onPageChange={setTicketPage} />
+              <ReviewPager page={ticketPageInfo.page} pageCount={ticketPageInfo.pageCount} total={ticketPageInfo.total} onPageChange={loadTickets} />
             </div>
           </div>
         </AdminModal>
@@ -2847,7 +2822,7 @@ Prevention controls:
           <button type="button" onClick={openGlobalSearch}><Search size={15} />Search Knowledge</button>
           <button type="button" onClick={async () => { setActivePage('knowledge'); await loadArticles(); }}><BookOpen size={15} />Manage Articles</button>
           <button type="button" onClick={async () => { setActivePage('documents'); await loadDocuments(); }}><FileText size={15} />Manage Documents</button>
-          <button type="button" onClick={() => setActivePage('gaps')}><Target size={15} />Review Gaps</button>
+          <button type="button" onClick={async () => { setActivePage('gaps'); await loadKnowledgeGaps(1); }}><Target size={15} />Review Gaps</button>
           <button type="button" onClick={async () => { setActivePage('tickets'); await loadTickets(); }}><Ticket size={15} />Open Tickets</button>
         </div>
         <button className="lastUpdated" type="button" onClick={loadOperationsCenter}>
