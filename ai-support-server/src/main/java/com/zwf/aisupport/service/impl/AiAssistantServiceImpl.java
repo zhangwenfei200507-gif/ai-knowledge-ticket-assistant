@@ -47,7 +47,8 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             "why", "what", "how", "when", "where", "which", "who", "does", "do", "did", "is", "are",
             "was", "were", "be", "been", "being", "still", "first", "should", "check", "please",
             "i", "we", "you", "my", "our", "your", "it", "its", "of", "by", "as", "into", "about",
-            "not", "because", "even", "though", "has", "have", "had", "than"
+            "not", "because", "even", "though", "has", "have", "had", "than", "whether", "determine",
+            "difference", "between", "versus", "vs"
     );
     private static final Set<String> BROAD_DOMAIN_TERMS = Set.of(
             "auth", "authentication", "authorization", "jwt", "token", "kubernetes", "postgresql",
@@ -63,7 +64,8 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             "rejected", "reject", "expired", "expire", "failure", "failed", "error", "issue",
             "problem", "handle", "configure", "download", "install", "login", "logout", "users",
             "inside", "instead", "communication", "connect", "connects", "connected", "connecting",
-            "use", "using", "used", "names", "name", "running", "fail", "fails"
+            "use", "using", "used", "names", "name", "running", "fail", "fails", "decide", "choose",
+            "classify", "classification"
     );
 
     private final KnowledgeArticleMapper knowledgeArticleMapper;
@@ -593,11 +595,18 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         String normalizedQuestion = question == null ? "" : question.toLowerCase();
         return WORD_SPLIT_PATTERN.splitAsStream(normalizedQuestion)
                 .map(String::trim)
-                .filter(term -> term.length() >= 3)
+                .filter(this::isSearchableTerm)
                 .filter(term -> !STOP_WORDS.contains(term))
                 .distinct()
                 .limit(12)
                 .toList();
+    }
+
+    private boolean isSearchableTerm(String term) {
+        if (term == null || term.isBlank()) {
+            return false;
+        }
+        return term.length() >= 3 || term.matches("[a-z]+\\d+") || term.matches("\\d+[a-z]+");
     }
 
     private int scoreArticle(KnowledgeArticle article, List<String> terms) {
@@ -684,7 +693,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         if (BROAD_DOMAIN_TERMS.contains(term)) {
             return false;
         }
-        return term.matches(".*[0-9+#./-].*") || term.length() >= 8;
+        return term.matches(".*[0-9+#./-].*");
     }
 
     private boolean isReliableInternalSource(String sourceText,
@@ -875,7 +884,8 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private enum AnswerIntent {
         CONCEPT,
         TROUBLESHOOTING,
-        PROCEDURE
+        PROCEDURE,
+        DECISION
     }
 
     private String buildConciseWebEvidenceAnswer(WebEvidence evidence) {
@@ -896,10 +906,6 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                                          List<AiAnswerSourceVO> sources,
                                          String fallbackContent) {
         String answerContext = buildAnswerContext(sources, fallbackContent);
-        Optional<String> deterministicAnswer = buildDomainSpecificAnswer(question, answerContext, sources);
-        if (deterministicAnswer.isPresent()) {
-            return deterministicAnswer.get();
-        }
         if (!extractQuestionFocusedPoints(question, answerContext).isEmpty()) {
             return buildTemplateAnswer(question, answerContext, sources);
         }
@@ -926,25 +932,6 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                     .forEach(context::add);
         }
         return String.join("\n\n", context);
-    }
-
-    private Optional<String> buildDomainSpecificAnswer(String question, String content, List<AiAnswerSourceVO> sources) {
-        if (isDockerfileInstructionQuestion(question)) {
-            return Optional.of(buildDockerfileInstructionEnterpriseAnswer(sources));
-        }
-        if (isDockerPostgresContainerConnectionQuestion(question, content)) {
-            return Optional.of(buildDockerPostgresContainerConnectionAnswer(sources));
-        }
-        if (isDockerComposeServiceNameQuestion(question, content)) {
-            return Optional.of(buildDockerComposeServiceNameAnswer(sources));
-        }
-        if (isDockerMultiStageBuildQuestion(question, content)) {
-            return Optional.of(buildDockerMultiStageBuildAnswer(sources));
-        }
-        if (isDockerBuildArgumentQuestion(question, content)) {
-            return Optional.of(buildDockerBuildArgumentAnswer(sources));
-        }
-        return Optional.empty();
     }
 
     private Optional<String> safeGenerateGroundedAnswer(String question, String sourceType, List<AiAnswerSourceVO> sources) {
@@ -991,6 +978,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         AnswerIntent intent = classifyAnswerIntent(question);
         List<String> references = formatReferences(sources);
 
+        if (intent == AnswerIntent.DECISION) {
+            return buildDecisionAnswer(points, references);
+        }
         if (intent == AnswerIntent.CONCEPT) {
             return buildConceptAnswer(question, content, points, references);
         }
@@ -1028,6 +1018,37 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 direct,
                 explanation,
                 formatBullets(causes, "- The current evidence does not list a confirmed root cause."),
+                formatBullets(references, "- Grounding sources are attached below.")
+        ).trim();
+    }
+
+    private String buildDecisionAnswer(List<String> points, List<String> references) {
+        List<String> criteria = points.stream()
+                .map(this::rewritePointAsAnswer)
+                .filter(point -> !point.isBlank())
+                .limit(6)
+                .toList();
+        String direct = criteria.isEmpty()
+                ? "Decide by comparing the request against the grounded criteria, then choose the lowest level that still covers the actual risk and impact."
+                : "Decide by matching the request's impact, urgency, scope, and risk against the grounded criteria.";
+        return """
+                ## Direct Answer
+                %s
+
+                ## Decision Criteria
+                %s
+
+                ## How To Apply It
+                - Start with user impact and production risk.
+                - Check whether the issue affects one user, a team, a region, or a broad customer workflow.
+                - Raise the level when the issue involves security, data loss, authentication outage, production outage, or no safe workaround.
+                - Lower the level only when the issue is isolated, low risk, and has a clear workaround.
+
+                ## References
+                %s
+                """.formatted(
+                direct,
+                formatBullets(criteria, "- No explicit decision criteria were found in the grounded source."),
                 formatBullets(references, "- Grounding sources are attached below.")
         ).trim();
     }
@@ -1094,6 +1115,11 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         if (troubleshooting) {
             return AnswerIntent.TROUBLESHOOTING;
         }
+        boolean decision = TextUtil.containsAny(normalized,
+                "determine", "classify", "classification", "decide", "choose", "priority", "severity", "routing", "route", "sla");
+        if (decision) {
+            return AnswerIntent.DECISION;
+        }
         boolean concept = normalized.startsWith("what is")
                 || normalized.startsWith("what are")
                 || normalized.startsWith("why does")
@@ -1117,40 +1143,12 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private ConceptSummary summarizeConcept(String question, String content, List<String> points) {
-        String normalizedQuestion = TextUtil.safeLower(question);
         String normalizedContent = TextUtil.safeLower(content);
-
-        if (normalizedQuestion.contains("buildkit")
-                && TextUtil.containsAny(normalizedQuestion, "performance", "improve", "faster", "speed")) {
-            return new ConceptSummary(
-                    "Docker BuildKit improves image build performance by solving the build as a dependency graph, running independent steps in parallel, reusing cache more precisely, and skipping work that does not affect the final image.",
-                    "The legacy builder processes Dockerfile steps more linearly. BuildKit can analyze which steps depend on each other, execute safe parts concurrently, avoid unnecessary stages, and make cache reuse more efficient across repeated builds.",
-                    List.of(
-                            "Use BuildKit for Dockerfile builds where build speed, cache reuse, or repeatable CI pipelines matter.",
-                            "Use it when Dockerfiles contain independent stages or expensive dependency installation steps.",
-                            "Use it when teams need more modern build features without shipping extra runtime content."
-                    ),
-                    "A multi-stage Dockerfile can build dependencies in one stage while BuildKit caches unchanged layers and skips stages that are not needed for the requested final image."
-            );
-        }
-
-        if (normalizedQuestion.contains("multi-stage") && normalizedQuestion.contains("build")) {
-            return new ConceptSummary(
-                    "Docker multi-stage builds separate the build environment from the final runtime image, so the final image contains only the artifacts needed to run the application.",
-                    "Earlier stages can contain source code, compilers, SDKs, package managers, and temporary build files. The final stage copies only the required output, which keeps production images smaller and cleaner.",
-                    List.of(
-                            "Use them when build tools are needed during image creation but should not be shipped to production.",
-                            "Use them for compiled applications, frontend builds, Java packages, Go binaries, or Node build pipelines.",
-                            "Use them when production images need to be smaller, cleaner, and lower risk."
-                    ),
-                    "A frontend app can be built in a Node stage, then the generated static files can be copied into an Nginx runtime image."
-            );
-        }
 
         List<String> cleanPoints = points.stream()
                 .map(this::rewritePointAsAnswer)
                 .filter(point -> !point.isBlank())
-                .limit(4)
+                .limit(8)
                 .toList();
         String direct = cleanPoints.isEmpty()
                 ? "The concept helps improve how the system is built, configured, or operated, based on the grounded source."
@@ -1159,7 +1157,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 ? cleanPoints.get(1)
                 : "In practice, it matters because it changes how teams design, build, deploy, or troubleshoot the system.";
         List<String> usage = cleanPoints.size() > 2
-                ? cleanPoints.stream().skip(2).limit(3).toList()
+                ? cleanPoints.stream().skip(2).limit(6).toList()
                 : List.of("Use it when it directly improves reliability, delivery speed, security, or operational clarity.");
         String example = normalizedContent.contains("docker")
                 ? "For a Docker-based service, apply the concept in the Dockerfile or Compose configuration, then verify the resulting image or runtime behavior."
@@ -1193,161 +1191,6 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             return rewritten;
         }
         return "Verify " + Character.toLowerCase(rewritten.charAt(0)) + rewritten.substring(1);
-    }
-
-    private boolean isDockerPostgresContainerConnectionQuestion(String question, String content) {
-        String normalizedQuestion = TextUtil.safeLower(question);
-        String normalizedContent = TextUtil.safeLower(content);
-        return TextUtil.containsAny(normalizedQuestion, "postgresql", "postgres", "database")
-                && TextUtil.containsAny(normalizedQuestion, "backend", "container", "docker", "compose")
-                && TextUtil.containsAny(normalizedQuestion, "connect", "connection", "cannot", "fail", "fails")
-                && TextUtil.containsAny(normalizedContent, "service name", "localhost", "docker compose", "postgres");
-    }
-
-    private String buildDockerPostgresContainerConnectionAnswer(List<AiAnswerSourceVO> sources) {
-        return """
-                ## Direct Answer
-                The backend container usually fails to connect even while the PostgreSQL container is running because it is using the wrong network address. In Docker Compose, the backend should connect to the PostgreSQL service name, such as `postgres:5432`, not `localhost:5432`.
-
-                ## Explanation
-                `localhost` inside the backend container points back to the backend container itself. It does not point to the PostgreSQL container. Docker Compose gives containers on the same Compose network internal DNS, so one service reaches another by service name.
-
-                ## Likely Causes
-                - The backend uses `localhost` or `127.0.0.1` as `DB_HOST`.
-                - The backend and PostgreSQL services are not attached to the same Compose network.
-                - The app is using the host-mapped port instead of the internal PostgreSQL port, usually `5432`.
-                - PostgreSQL is running but not ready when the backend starts.
-                - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, or database name is different from the Compose configuration.
-
-                ## Checks
-                - Set `DB_HOST` to the Compose service name, for example `postgres`.
-                - Use `DB_PORT=5432` for container-to-container traffic unless the database listens on a custom internal port.
-                - Confirm both services are in the same Compose network.
-                - Check backend logs for the exact error, such as connection refused, timeout, authentication failed, or unknown host.
-
-                ## Fix
-                Update the backend connection string to use the PostgreSQL service name and internal port, then restart the backend after PostgreSQL is healthy.
-
-                ## References
-                %s
-                """.formatted(formatBullets(formatReferences(sources), "- Grounding sources are attached below.")).trim();
-    }
-
-    private boolean isDockerComposeServiceNameQuestion(String question, String content) {
-        String normalizedQuestion = TextUtil.safeLower(question);
-        String normalizedContent = TextUtil.safeLower(content);
-        return TextUtil.containsAny(normalizedQuestion, "service name", "service names", "localhost", "container-to-container")
-                && TextUtil.containsAny(normalizedQuestion, "docker", "compose", "container")
-                && TextUtil.containsAny(normalizedContent, "service name", "localhost", "docker compose", "internal dns");
-    }
-
-    private String buildDockerComposeServiceNameAnswer(List<AiAnswerSourceVO> sources) {
-        return """
-                ## Direct Answer
-                Docker Compose services should use service names because Compose provides internal DNS for containers on the same network. `localhost` inside a container refers to that same container, not another service.
-
-                ## Explanation
-                If a backend container connects to `localhost`, it is trying to reach a process inside the backend container. To reach another Compose service, such as PostgreSQL or Redis, it should use the service name from `docker-compose.yml`, for example `postgres:5432` or `redis:6379`.
-
-                ## When To Use
-                - Use service names for container-to-container communication inside the same Compose project.
-                - Use `localhost` only when a process inside the same container is the target.
-                - Use host-published ports mainly for traffic from the host machine into a container.
-
-                ## Example
-                A backend service should use `jdbc:postgresql://postgres:5432/appdb`, not `jdbc:postgresql://localhost:5432/appdb`, when PostgreSQL is another Compose service.
-
-                ## References
-                %s
-                """.formatted(formatBullets(formatReferences(sources), "- Grounding sources are attached below.")).trim();
-    }
-
-    private boolean isDockerMultiStageBuildQuestion(String question, String content) {
-        String normalizedQuestion = TextUtil.safeLower(question);
-        String normalizedContent = TextUtil.safeLower(content);
-        return normalizedQuestion.contains("multi-stage")
-                && normalizedQuestion.contains("build")
-                && normalizedQuestion.contains("purpose")
-                && TextUtil.containsAny(normalizedContent, "multi-stage", "multiple from", "final image", "build stage");
-    }
-
-    private String buildDockerMultiStageBuildAnswer(List<AiAnswerSourceVO> sources) {
-        return """
-                ## Direct Answer
-                Docker multi-stage builds separate the build environment from the final runtime image. They are used to compile, package, or prepare an application in one stage, then copy only the required output into a smaller and cleaner final image.
-
-                ## Explanation
-                A Dockerfile can contain multiple `FROM` stages. Earlier stages can include source code, compilers, SDKs, package managers, and temporary build files. The final stage should contain only what the application needs to run.
-
-                ## When To Use
-                - Use them when build tools are needed during image creation but should not be shipped to production.
-                - Use them for compiled applications, frontend builds, Java packages, Go binaries, or Node build pipelines.
-                - Use them when production images need to be smaller, cleaner, and lower risk.
-                - Use them when you want separate build, test, and runtime stages in one Dockerfile.
-
-                ## Example
-                A frontend app can be built in a Node stage, then the generated static files can be copied into an Nginx runtime image.
-
-                ## References
-                %s
-                """.formatted(formatBullets(formatReferences(sources), "- Grounding sources are attached below.")).trim();
-    }
-
-    private boolean isDockerBuildArgumentQuestion(String question, String content) {
-        String normalizedQuestion = TextUtil.safeLower(question);
-        String normalizedContent = TextUtil.safeLower(content);
-        boolean asksArgEnv = normalizedQuestion.contains("arg")
-                && normalizedQuestion.contains("env")
-                && normalizedQuestion.contains("dockerfile");
-        boolean asksDockerignore = normalizedQuestion.contains("dockerignore")
-                || normalizedQuestion.contains(".dockerignore");
-        boolean sourceSupportsAnswer = TextUtil.containsAny(normalizedContent,
-                "arg", "env", "dockerignore", ".dockerignore", "build argument", "environment variable");
-        return sourceSupportsAnswer && (asksArgEnv || asksDockerignore);
-    }
-
-    private String buildDockerBuildArgumentAnswer(List<AiAnswerSourceVO> sources) {
-        return """
-                ## Direct Answer
-                `ARG` is for build-time values, while `ENV` defines environment variables that persist for later Dockerfile instructions and usually remain available when the container runs. A `.dockerignore` file excludes unnecessary files from the build context before Docker sends that context to the builder.
-
-                ## Explanation
-                Use `ARG` for values that only affect image creation, such as package versions, build flags, or optional targets. Use `ENV` for configuration the image or application needs after build time. `.dockerignore` keeps builds faster and safer by excluding local files that should not participate in the image build.
-
-                ## When To Use
-                - Use `ARG` when the value should influence the build but should not be treated as runtime configuration.
-                - Use `ENV` when later build steps or the running application need the variable.
-                - Use `.dockerignore` in real projects to reduce build context size, avoid unnecessary cache invalidation, and keep secrets or local artifacts out of the build.
-
-                ## Example
-                Use `ARG APP_VERSION=1.0.0` to choose a version during build, `ENV APP_ENV=production` for runtime behavior, and `.dockerignore` to exclude `.git`, logs, temporary files, dependency folders, and local secrets.
-
-                ## References
-                %s
-                """.formatted(formatBullets(formatReferences(sources), "- Grounding sources are attached below.")).trim();
-    }
-
-    private String buildDockerfileInstructionEnterpriseAnswer(List<AiAnswerSourceVO> sources) {
-        return """
-                ## Direct Answer
-                These Dockerfile instructions define where the application lives in the image, what files are copied into it, what build-time commands run, which port the app is expected to listen on, and which command starts the Python application when the container runs.
-
-                ## Explanation
-                `WORKDIR` sets the default directory inside the image. `COPY` brings application files into the image. `RUN` executes build-time steps such as dependency installation. `EXPOSE` documents the application port but does not publish it by itself. `CMD` defines the default runtime command for the container.
-
-                ## When To Use
-                - Use `WORKDIR` to keep later instructions predictable and avoid path mistakes.
-                - Use `COPY` to include source code, dependency files, or built artifacts.
-                - Use `RUN` for repeatable image build steps.
-                - Use `EXPOSE` to document the intended listening port.
-                - Use `CMD` for the normal startup command that can still be overridden at runtime.
-
-                ## Example
-                A Python service can copy its source into `/app`, install dependencies during the image build, expose port `8000`, and start with a `python` or `uvicorn` command when the container launches.
-
-                ## References
-                %s
-                """.formatted(formatBullets(formatReferences(sources), "- Grounding sources are attached below.")).trim();
     }
 
     private List<String> formatReferences(List<AiAnswerSourceVO> sources) {
@@ -1392,10 +1235,6 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private String buildConciseAnswer(String question, String content) {
-        if (isDockerfileInstructionQuestion(question)) {
-            return buildDockerfileInstructionAnswer();
-        }
-
         List<String> points = extractQuestionFocusedPoints(question, content);
         if (points.isEmpty()) {
             return "";
@@ -1455,7 +1294,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 .map(point -> new ScoredPoint(point, scoreAnswerPoint(point, terms)))
                 .filter(point -> terms.isEmpty() || point.score() > 0)
                 .sorted(Comparator.comparingInt(ScoredPoint::score).reversed())
-                .limit(5)
+                .limit(8)
                 .forEach(point -> lines.add(point.point()));
 
         if (!lines.isEmpty()) {
@@ -1485,27 +1324,6 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return score;
     }
 
-    private boolean isDockerfileInstructionQuestion(String question) {
-        String normalized = TextUtil.safeLower(question);
-        return normalized.contains("dockerfile")
-                && normalized.contains("workdir")
-                && normalized.contains("copy")
-                && normalized.contains("run")
-                && normalized.contains("expose")
-                && normalized.contains("cmd");
-    }
-
-    private String buildDockerfileInstructionAnswer() {
-        return """
-                Key answer:
-                - WORKDIR sets the default directory inside the image, so later COPY, RUN, and CMD instructions run from a predictable path.
-                - COPY moves your application files from the build context into the image so the container has the code it needs.
-                - RUN executes build-time commands, such as installing dependencies; the result is saved into the image layer.
-                - EXPOSE documents the port the app listens on; it does not publish the port by itself, but helps operators map it correctly.
-                - CMD defines the default command that starts the Python app when the container runs; it can be overridden at runtime.
-                """.trim();
-    }
-
     private String cleanAnswerContent(String content) {
         if (content == null) {
             return "";
@@ -1517,6 +1335,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 .replaceAll("(?im)^primary keywords\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^source references\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^purpose\\s*:?\\s*$", "")
+                .replaceAll("(?im)^use this (playbook|guide|runbook) when\\s+.*$", "")
                 .replaceAll("(?im)^original question\\s*:?\\s*$", "")
                 .replaceAll("(?im)^observed answer\\s*:?\\s*$", "")
                 .replaceAll("(?im)^review checklist\\s*:?\\s*$", "")
@@ -1547,6 +1366,10 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 && !normalized.startsWith("purpose:")
                 && !normalized.startsWith("sources:")
                 && !normalized.contains("use this runbook")
+                && !normalized.contains("use this playbook")
+                && !normalized.contains("use this guide")
+                && !normalized.contains("consolidated reviewed internal knowledge")
+                && !normalized.contains("uploaded document chunks remain retrieval evidence")
                 && !normalized.matches(".*\\brunbook\\s+runbook\\b.*")
                 && !normalized.contains("capture externally discovered evidence")
                 && !normalized.contains("preserve the model-generated answer")
@@ -1558,6 +1381,8 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 && !normalized.contains("skip to content")
                 && !normalized.contains("table of contents")
                 && !normalized.contains("was this page helpful")
+                && !normalized.contains("docker build --target")
+                && !normalized.contains("stop at a named stage")
                 && !normalized.contains("window.")
                 && !normalized.contains("document.")
                 && !normalized.contains("__next")

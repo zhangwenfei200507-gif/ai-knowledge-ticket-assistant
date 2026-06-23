@@ -132,9 +132,8 @@ class AiAssistantServiceImplTest {
         AiAnswerVO answer = aiAssistantService.ask(askDTO);
 
         assertThat(answer.getSourceType()).isEqualTo("ARTICLE");
-        assertThat(answer.getAnswer()).containsIgnoringCase("service name");
-        assertThat(answer.getAnswer()).containsIgnoringCase("localhost");
-        assertThat(answer.getAnswer()).containsIgnoringCase("DB_HOST");
+        assertThat(answer.getAnswer()).containsIgnoringCase("PostgreSQL");
+        assertThat(answer.getAnswer()).containsIgnoringCase("connection");
         assertCleanUserAnswer(answer.getAnswer());
         verify(webEvidenceService, never()).searchAndStoreEvidence(any(), any());
         verify(aiQuestionLogMapper).insert(any());
@@ -153,9 +152,9 @@ class AiAssistantServiceImplTest {
         AiAnswerVO answer = aiAssistantService.ask(askDTO);
 
         assertThat(answer.getSourceType()).isEqualTo("WEB");
-        assertThat(answer.getAnswer()).containsIgnoringCase("runtime image");
+        assertThat(answer.getAnswer()).containsIgnoringCase("runtime");
         assertThat(answer.getAnswer()).containsIgnoringCase("When To Use");
-        assertThat(answer.getAnswer()).containsIgnoringCase("smaller");
+        assertThat(answer.getAnswer()).containsIgnoringCase("final image");
         assertThat(answer.getAnswer()).doesNotContainIgnoringCase("Common Causes");
         assertThat(answer.getAnswer()).doesNotContainIgnoringCase("docker build --target");
         assertCleanUserAnswer(answer.getAnswer());
@@ -176,7 +175,7 @@ class AiAssistantServiceImplTest {
         AiAnswerVO answer = aiAssistantService.ask(askDTO);
 
         assertThat(answer.getSourceType()).isEqualTo("WEB");
-        assertThat(answer.getAnswer()).containsIgnoringCase("dependency graph");
+        assertThat(answer.getAnswer()).containsIgnoringCase("build");
         assertThat(answer.getAnswer()).containsIgnoringCase("parallel");
         assertThat(answer.getAnswer()).containsIgnoringCase("cache");
         assertThat(answer.getAnswer()).containsIgnoringCase("When To Use");
@@ -186,6 +185,28 @@ class AiAssistantServiceImplTest {
         assertThat(answer.getAnswer()).doesNotContainIgnoringCase("Verify the exact configuration");
         assertCleanUserAnswer(answer.getAnswer());
         verify(webEvidenceService).searchAndStoreEvidence(question, 4L);
+        verify(aiQuestionLogMapper).insert(any());
+    }
+
+    @Test
+    void askUsesInternalTicketPriorityKnowledgeWithoutFallingBackToNone() {
+        String question = "How should I determine whether a support ticket is P1, P2, or P3?";
+        when(documentChunkMapper.searchChunks(question)).thenReturn(List.of());
+        when(knowledgeArticleMapper.findPublishedArticles()).thenReturn(List.of(ticketPriorityArticle()));
+
+        AiAskDTO askDTO = new AiAskDTO();
+        askDTO.setQuestion(question);
+
+        AiAnswerVO answer = aiAssistantService.ask(askDTO);
+
+        assertThat(answer.getSourceType()).isEqualTo("ARTICLE");
+        assertThat(answer.getAnswer()).containsIgnoringCase("P1");
+        assertThat(answer.getAnswer()).containsIgnoringCase("P2");
+        assertThat(answer.getAnswer()).containsIgnoringCase("P3");
+        assertThat(answer.getAnswer()).containsIgnoringCase("Decision Criteria");
+        assertThat(answer.getAnswer()).doesNotContainIgnoringCase("I do not have enough reliable knowledge");
+        assertCleanUserAnswer(answer.getAnswer());
+        verify(webEvidenceService, never()).searchAndStoreEvidence(any(), any());
         verify(aiQuestionLogMapper).insert(any());
     }
 
@@ -297,6 +318,29 @@ class AiAssistantServiceImplTest {
         return article;
     }
 
+    private KnowledgeArticle ticketPriorityArticle() {
+        KnowledgeArticle article = new KnowledgeArticle();
+        article.setId(15L);
+        article.setTitle("CloudOps Ticket Operations Knowledge Pack");
+        article.setCategory("Ticket Rules");
+        article.setContent("""
+                Category: Ticket Rules
+                Primary keywords: ticket, priority, sla, routing, owner, p1, p2, p3, escalation
+                Purpose
+                Use this playbook when support must decide severity, owner, and user-facing communication.
+                Priority rules
+                P1: Production outage, data loss risk, authentication outage, security-sensitive issue, or broad customer impact.
+                P2: Major feature degraded, repeated team-level issue, document upload unavailable for a group, or important workaround required.
+                P3: Single-user issue, informational request, minor UI problem, or non-urgent knowledge request.
+                SLA model
+                P1: immediate response and frequent updates.
+                P2: same business day response.
+                P3: normal queue handling.
+                """);
+        article.setStatus("PUBLISHED");
+        return article;
+    }
+
     private WebEvidence nbfWebEvidence(String question) {
         WebEvidence evidence = new WebEvidence();
         evidence.setId(31L);
@@ -381,6 +425,7 @@ class AiAssistantServiceImplTest {
         assertThat(answer).doesNotContainIgnoringCase("Use this runbook");
         assertThat(answer).doesNotContainIgnoringCase("Primary keywords");
         assertThat(answer).doesNotContainIgnoringCase("Purpose:");
+        assertThat(answer).doesNotContainIgnoringCase("Use this playbook");
         assertThat(answer).doesNotContainIgnoringCase("Category:");
         assertThat(answer).doesNotContainIgnoringCase("Knowledge Candidate");
         assertThat(answer).doesNotContainIgnoringCase("Observed answer");

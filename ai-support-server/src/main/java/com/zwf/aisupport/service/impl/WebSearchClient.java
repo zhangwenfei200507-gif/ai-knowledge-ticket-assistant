@@ -248,7 +248,6 @@ public class WebSearchClient {
             }
             queries.add(task + " official documentation");
         }
-        addDomainQueryHints(trimmed, queries);
         queries.add(trimmed);
         queries.add(trimmed + " official documentation");
         if (isTroubleshootingQuery(trimmed)) {
@@ -276,22 +275,6 @@ public class WebSearchClient {
             tasks.add(normalized);
         }
         return tasks.stream().limit(4).toList();
-    }
-
-    private void addDomainQueryHints(String question, LinkedHashSet<String> queries) {
-        String normalized = TextUtil.safeLower(question);
-        if (normalized.contains("arg") && normalized.contains("env") && normalized.contains("dockerfile")) {
-            queries.add("Dockerfile ARG ENV official documentation");
-            queries.add("Docker build arguments environment variables official documentation");
-        }
-        if (normalized.contains("dockerignore") || normalized.contains(".dockerignore")) {
-            queries.add(".dockerignore Docker build context official documentation");
-            queries.add("Docker ignore file build context official documentation");
-        }
-        if (normalized.contains("buildkit")) {
-            queries.add("Docker BuildKit build performance official documentation");
-            queries.add("Docker BuildKit concurrent build graph cache official documentation");
-        }
     }
 
     private boolean isTroubleshootingQuery(String question) {
