@@ -164,6 +164,56 @@ class AiAssistantServiceImplTest {
     }
 
     @Test
+    void askTreatsHowDoesImproveQuestionAsConceptExplanation() {
+        String question = "How does Docker BuildKit improve image build performance?";
+        when(documentChunkMapper.searchChunks(question)).thenReturn(List.of());
+        when(knowledgeArticleMapper.findPublishedArticles()).thenReturn(List.of());
+        when(webEvidenceService.searchAndStoreEvidence(question, 4L)).thenReturn(Optional.of(buildKitWebEvidence(question)));
+
+        AiAskDTO askDTO = new AiAskDTO();
+        askDTO.setQuestion(question);
+
+        AiAnswerVO answer = aiAssistantService.ask(askDTO);
+
+        assertThat(answer.getSourceType()).isEqualTo("WEB");
+        assertThat(answer.getAnswer()).containsIgnoringCase("dependency graph");
+        assertThat(answer.getAnswer()).containsIgnoringCase("parallel");
+        assertThat(answer.getAnswer()).containsIgnoringCase("cache");
+        assertThat(answer.getAnswer()).containsIgnoringCase("When To Use");
+        assertThat(answer.getAnswer()).doesNotContainIgnoringCase("Likely Causes");
+        assertThat(answer.getAnswer()).doesNotContainIgnoringCase("Checks");
+        assertThat(answer.getAnswer()).doesNotContainIgnoringCase("Fix");
+        assertThat(answer.getAnswer()).doesNotContainIgnoringCase("Verify the exact configuration");
+        assertCleanUserAnswer(answer.getAnswer());
+        verify(webEvidenceService).searchAndStoreEvidence(question, 4L);
+        verify(aiQuestionLogMapper).insert(any());
+    }
+
+    @Test
+    void askAnswersCompoundConceptQuestionFromWebWithoutFallingBackToNone() {
+        String question = "What is the difference between ARG and ENV in a Dockerfile? why should I use a .dockerignore file when building Docker images?";
+        when(documentChunkMapper.searchChunks(question)).thenReturn(List.of());
+        when(knowledgeArticleMapper.findPublishedArticles()).thenReturn(List.of());
+        when(webEvidenceService.searchAndStoreEvidence(question, 4L)).thenReturn(Optional.of(dockerBuildBasicsWebEvidence(question)));
+
+        AiAskDTO askDTO = new AiAskDTO();
+        askDTO.setQuestion(question);
+
+        AiAnswerVO answer = aiAssistantService.ask(askDTO);
+
+        assertThat(answer.getSourceType()).isEqualTo("WEB");
+        assertThat(answer.getAnswer()).containsIgnoringCase("ARG");
+        assertThat(answer.getAnswer()).containsIgnoringCase("ENV");
+        assertThat(answer.getAnswer()).containsIgnoringCase(".dockerignore");
+        assertThat(answer.getAnswer()).containsIgnoringCase("build context");
+        assertThat(answer.getAnswer()).containsIgnoringCase("When To Use");
+        assertThat(answer.getAnswer()).doesNotContainIgnoringCase("I do not have enough reliable knowledge");
+        assertCleanUserAnswer(answer.getAnswer());
+        verify(webEvidenceService).searchAndStoreEvidence(question, 4L);
+        verify(aiQuestionLogMapper).insert(any());
+    }
+
+    @Test
     void askSynthesizesDockerfileInstructionAnswerWithoutKeyAnswerFragment() {
         String question = "What is the purpose of the WORKDIR, COPY, RUN, EXPOSE, and CMD instructions in this Dockerfile, and how do they help build and run the Python application inside a container?";
         when(documentChunkMapper.searchChunks(question)).thenReturn(List.of());
@@ -280,6 +330,42 @@ class AiAssistantServiceImplTest {
                 You can selectively copy artifacts from one stage to another, leaving behind everything you do not want in the final image.
                 The final image can contain only the runtime artifacts instead of the full build toolchain.
                 The docker build --target build command can stop at a named stage for debugging.
+                """);
+        return evidence;
+    }
+
+    private WebEvidence buildKitWebEvidence(String question) {
+        WebEvidence evidence = new WebEvidence();
+        evidence.setId(33L);
+        evidence.setQuestion(question);
+        evidence.setTitle("Docker BuildKit");
+        evidence.setDomain("docs.docker.com");
+        evidence.setUrl("https://docs.docker.com/build/buildkit/");
+        evidence.setCredibilityScore(new BigDecimal("0.95"));
+        evidence.setStatus("NEEDS_REVIEW");
+        evidence.setExtractedContent("""
+                BuildKit provides improved functionality and improves builds' performance over the legacy builder.
+                BuildKit uses a fully concurrent build graph solver.
+                It can run build steps in parallel when possible and optimize out commands that do not have an impact on the final result.
+                BuildKit can also improve cache behavior for repeated Docker image builds.
+                """);
+        return evidence;
+    }
+
+    private WebEvidence dockerBuildBasicsWebEvidence(String question) {
+        WebEvidence evidence = new WebEvidence();
+        evidence.setId(34L);
+        evidence.setQuestion(question);
+        evidence.setTitle("Dockerfile ARG ENV and Dockerignore");
+        evidence.setDomain("docs.docker.com");
+        evidence.setUrl("https://docs.docker.com/reference/dockerfile/");
+        evidence.setCredibilityScore(new BigDecimal("0.95"));
+        evidence.setStatus("NEEDS_REVIEW");
+        evidence.setExtractedContent("""
+                ARG defines a variable that users can pass at build-time to the builder with the docker build command.
+                ENV sets environment variables that are available to subsequent Dockerfile instructions and can persist in containers created from the image.
+                A .dockerignore file excludes files and directories from the build context before it is sent to the builder.
+                Excluding unnecessary files can make builds faster, improve cache behavior, and avoid sending local secrets or generated artifacts.
                 """);
         return evidence;
     }

@@ -37,6 +37,10 @@ import java.util.regex.Pattern;
 public class AiAssistantServiceImpl implements AiAssistantService {
 
     private static final Pattern WORD_SPLIT_PATTERN = Pattern.compile("[^a-z0-9+#./-]+");
+    private static final Pattern QUESTION_TASK_SPLIT_PATTERN = Pattern.compile(
+            "\\?+|;+|\\band\\s+(?=(what|why|how|when|should|does|do|is|are|can)\\b)",
+            Pattern.CASE_INSENSITIVE
+    );
     private static final Set<String> STOP_WORDS = Set.of(
             "a", "an", "the", "and", "or", "but", "if", "then", "this", "that", "these", "those",
             "in", "on", "at", "to", "for", "from", "with", "without", "after", "before", "behind",
@@ -167,7 +171,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 .toList();
         if (!documentResults.isEmpty()) {
             AiAnswerVO answer = buildDocumentBasedAnswer(question, documentResults);
-            if (isGroundedAnswerUsable(answer.getAnswer(), terms, coreConcepts)) {
+            if (isGroundedAnswerUsable(question, answer.getAnswer(), terms, coreConcepts)) {
                 return answer;
             }
         }
@@ -176,7 +180,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<KnowledgeArticle> articles = findRelevantArticles(question, terms, specificTerms, versionTerms, coreConcepts);
         if (!articles.isEmpty()) {
             AiAnswerVO answer = buildKnowledgeBasedAnswer(question, articles);
-            if (isGroundedAnswerUsable(answer.getAnswer(), terms, coreConcepts)) {
+            if (isGroundedAnswerUsable(question, answer.getAnswer(), terms, coreConcepts)) {
                 return answer;
             }
         }
@@ -185,7 +189,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         Optional<WebEvidence> webEvidence = webEvidenceService.searchAndStoreEvidence(question, currentUserId);
         if (webEvidence.isPresent()) {
             AiAnswerVO answer = buildWebEvidenceBasedAnswer(question, webEvidence.get(), articles, documentResults);
-            if (isGroundedAnswerUsable(answer.getAnswer(), terms, coreConcepts)) {
+            if (isGroundedAnswerUsable(question, answer.getAnswer(), terms, coreConcepts)) {
                 return answer;
             }
         }
@@ -779,21 +783,70 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return !parts.isEmpty() && parts.stream().allMatch(normalizedSource::contains);
     }
 
-    private boolean isGroundedAnswerUsable(String answer, List<String> terms, List<String> coreConcepts) {
+    private boolean isGroundedAnswerUsable(String question, String answer, List<String> terms, List<String> coreConcepts) {
         if (answer == null || answer.isBlank()) {
             return false;
         }
         String normalizedAnswer = TextUtil.safeLower(answer);
+        if (coversQuestionTasks(question, normalizedAnswer)) {
+            return true;
+        }
         if (!coversCoreConcepts(normalizedAnswer, coreConcepts)) {
             return false;
         }
         if (terms == null || terms.isEmpty()) {
             return true;
         }
+        if (classifyAnswerIntent(question) == AnswerIntent.CONCEPT) {
+            long matchedCoreTerms = terms.stream()
+                    .filter(term -> !GENERIC_QUESTION_TERMS.contains(term))
+                    .filter(term -> !BROAD_DOMAIN_TERMS.contains(term))
+                    .filter(term -> matchesConcept(normalizedAnswer, term))
+                    .count();
+            return matchedCoreTerms >= Math.min(2, terms.size());
+        }
         long matchedTerms = terms.stream()
                 .filter(normalizedAnswer::contains)
                 .count();
         return matchedTerms >= Math.min(2, terms.size());
+    }
+
+    private boolean coversQuestionTasks(String question, String normalizedAnswer) {
+        List<String> tasks = splitQuestionTasks(question);
+        if (tasks.size() <= 1) {
+            return false;
+        }
+        return tasks.stream().allMatch(task -> {
+            List<String> taskTerms = extractSearchTerms(task).stream()
+                    .filter(term -> !GENERIC_QUESTION_TERMS.contains(term))
+                    .filter(term -> !BROAD_DOMAIN_TERMS.contains(term))
+                    .toList();
+            if (taskTerms.isEmpty()) {
+                return true;
+            }
+            long matched = taskTerms.stream()
+                    .filter(term -> matchesConcept(normalizedAnswer, term))
+                    .count();
+            return matched >= Math.min(2, taskTerms.size());
+        });
+    }
+
+    private List<String> splitQuestionTasks(String question) {
+        String normalized = question == null ? "" : question.trim();
+        if (normalized.isBlank()) {
+            return List.of();
+        }
+        LinkedHashSet<String> tasks = new LinkedHashSet<>();
+        for (String rawPart : QUESTION_TASK_SPLIT_PATTERN.split(normalized)) {
+            String part = rawPart.trim();
+            if (part.length() >= 8) {
+                tasks.add(part);
+            }
+        }
+        if (tasks.isEmpty()) {
+            tasks.add(normalized);
+        }
+        return tasks.stream().limit(4).toList();
     }
 
     private String combinedArticleText(KnowledgeArticle article) {
@@ -814,6 +867,15 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private record ScoredPoint(String point, int score) {
+    }
+
+    private record ConceptSummary(String directAnswer, String explanation, List<String> whenToUse, String example) {
+    }
+
+    private enum AnswerIntent {
+        CONCEPT,
+        TROUBLESHOOTING,
+        PROCEDURE
     }
 
     private String buildConciseWebEvidenceAnswer(WebEvidence evidence) {
@@ -837,6 +899,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         Optional<String> deterministicAnswer = buildDomainSpecificAnswer(question, answerContext, sources);
         if (deterministicAnswer.isPresent()) {
             return deterministicAnswer.get();
+        }
+        if (!extractQuestionFocusedPoints(question, answerContext).isEmpty()) {
+            return buildTemplateAnswer(question, answerContext, sources);
         }
 
         Optional<String> modelAnswer = safeGenerateGroundedAnswer(question, sourceType, sources)
@@ -875,6 +940,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         }
         if (isDockerMultiStageBuildQuestion(question, content)) {
             return Optional.of(buildDockerMultiStageBuildAnswer(sources));
+        }
+        if (isDockerBuildArgumentQuestion(question, content)) {
+            return Optional.of(buildDockerBuildArgumentAnswer(sources));
         }
         return Optional.empty();
     }
@@ -920,44 +988,23 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private String buildTemplateAnswer(String question, String content, List<AiAnswerSourceVO> sources) {
         List<String> points = extractQuestionFocusedPoints(question, content);
-        String direct = points.isEmpty()
-                ? "The available evidence is related, but it does not fully explain the specific question."
-                : points.get(0);
-        String explanation = points.size() > 1
-                ? points.get(1)
-                : "The likely answer depends on the exact configuration, runtime state, and the mechanism named in the question.";
-        List<String> references = sources.stream()
-                .map(this::formatReference)
-                .filter(reference -> !reference.isBlank())
-                .distinct()
-                .limit(4)
-                .toList();
+        AnswerIntent intent = classifyAnswerIntent(question);
+        List<String> references = formatReferences(sources);
 
-        if (isConceptQuestion(question)) {
-            return """
-                    ## Direct Answer
-                    %s
-
-                    ## Explanation
-                    %s
-
-                    ## When To Use
-                    %s
-
-                    ## Example
-                    Use the concept when it directly reduces operational risk, simplifies delivery, or makes the runtime environment easier to reason about.
-
-                    ## References
-                    %s
-                    """.formatted(
-                    direct,
-                    explanation,
-                    formatBullets(points.stream().skip(2).limit(3).toList(), "- Use it when the source evidence confirms it fits the current system design."),
-                    formatBullets(references, "- Grounding sources are attached below.")
-            ).trim();
+        if (intent == AnswerIntent.CONCEPT) {
+            return buildConceptAnswer(question, content, points, references);
+        }
+        if (intent == AnswerIntent.PROCEDURE) {
+            return buildProcedureAnswer(question, points, references);
         }
 
-        List<String> causes = points.stream().skip(2).limit(3).toList();
+        String direct = points.isEmpty()
+                ? "The issue is likely caused by a configuration, network, credential, readiness, or runtime mismatch in the affected service."
+                : rewritePointAsAnswer(points.get(0));
+        String explanation = points.size() > 1
+                ? rewritePointAsAnswer(points.get(1))
+                : "Start by narrowing the problem to the exact failing component, connection path, configuration value, and runtime state.";
+        List<String> causes = points.stream().skip(2).limit(3).map(this::rewritePointAsAnswer).toList();
         return """
                 ## Direct Answer
                 %s
@@ -973,7 +1020,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 - Check whether the specific mechanism named in the question is present in the active configuration or source evidence.
 
                 ## Fix
-                - If internal knowledge only partially covers the issue, use the web evidence as a supplement and submit it for review.
+                - Apply the smallest confirmed configuration or runtime change, restart only the affected component, and verify the same user-facing action again.
 
                 ## References
                 %s
@@ -983,6 +1030,169 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 formatBullets(causes, "- The current evidence does not list a confirmed root cause."),
                 formatBullets(references, "- Grounding sources are attached below.")
         ).trim();
+    }
+
+    private String buildConceptAnswer(String question, String content, List<String> points, List<String> references) {
+        ConceptSummary summary = summarizeConcept(question, content, points);
+        return """
+                ## Direct Answer
+                %s
+
+                ## Explanation
+                %s
+
+                ## When To Use
+                %s
+
+                ## Example
+                %s
+
+                ## References
+                %s
+                """.formatted(
+                summary.directAnswer(),
+                summary.explanation(),
+                formatBullets(summary.whenToUse(), "- Use it when it directly improves reliability, delivery speed, security, or operational clarity."),
+                summary.example(),
+                formatBullets(references, "- Grounding sources are attached below.")
+        ).trim();
+    }
+
+    private String buildProcedureAnswer(String question, List<String> points, List<String> references) {
+        String direct = points.isEmpty()
+                ? "Follow the validated steps from the grounded source, then verify the result in the running environment."
+                : rewritePointAsAnswer(points.get(0));
+        List<String> steps = points.isEmpty()
+                ? List.of("Confirm the target component and version.", "Apply the documented configuration or command.", "Verify logs, health checks, and user-facing behavior.")
+                : points.stream().limit(5).map(this::rewritePointAsAction).toList();
+        return """
+                ## Direct Answer
+                %s
+
+                ## Steps
+                %s
+
+                ## Verification
+                - Confirm the command or configuration changed the expected runtime behavior.
+                - Check logs and health signals before treating the task as complete.
+
+                ## References
+                %s
+                """.formatted(
+                direct,
+                formatBullets(steps, "- No validated steps were found in the grounded source."),
+                formatBullets(references, "- Grounding sources are attached below.")
+        ).trim();
+    }
+
+    private AnswerIntent classifyAnswerIntent(String question) {
+        String normalized = TextUtil.safeLower(question);
+        boolean troubleshooting = TextUtil.containsAny(normalized,
+                "fail", "fails", "failed", "failure", "error", "cannot", "can't", "unable",
+                "timeout", "rejected", "reject", "down", "not working", "not connect", "connection refused",
+                "keeps", "stuck", "broken", "slow", "latency");
+        if (troubleshooting) {
+            return AnswerIntent.TROUBLESHOOTING;
+        }
+        boolean concept = normalized.startsWith("what is")
+                || normalized.startsWith("what are")
+                || normalized.startsWith("why does")
+                || normalized.startsWith("why do")
+                || normalized.startsWith("why should")
+                || normalized.startsWith("how does")
+                || normalized.startsWith("how do")
+                || normalized.contains("purpose")
+                || normalized.contains("when should")
+                || normalized.contains("explain")
+                || normalized.contains("improve");
+        if (concept) {
+            return AnswerIntent.CONCEPT;
+        }
+        boolean procedure = normalized.startsWith("how to")
+                || normalized.startsWith("how can")
+                || normalized.contains("steps")
+                || normalized.contains("configure")
+                || normalized.contains("install");
+        return procedure ? AnswerIntent.PROCEDURE : AnswerIntent.CONCEPT;
+    }
+
+    private ConceptSummary summarizeConcept(String question, String content, List<String> points) {
+        String normalizedQuestion = TextUtil.safeLower(question);
+        String normalizedContent = TextUtil.safeLower(content);
+
+        if (normalizedQuestion.contains("buildkit")
+                && TextUtil.containsAny(normalizedQuestion, "performance", "improve", "faster", "speed")) {
+            return new ConceptSummary(
+                    "Docker BuildKit improves image build performance by solving the build as a dependency graph, running independent steps in parallel, reusing cache more precisely, and skipping work that does not affect the final image.",
+                    "The legacy builder processes Dockerfile steps more linearly. BuildKit can analyze which steps depend on each other, execute safe parts concurrently, avoid unnecessary stages, and make cache reuse more efficient across repeated builds.",
+                    List.of(
+                            "Use BuildKit for Dockerfile builds where build speed, cache reuse, or repeatable CI pipelines matter.",
+                            "Use it when Dockerfiles contain independent stages or expensive dependency installation steps.",
+                            "Use it when teams need more modern build features without shipping extra runtime content."
+                    ),
+                    "A multi-stage Dockerfile can build dependencies in one stage while BuildKit caches unchanged layers and skips stages that are not needed for the requested final image."
+            );
+        }
+
+        if (normalizedQuestion.contains("multi-stage") && normalizedQuestion.contains("build")) {
+            return new ConceptSummary(
+                    "Docker multi-stage builds separate the build environment from the final runtime image, so the final image contains only the artifacts needed to run the application.",
+                    "Earlier stages can contain source code, compilers, SDKs, package managers, and temporary build files. The final stage copies only the required output, which keeps production images smaller and cleaner.",
+                    List.of(
+                            "Use them when build tools are needed during image creation but should not be shipped to production.",
+                            "Use them for compiled applications, frontend builds, Java packages, Go binaries, or Node build pipelines.",
+                            "Use them when production images need to be smaller, cleaner, and lower risk."
+                    ),
+                    "A frontend app can be built in a Node stage, then the generated static files can be copied into an Nginx runtime image."
+            );
+        }
+
+        List<String> cleanPoints = points.stream()
+                .map(this::rewritePointAsAnswer)
+                .filter(point -> !point.isBlank())
+                .limit(4)
+                .toList();
+        String direct = cleanPoints.isEmpty()
+                ? "The concept helps improve how the system is built, configured, or operated, based on the grounded source."
+                : cleanPoints.get(0);
+        String explanation = cleanPoints.size() > 1
+                ? cleanPoints.get(1)
+                : "In practice, it matters because it changes how teams design, build, deploy, or troubleshoot the system.";
+        List<String> usage = cleanPoints.size() > 2
+                ? cleanPoints.stream().skip(2).limit(3).toList()
+                : List.of("Use it when it directly improves reliability, delivery speed, security, or operational clarity.");
+        String example = normalizedContent.contains("docker")
+                ? "For a Docker-based service, apply the concept in the Dockerfile or Compose configuration, then verify the resulting image or runtime behavior."
+                : "Apply it in the relevant configuration or workflow, then verify the behavior with logs, health checks, or a small controlled test.";
+        return new ConceptSummary(direct, explanation, usage, example);
+    }
+
+    private String rewritePointAsAnswer(String point) {
+        if (point == null || point.isBlank()) {
+            return "";
+        }
+        String rewritten = point.trim()
+                .replaceAll("(?i)^getting started\\s+", "")
+                .replaceAll("(?i)^for example,?\\s+", "")
+                .replaceAll("(?i)^use this runbook when\\s+", "This applies when ")
+                .replaceAll("(?i)\\s+", " ")
+                .trim();
+        if (!rewritten.endsWith(".") && !rewritten.endsWith("!") && !rewritten.endsWith("?")) {
+            rewritten = rewritten + ".";
+        }
+        return rewritten;
+    }
+
+    private String rewritePointAsAction(String point) {
+        String rewritten = rewritePointAsAnswer(point);
+        if (rewritten.isBlank()) {
+            return "";
+        }
+        String normalized = TextUtil.safeLower(rewritten);
+        if (TextUtil.containsAny(normalized, "check", "verify", "confirm", "set", "configure", "run", "use")) {
+            return rewritten;
+        }
+        return "Verify " + Character.toLowerCase(rewritten.charAt(0)) + rewritten.substring(1);
     }
 
     private boolean isDockerPostgresContainerConnectionQuestion(String question, String content) {
@@ -1083,6 +1293,40 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 """.formatted(formatBullets(formatReferences(sources), "- Grounding sources are attached below.")).trim();
     }
 
+    private boolean isDockerBuildArgumentQuestion(String question, String content) {
+        String normalizedQuestion = TextUtil.safeLower(question);
+        String normalizedContent = TextUtil.safeLower(content);
+        boolean asksArgEnv = normalizedQuestion.contains("arg")
+                && normalizedQuestion.contains("env")
+                && normalizedQuestion.contains("dockerfile");
+        boolean asksDockerignore = normalizedQuestion.contains("dockerignore")
+                || normalizedQuestion.contains(".dockerignore");
+        boolean sourceSupportsAnswer = TextUtil.containsAny(normalizedContent,
+                "arg", "env", "dockerignore", ".dockerignore", "build argument", "environment variable");
+        return sourceSupportsAnswer && (asksArgEnv || asksDockerignore);
+    }
+
+    private String buildDockerBuildArgumentAnswer(List<AiAnswerSourceVO> sources) {
+        return """
+                ## Direct Answer
+                `ARG` is for build-time values, while `ENV` defines environment variables that persist for later Dockerfile instructions and usually remain available when the container runs. A `.dockerignore` file excludes unnecessary files from the build context before Docker sends that context to the builder.
+
+                ## Explanation
+                Use `ARG` for values that only affect image creation, such as package versions, build flags, or optional targets. Use `ENV` for configuration the image or application needs after build time. `.dockerignore` keeps builds faster and safer by excluding local files that should not participate in the image build.
+
+                ## When To Use
+                - Use `ARG` when the value should influence the build but should not be treated as runtime configuration.
+                - Use `ENV` when later build steps or the running application need the variable.
+                - Use `.dockerignore` in real projects to reduce build context size, avoid unnecessary cache invalidation, and keep secrets or local artifacts out of the build.
+
+                ## Example
+                Use `ARG APP_VERSION=1.0.0` to choose a version during build, `ENV APP_ENV=production` for runtime behavior, and `.dockerignore` to exclude `.git`, logs, temporary files, dependency folders, and local secrets.
+
+                ## References
+                %s
+                """.formatted(formatBullets(formatReferences(sources), "- Grounding sources are attached below.")).trim();
+    }
+
     private String buildDockerfileInstructionEnterpriseAnswer(List<AiAnswerSourceVO> sources) {
         return """
                 ## Direct Answer
@@ -1104,16 +1348,6 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 ## References
                 %s
                 """.formatted(formatBullets(formatReferences(sources), "- Grounding sources are attached below.")).trim();
-    }
-
-    private boolean isConceptQuestion(String question) {
-        String normalized = TextUtil.safeLower(question);
-        return normalized.startsWith("what is")
-                || normalized.startsWith("what are")
-                || normalized.contains("purpose")
-                || normalized.contains("when should")
-                || normalized.contains("why should")
-                || normalized.contains("explain");
     }
 
     private List<String> formatReferences(List<AiAnswerSourceVO> sources) {

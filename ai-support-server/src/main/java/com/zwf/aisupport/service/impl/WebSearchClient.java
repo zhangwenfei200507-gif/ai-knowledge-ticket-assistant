@@ -236,20 +236,69 @@ public class WebSearchClient {
 
     private List<String> buildQueries(String question) {
         String trimmed = clean(question);
-        String technicalTerms = extractTechnicalQuery(trimmed);
         LinkedHashSet<String> queries = new LinkedHashSet<>();
-        if (!technicalTerms.isBlank()) {
-            queries.add(technicalTerms + " official documentation");
-            queries.add(technicalTerms + " troubleshooting");
-            queries.add(technicalTerms + " specification");
+        for (String task : splitQuestionTasks(trimmed)) {
+            String technicalTerms = extractTechnicalQuery(task);
+            if (!technicalTerms.isBlank()) {
+                queries.add(technicalTerms + " official documentation");
+                queries.add(technicalTerms + " specification");
+                if (isTroubleshootingQuery(task)) {
+                    queries.add(technicalTerms + " troubleshooting");
+                }
+            }
+            queries.add(task + " official documentation");
         }
+        addDomainQueryHints(trimmed, queries);
         queries.add(trimmed);
         queries.add(trimmed + " official documentation");
-        queries.add(trimmed + " CloudOps troubleshooting");
+        if (isTroubleshootingQuery(trimmed)) {
+            queries.add(trimmed + " CloudOps troubleshooting");
+        }
         return queries.stream()
                 .filter(query -> query.length() >= 8)
-                .limit(5)
+                .limit(10)
                 .toList();
+    }
+
+    private List<String> splitQuestionTasks(String question) {
+        String normalized = clean(question);
+        if (normalized.isBlank()) {
+            return List.of();
+        }
+        LinkedHashSet<String> tasks = new LinkedHashSet<>();
+        for (String part : normalized.split("\\?+|;+|\\band\\s+(?=(what|why|how|when|should|does|do|is|are|can)\\b)")) {
+            String task = clean(part);
+            if (task.length() >= 8) {
+                tasks.add(task);
+            }
+        }
+        if (tasks.isEmpty()) {
+            tasks.add(normalized);
+        }
+        return tasks.stream().limit(4).toList();
+    }
+
+    private void addDomainQueryHints(String question, LinkedHashSet<String> queries) {
+        String normalized = TextUtil.safeLower(question);
+        if (normalized.contains("arg") && normalized.contains("env") && normalized.contains("dockerfile")) {
+            queries.add("Dockerfile ARG ENV official documentation");
+            queries.add("Docker build arguments environment variables official documentation");
+        }
+        if (normalized.contains("dockerignore") || normalized.contains(".dockerignore")) {
+            queries.add(".dockerignore Docker build context official documentation");
+            queries.add("Docker ignore file build context official documentation");
+        }
+        if (normalized.contains("buildkit")) {
+            queries.add("Docker BuildKit build performance official documentation");
+            queries.add("Docker BuildKit concurrent build graph cache official documentation");
+        }
+    }
+
+    private boolean isTroubleshootingQuery(String question) {
+        String normalized = TextUtil.safeLower(question);
+        return TextUtil.containsAny(normalized,
+                "fail", "fails", "failed", "failure", "error", "cannot", "can't", "unable",
+                "timeout", "rejected", "down", "not working", "connection refused", "stuck");
     }
 
     private String extractTechnicalQuery(String question) {
