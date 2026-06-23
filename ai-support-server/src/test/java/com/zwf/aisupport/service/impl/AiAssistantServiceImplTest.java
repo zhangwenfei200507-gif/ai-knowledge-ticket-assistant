@@ -95,6 +95,7 @@ class AiAssistantServiceImplTest {
         assertThat(answer.getSourceType()).isEqualTo("WEB");
         assertThat(answer.getAnswer()).containsIgnoringCase("nbf");
         assertThat(answer.getAnswer()).containsIgnoringCase("not before");
+        assertCleanUserAnswer(answer.getAnswer());
         verify(webEvidenceService).searchAndStoreEvidence(question, 4L);
         verify(aiQuestionLogMapper).insert(any());
     }
@@ -114,6 +115,71 @@ class AiAssistantServiceImplTest {
         assertThat(answer.getAnswer()).containsIgnoringCase("localhost");
         assertThat(answer.getAnswer()).containsIgnoringCase("service name");
         assertThat(answer.getAnswer()).containsIgnoringCase("container");
+        assertCleanUserAnswer(answer.getAnswer());
+        verify(webEvidenceService, never()).searchAndStoreEvidence(any(), any());
+        verify(aiQuestionLogMapper).insert(any());
+    }
+
+    @Test
+    void askSynthesizesDockerPostgresConnectionAnswerWithoutRunbookNoise() {
+        String question = "Why does my backend container fail to connect to PostgreSQL even though the database container is running?";
+        when(documentChunkMapper.searchChunks(question)).thenReturn(List.of());
+        when(knowledgeArticleMapper.findPublishedArticles()).thenReturn(List.of(postgresRunbookArticle(), dockerComposeArticle()));
+
+        AiAskDTO askDTO = new AiAskDTO();
+        askDTO.setQuestion(question);
+
+        AiAnswerVO answer = aiAssistantService.ask(askDTO);
+
+        assertThat(answer.getSourceType()).isEqualTo("ARTICLE");
+        assertThat(answer.getAnswer()).containsIgnoringCase("service name");
+        assertThat(answer.getAnswer()).containsIgnoringCase("localhost");
+        assertThat(answer.getAnswer()).containsIgnoringCase("DB_HOST");
+        assertCleanUserAnswer(answer.getAnswer());
+        verify(webEvidenceService, never()).searchAndStoreEvidence(any(), any());
+        verify(aiQuestionLogMapper).insert(any());
+    }
+
+    @Test
+    void askSynthesizesDockerMultiStageWebAnswerAsConceptExplanation() {
+        String question = "What is the purpose of Docker multi-stage builds, and when should they be used?";
+        when(documentChunkMapper.searchChunks(question)).thenReturn(List.of());
+        when(knowledgeArticleMapper.findPublishedArticles()).thenReturn(List.of());
+        when(webEvidenceService.searchAndStoreEvidence(question, 4L)).thenReturn(Optional.of(multiStageWebEvidence(question)));
+
+        AiAskDTO askDTO = new AiAskDTO();
+        askDTO.setQuestion(question);
+
+        AiAnswerVO answer = aiAssistantService.ask(askDTO);
+
+        assertThat(answer.getSourceType()).isEqualTo("WEB");
+        assertThat(answer.getAnswer()).containsIgnoringCase("runtime image");
+        assertThat(answer.getAnswer()).containsIgnoringCase("When To Use");
+        assertThat(answer.getAnswer()).containsIgnoringCase("smaller");
+        assertThat(answer.getAnswer()).doesNotContainIgnoringCase("Common Causes");
+        assertThat(answer.getAnswer()).doesNotContainIgnoringCase("docker build --target");
+        assertCleanUserAnswer(answer.getAnswer());
+        verify(webEvidenceService).searchAndStoreEvidence(question, 4L);
+        verify(aiQuestionLogMapper).insert(any());
+    }
+
+    @Test
+    void askSynthesizesDockerfileInstructionAnswerWithoutKeyAnswerFragment() {
+        String question = "What is the purpose of the WORKDIR, COPY, RUN, EXPOSE, and CMD instructions in this Dockerfile, and how do they help build and run the Python application inside a container?";
+        when(documentChunkMapper.searchChunks(question)).thenReturn(List.of());
+        when(knowledgeArticleMapper.findPublishedArticles()).thenReturn(List.of(dockerfileArticle()));
+
+        AiAskDTO askDTO = new AiAskDTO();
+        askDTO.setQuestion(question);
+
+        AiAnswerVO answer = aiAssistantService.ask(askDTO);
+
+        assertThat(answer.getSourceType()).isEqualTo("ARTICLE");
+        assertThat(answer.getAnswer()).containsIgnoringCase("WORKDIR");
+        assertThat(answer.getAnswer()).containsIgnoringCase("COPY");
+        assertThat(answer.getAnswer()).containsIgnoringCase("EXPOSE");
+        assertThat(answer.getAnswer()).doesNotContainIgnoringCase("Key answer");
+        assertCleanUserAnswer(answer.getAnswer());
         verify(webEvidenceService, never()).searchAndStoreEvidence(any(), any());
         verify(aiQuestionLogMapper).insert(any());
     }
@@ -143,6 +209,39 @@ class AiAssistantServiceImplTest {
                 not localhost. localhost inside a container refers to that container itself.
                 Service names are resolved by Docker Compose DNS on the shared Compose network.
                 For example, an app container should connect to postgres:5432 instead of localhost:5432.
+                Backend containers should connect to PostgreSQL through the PostgreSQL service name and internal port.
+                """);
+        article.setStatus("PUBLISHED");
+        return article;
+    }
+
+    private KnowledgeArticle postgresRunbookArticle() {
+        KnowledgeArticle article = new KnowledgeArticle();
+        article.setId(13L);
+        article.setTitle("PostgreSQL Connection and Timeout Runbook");
+        article.setCategory("PostgreSQL");
+        article.setContent("""
+                Use this runbook when the application cannot connect to PostgreSQL.
+                Primary keywords: postgresql, postgres, database, connection timeout, max_connections.
+                Confirm the database container or server is running.
+                Check the connection string, port, credentials, and database readiness.
+                """);
+        article.setStatus("PUBLISHED");
+        return article;
+    }
+
+    private KnowledgeArticle dockerfileArticle() {
+        KnowledgeArticle article = new KnowledgeArticle();
+        article.setId(14L);
+        article.setTitle("Dockerfile Instruction Knowledge Pack");
+        article.setCategory("Docker");
+        article.setContent("""
+                Dockerfile instructions define the application image.
+                WORKDIR sets the default path for later commands.
+                COPY places the Python application files inside the image.
+                RUN installs dependencies during build time.
+                EXPOSE documents the port used by the application.
+                CMD defines the default command that starts the Python application in the container.
                 """);
         article.setStatus("PUBLISHED");
         return article;
@@ -166,10 +265,39 @@ class AiAssistantServiceImplTest {
         return evidence;
     }
 
+    private WebEvidence multiStageWebEvidence(String question) {
+        WebEvidence evidence = new WebEvidence();
+        evidence.setId(32L);
+        evidence.setQuestion(question);
+        evidence.setTitle("Docker Multi-stage Builds");
+        evidence.setDomain("docs.docker.com");
+        evidence.setUrl("https://docs.docker.com/build/building/multi-stage/");
+        evidence.setCredibilityScore(new BigDecimal("0.95"));
+        evidence.setStatus("NEEDS_REVIEW");
+        evidence.setExtractedContent("""
+                With multi-stage builds, you use multiple FROM statements in your Dockerfile.
+                Each FROM instruction can use a different base image, and each begins a new stage of the build.
+                You can selectively copy artifacts from one stage to another, leaving behind everything you do not want in the final image.
+                The final image can contain only the runtime artifacts instead of the full build toolchain.
+                The docker build --target build command can stop at a named stage for debugging.
+                """);
+        return evidence;
+    }
+
     private void authenticateAsAdmin() {
         CurrentUser currentUser = new CurrentUser(4L, "admin", "ADMIN");
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(currentUser, null);
         SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    private void assertCleanUserAnswer(String answer) {
+        assertThat(answer).doesNotContainIgnoringCase("Use this runbook");
+        assertThat(answer).doesNotContainIgnoringCase("Primary keywords");
+        assertThat(answer).doesNotContainIgnoringCase("Purpose:");
+        assertThat(answer).doesNotContainIgnoringCase("Category:");
+        assertThat(answer).doesNotContainIgnoringCase("Knowledge Candidate");
+        assertThat(answer).doesNotContainIgnoringCase("Observed answer");
+        assertThat(answer).doesNotContainIgnoringCase("Review this content before publishing");
     }
 }
