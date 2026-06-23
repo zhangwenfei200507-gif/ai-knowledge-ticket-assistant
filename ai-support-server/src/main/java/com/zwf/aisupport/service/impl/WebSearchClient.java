@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -50,12 +51,24 @@ public class WebSearchClient {
     }
 
     public Optional<WebEvidence> search(String question, Long userId) {
-        String query = buildQuery(question);
-        Optional<WebEvidence> instantAnswer = searchDuckDuckGoInstantAnswer(question, query, userId);
-        if (instantAnswer.isPresent()) {
-            return instantAnswer;
+        List<WebEvidence> evidenceCandidates = new ArrayList<>();
+        for (String query : buildQueries(question)) {
+            searchDuckDuckGoInstantAnswer(question, query, userId).ifPresent(evidenceCandidates::add);
+            searchDuckDuckGoHtml(question, query, userId).ifPresent(evidenceCandidates::add);
+            if (hasStrongOfficialCoverage(evidenceCandidates)) {
+                break;
+            }
         }
-        return searchDuckDuckGoHtml(question, query, userId);
+
+        if (evidenceCandidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        List<WebEvidence> ranked = evidenceCandidates.stream()
+                .sorted(Comparator.comparingInt((WebEvidence evidence) -> sourceQualityScore(evidence.getUrl(), evidence.getTitle(), evidence.getExtractedContent())).reversed())
+                .limit(3)
+                .toList();
+        return Optional.of(mergeEvidence(question, ranked, userId));
     }
 
     private Optional<WebEvidence> searchDuckDuckGoInstantAnswer(String question, String query, Long userId) {
@@ -221,17 +234,33 @@ public class WebSearchClient {
         return evidence;
     }
 
-    private String buildQuery(String question) {
+    private List<String> buildQueries(String question) {
         String trimmed = clean(question);
-        if (trimmed.toLowerCase(Locale.ROOT).contains("cloudops")
-                || trimmed.toLowerCase(Locale.ROOT).contains("kubernetes")
-                || trimmed.toLowerCase(Locale.ROOT).contains("redis")
-                || trimmed.toLowerCase(Locale.ROOT).contains("postgres")
-                || trimmed.toLowerCase(Locale.ROOT).contains("docker")
-                || trimmed.toLowerCase(Locale.ROOT).contains("jwt")) {
-            return trimmed;
+        String technicalTerms = extractTechnicalQuery(trimmed);
+        LinkedHashSet<String> queries = new LinkedHashSet<>();
+        if (!technicalTerms.isBlank()) {
+            queries.add(technicalTerms + " official documentation");
+            queries.add(technicalTerms + " troubleshooting");
+            queries.add(technicalTerms + " specification");
         }
-        return trimmed + " CloudOps troubleshooting official documentation";
+        queries.add(trimmed);
+        queries.add(trimmed + " official documentation");
+        queries.add(trimmed + " CloudOps troubleshooting");
+        return queries.stream()
+                .filter(query -> query.length() >= 8)
+                .limit(5)
+                .toList();
+    }
+
+    private String extractTechnicalQuery(String question) {
+        List<String> terms = Arrays.stream(TextUtil.safeLower(question).split("[^a-z0-9+#./-]+"))
+                .map(String::trim)
+                .filter(term -> term.length() >= 3)
+                .filter(term -> !TextUtil.containsAny(term, "why", "what", "how", "because", "even", "though", "not", "has", "have", "does", "with", "without", "first"))
+                .distinct()
+                .limit(8)
+                .toList();
+        return String.join(" ", terms);
     }
 
     private String get(String url) throws Exception {
@@ -382,6 +411,13 @@ public class WebSearchClient {
     }
 
     private BigDecimal scoreDomain(String url) {
+        int quality = sourceQualityScore(url, "", "");
+        if (quality >= 90) {
+            return new BigDecimal("0.96");
+        }
+        if (quality >= 75) {
+            return new BigDecimal("0.92");
+        }
         String domain = domain(url);
         if (domain.endsWith(".io") || domain.endsWith(".org") || domain.endsWith(".dev")) {
             return new BigDecimal("0.88");
@@ -393,6 +429,64 @@ public class WebSearchClient {
             return new BigDecimal("0.82");
         }
         return new BigDecimal("0.75");
+    }
+
+    private boolean hasStrongOfficialCoverage(List<WebEvidence> evidenceCandidates) {
+        return evidenceCandidates.stream()
+                .filter(evidence -> sourceQualityScore(evidence.getUrl(), evidence.getTitle(), evidence.getExtractedContent()) >= 90)
+                .count() >= 2;
+    }
+
+    private WebEvidence mergeEvidence(String question, List<WebEvidence> ranked, Long userId) {
+        WebEvidence primary = ranked.get(0);
+        if (ranked.size() == 1) {
+            return primary;
+        }
+
+        StringBuilder combined = new StringBuilder();
+        for (WebEvidence evidence : ranked) {
+            combined.append("Source: ")
+                    .append(blankToDefault(evidence.getDomain(), "web evidence"))
+                    .append("\n")
+                    .append(evidence.getExtractedContent())
+                    .append("\n\n");
+        }
+
+        String mergedContent = TextUtil.limit(combined.toString().trim(), MAX_CONTENT_LENGTH);
+        primary.setQuestion(question);
+        primary.setQuery(ranked.stream().map(WebEvidence::getQuery).distinct().reduce((left, right) -> left + " | " + right).orElse(primary.getQuery()));
+        primary.setSnippet(TextUtil.limit(ranked.stream().map(WebEvidence::getSnippet).distinct().reduce((left, right) -> left + "\n" + right).orElse(primary.getSnippet()), 1200));
+        primary.setExtractedContent(mergedContent);
+        primary.setSuggestedArticleTitle(TextUtil.limit(suggestTitle(question), 150));
+        primary.setSuggestedArticleContent(buildSuggestedArticle(question, mergedContent, primary.getUrl(), primary.getDomain()));
+        primary.setCredibilityScore(scoreDomain(primary.getUrl()));
+        primary.setCreatedBy(userId);
+        return primary;
+    }
+
+    private int sourceQualityScore(String url, String title, String text) {
+        String normalizedUrl = TextUtil.safeLower(url);
+        String normalizedTitle = TextUtil.safeLower(title);
+        String normalizedText = TextUtil.safeLower(text);
+        if (isRejectedEvidencePage(normalizedUrl, normalizedTitle, normalizedText)) {
+            return 0;
+        }
+        if (isOfficialDocumentation(normalizedUrl)) {
+            return 100;
+        }
+        if (isRfcOrStandard(normalizedUrl, normalizedTitle)) {
+            return 96;
+        }
+        if (TextUtil.containsAny(normalizedUrl, "github.com/", "github.io", "developer.", "api.")) {
+            return 90;
+        }
+        if (isHighQualityEngineeringBlog(normalizedUrl, normalizedText)) {
+            return 78;
+        }
+        if (isTechnicalArticle(normalizedUrl, normalizedTitle, normalizedText)) {
+            return 68;
+        }
+        return hasConcreteTechnicalContent(normalizedText) ? 55 : 20;
     }
 
     private String domain(String url) {
@@ -408,7 +502,35 @@ public class WebSearchClient {
     }
 
     private String suggestTitle(String question) {
-        return "External Evidence: " + shortTitle(question);
+        String title = extractTechnicalQuery(question);
+        if (title.isBlank()) {
+            title = shortTitle(question);
+        }
+        String normalized = Arrays.stream(title.split("\\s+"))
+                .filter(term -> term.length() >= 2)
+                .limit(9)
+                .reduce((left, right) -> left + " " + right)
+                .orElse(shortTitle(question));
+        return toTitleCase(normalized);
+    }
+
+    private String toTitleCase(String value) {
+        StringBuilder builder = new StringBuilder();
+        for (String part : clean(value).split("\\s+")) {
+            if (part.isBlank()) {
+                continue;
+            }
+            if (!builder.isEmpty()) {
+                builder.append(' ');
+            }
+            if (part.length() <= 4 && part.equals(part.toLowerCase(Locale.ROOT))) {
+                builder.append(part.toUpperCase(Locale.ROOT));
+            } else {
+                builder.append(part.substring(0, 1).toUpperCase(Locale.ROOT))
+                        .append(part.substring(1));
+            }
+        }
+        return builder.toString();
     }
 
     private String shortTitle(String text) {

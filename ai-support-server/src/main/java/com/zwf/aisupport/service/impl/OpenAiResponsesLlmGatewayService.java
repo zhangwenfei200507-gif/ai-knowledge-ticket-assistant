@@ -143,7 +143,13 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
                     Prefer practical, operational answers: exact checks, commands, configuration areas, likely causes, safe next steps, and escalation signals.
                     If the evidence is weak or only partly related, say what is uncertain and separate verified guidance from assumptions.
                     Answer in the same language as the user's question when possible.
-                    Keep the user-facing answer short and decisive: 3 to 5 bullets maximum.
+                    Use this exact answer structure:
+                    ## Direct Answer
+                    ## Explanation
+                    ## Common Causes
+                    ## Recommended Actions
+                    ## References
+                    Keep the user-facing answer concise and complete. Prefer 1 short paragraph or 2 to 4 bullets per section.
                     Do not paste long evidence, raw article text, SQL tables, or review notes into the answer.
                     Use a table only when it makes the answer clearer; keep it to 2 to 4 columns with short cell text.
                     Source names are optional and must stay on one short final line when useful.
@@ -162,7 +168,13 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
                 Never expose internal article titles, chunk names, runbook names, SOP names, retrieval metadata, candidate labels, or approval workflow details.
                 Prefer practical, operational answers: first checks, commands or configuration areas, likely cause, and escalation signals.
                 Answer in the same language as the user's question when possible.
-                Keep the user-facing answer short and decisive: 3 to 5 bullets maximum.
+                Use this exact answer structure:
+                ## Direct Answer
+                ## Explanation
+                ## Common Causes
+                ## Recommended Actions
+                ## References
+                Keep the user-facing answer concise and complete. Prefer 1 short paragraph or 2 to 4 bullets per section.
                 Do not paste long evidence, raw article text, SQL tables, or review notes into the answer.
                 Use a table only when it makes the answer clearer; keep it to 2 to 4 columns with short cell text.
                 Source names are optional and must stay on one short final line when useful.

@@ -181,7 +181,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         Long currentUserId = CurrentUserUtil.requireCurrentUserId();
         Optional<WebEvidence> webEvidence = webEvidenceService.searchAndStoreEvidence(question, currentUserId);
         if (webEvidence.isPresent()) {
-            AiAnswerVO answer = buildWebEvidenceBasedAnswer(webEvidence.get());
+            AiAnswerVO answer = buildWebEvidenceBasedAnswer(question, webEvidence.get(), articles, documentResults);
             if (isGroundedAnswerUsable(answer.getAnswer(), terms, coreConcepts)) {
                 return answer;
             }
@@ -478,7 +478,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<AiAnswerSourceVO> sources = buildArticleSources(articles);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(buildConciseAnswer(question, article.getContent()));
+        answerVO.setAnswer(buildEnterpriseAnswer(question, "ARTICLE", sources, article.getContent()));
         answerVO.setSourceType("ARTICLE");
         answerVO.setSourceScore(null);
         answerVO.setSourceArticleId(article.getId());
@@ -493,11 +493,17 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return answerVO;
     }
 
-    private AiAnswerVO buildWebEvidenceBasedAnswer(WebEvidence evidence) {
-        List<AiAnswerSourceVO> sources = buildWebEvidenceSources(evidence);
+    private AiAnswerVO buildWebEvidenceBasedAnswer(String question,
+                                                   WebEvidence evidence,
+                                                   List<KnowledgeArticle> internalArticles,
+                                                   List<DocumentSearchResultVO> internalDocuments) {
+        List<AiAnswerSourceVO> sources = new ArrayList<>();
+        sources.addAll(buildArticleSources(internalArticles));
+        sources.addAll(buildDocumentSources(internalDocuments));
+        sources.addAll(buildWebEvidenceSources(evidence));
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(buildConciseWebEvidenceAnswer(evidence));
+        answerVO.setAnswer(buildEnterpriseAnswer(question, "WEB", sources, evidence.getExtractedContent()));
         answerVO.setSourceType("WEB");
         answerVO.setSourceScore(evidence.getCredibilityScore() == null ? null : evidence.getCredibilityScore().doubleValue());
         answerVO.setSourceArticleId(null);
@@ -542,7 +548,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<AiAnswerSourceVO> sources = buildDocumentSources(documentResults);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(buildConciseAnswer(question, documentResult.getContent()));
+        answerVO.setAnswer(buildEnterpriseAnswer(question, "DOCUMENT", sources, documentResult.getContent()));
         answerVO.setSourceType("DOCUMENT");
         answerVO.setSourceScore(documentResult.getRelevanceScore());
         answerVO.setSourceArticleId(null);
@@ -763,6 +769,129 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         }
         String domain = evidence.getDomain();
         return domain == null || domain.isBlank() ? concise : concise + "\n\nSource: " + domain;
+    }
+
+    private String buildEnterpriseAnswer(String question,
+                                         String sourceType,
+                                         List<AiAnswerSourceVO> sources,
+                                         String fallbackContent) {
+        Optional<String> modelAnswer = safeGenerateGroundedAnswer(question, sourceType, sources)
+                .map(this::normalizeEnterpriseAnswer)
+                .filter(answer -> !answer.isBlank());
+        if (modelAnswer.isPresent()) {
+            return modelAnswer.get();
+        }
+
+        return buildTemplateAnswer(question, fallbackContent, sources);
+    }
+
+    private Optional<String> safeGenerateGroundedAnswer(String question, String sourceType, List<AiAnswerSourceVO> sources) {
+        try {
+            Optional<String> answer = llmGatewayService.generateGroundedAnswer(question, sourceType, sources);
+            return answer == null ? Optional.empty() : answer;
+        } catch (Exception ignored) {
+            return Optional.empty();
+        }
+    }
+
+    private String normalizeEnterpriseAnswer(String answer) {
+        if (answer == null || answer.isBlank()) {
+            return "";
+        }
+        String cleaned = answer.trim();
+        if (cleaned.contains("Direct Answer") && cleaned.contains("Recommended Actions")) {
+            return cleaned;
+        }
+        return """
+                ## Direct Answer
+                %s
+
+                ## Explanation
+                The answer is synthesized from the available grounded sources. It avoids exposing raw article, chunk, or web evidence text.
+
+                ## Common Causes
+                - The issue is usually caused by a configuration, timing, version, or state mismatch related to the question.
+
+                ## Recommended Actions
+                - Verify the exact error, configuration value, version, and runtime context before applying changes.
+                - Compare the current behavior against the referenced source and internal knowledge.
+
+                ## References
+                - See the grounding section for the evidence used.
+                """.formatted(cleaned);
+    }
+
+    private String buildTemplateAnswer(String question, String content, List<AiAnswerSourceVO> sources) {
+        List<String> points = extractQuestionFocusedPoints(question, content);
+        String direct = points.isEmpty()
+                ? "The available evidence is related, but it does not fully explain the specific question."
+                : points.get(0);
+        String explanation = points.size() > 1
+                ? points.get(1)
+                : "The likely answer depends on the exact configuration, runtime state, and the mechanism named in the question.";
+        List<String> causes = points.stream().skip(2).limit(3).toList();
+        List<String> references = sources.stream()
+                .map(this::formatReference)
+                .filter(reference -> !reference.isBlank())
+                .distinct()
+                .limit(4)
+                .toList();
+
+        return """
+                ## Direct Answer
+                %s
+
+                ## Explanation
+                %s
+
+                ## Common Causes
+                %s
+
+                ## Recommended Actions
+                - Verify the exact configuration, timestamp, version, and runtime context related to the failure.
+                - Check whether the specific mechanism named in the question is present in the active configuration or source evidence.
+                - If internal knowledge only partially covers the issue, use the web evidence as a supplement and submit it for review.
+
+                ## References
+                %s
+                """.formatted(
+                direct,
+                explanation,
+                formatBullets(causes, "- The current evidence does not list a confirmed root cause."),
+                formatBullets(references, "- Grounding sources are attached below.")
+        ).trim();
+    }
+
+    private String formatReference(AiAnswerSourceVO source) {
+        if (source == null) {
+            return "";
+        }
+        if ("WEB".equals(source.getSourceType())) {
+            String domain = source.getSourceDomain() == null || source.getSourceDomain().isBlank()
+                    ? "web evidence"
+                    : source.getSourceDomain();
+            return source.getSourceUrl() == null || source.getSourceUrl().isBlank()
+                    ? domain
+                    : domain + " - " + source.getSourceUrl();
+        }
+        if ("DOCUMENT".equals(source.getSourceType())) {
+            return source.getSourceDocumentName() == null ? "uploaded document" : source.getSourceDocumentName();
+        }
+        if ("ARTICLE".equals(source.getSourceType())) {
+            return source.getSourceTitle() == null ? "internal knowledge" : source.getSourceTitle();
+        }
+        return "";
+    }
+
+    private String formatBullets(List<String> values, String fallback) {
+        if (values == null || values.isEmpty()) {
+            return fallback;
+        }
+        StringBuilder builder = new StringBuilder();
+        for (String value : values) {
+            builder.append("- ").append(value.replaceFirst("^[-*]\\s*", "")).append("\n");
+        }
+        return builder.toString().trim();
     }
 
     private String buildConciseAnswer(String question, String content) {

@@ -817,6 +817,7 @@ function AdminOperationsCenter() {
   const [documentForm, setDocumentForm] = useState({ category: 'General', file: null });
   const [questionForm, setQuestionForm] = useState({ question: '', file: null });
   const [questionAnswer, setQuestionAnswer] = useState(null);
+  const [answerGroundingOpen, setAnswerGroundingOpen] = useState(false);
   const [articles, setArticles] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [selectedArticle, setSelectedArticle] = useState(null);
@@ -943,6 +944,7 @@ function AdminOperationsCenter() {
     setActionStatus({ type: '', text: '' });
     if (modal === 'ask') {
       setQuestionAnswer(null);
+      setAnswerGroundingOpen(false);
     }
     setActiveModal(modal);
   };
@@ -1800,6 +1802,7 @@ Prevention controls:
     try {
       const answer = await askAiQuestion({ question: questionForm.question.trim(), file: questionForm.file });
       setQuestionAnswer(answer);
+      setAnswerGroundingOpen(false);
       setActionStatus({ type: 'success', text: questionForm.file ? 'Answer ready. Uploaded file was indexed and checked first.' : 'Answer ready and recorded.' });
       setQuestionForm({ question: '', file: null });
       if (activePage === 'ai') {
@@ -2430,15 +2433,23 @@ Prevention controls:
             <button className="adminSubmitButton" type="submit">Ask AI</button>
             {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
             {questionAnswer && (
-              <div className="detailReadableBlock">
-                <strong>{statusText(questionAnswer.sourceType)} answer</strong>
+              <div className="detailReadableBlock aiAnswerBlock">
+                <div className="answerHeaderRow">
+                  <strong>{statusText(questionAnswer.sourceType)} answer</strong>
+                  <div>
+                    <button type="button" onClick={() => copyToClipboard(questionAnswer.answer, 'AI answer copied.')}>Copy</button>
+                    <button type="button" onClick={() => setAnswerGroundingOpen((value) => !value)}>{answerGroundingOpen ? 'Hide Grounding' : 'Show Grounding'}</button>
+                  </div>
+                </div>
                 <KnowledgeContentBlock content={questionAnswer.answer} />
-                <InfoGroup title="Grounding" rows={[
-                  ['Source Type', statusText(questionAnswer.sourceType)],
-                  ['Document', questionAnswer.sourceDocumentName],
-                  ['Article', questionAnswer.sourceTitle],
-                  ['Web', questionAnswer.sourceDomain],
-                ]} />
+                {answerGroundingOpen && (
+                  <InfoGroup title="Grounding" rows={[
+                    ['Source Type', statusText(questionAnswer.sourceType)],
+                    ['Document', questionAnswer.sourceDocumentName],
+                    ['Article', questionAnswer.sourceTitle],
+                    ['Web', questionAnswer.sourceDomain],
+                  ]} />
+                )}
               </div>
             )}
           </form>
