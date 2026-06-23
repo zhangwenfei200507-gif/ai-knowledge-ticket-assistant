@@ -27,6 +27,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -98,6 +99,25 @@ class AiAssistantServiceImplTest {
         verify(aiQuestionLogMapper).insert(any());
     }
 
+    @Test
+    void askAnswersDockerComposeServiceNameQuestionFromArticle() {
+        String question = "Why should Docker Compose services use service names instead of localhost for container-to-container communication?";
+        when(documentChunkMapper.searchChunks(question)).thenReturn(List.of());
+        when(knowledgeArticleMapper.findPublishedArticles()).thenReturn(List.of(dockerComposeArticle()));
+
+        AiAskDTO askDTO = new AiAskDTO();
+        askDTO.setQuestion(question);
+
+        AiAnswerVO answer = aiAssistantService.ask(askDTO);
+
+        assertThat(answer.getSourceType()).isEqualTo("ARTICLE");
+        assertThat(answer.getAnswer()).containsIgnoringCase("localhost");
+        assertThat(answer.getAnswer()).containsIgnoringCase("service name");
+        assertThat(answer.getAnswer()).containsIgnoringCase("container");
+        verify(webEvidenceService, never()).searchAndStoreEvidence(any(), any());
+        verify(aiQuestionLogMapper).insert(any());
+    }
+
     private KnowledgeArticle articleWithoutNbf() {
         KnowledgeArticle article = new KnowledgeArticle();
         article.setId(11L);
@@ -107,6 +127,22 @@ class AiAssistantServiceImplTest {
                 JWT token rejected runbook.
                 A 401 means the request is not authenticated.
                 Check bearer token formatting and Spring Security resource server configuration.
+                """);
+        article.setStatus("PUBLISHED");
+        return article;
+    }
+
+    private KnowledgeArticle dockerComposeArticle() {
+        KnowledgeArticle article = new KnowledgeArticle();
+        article.setId(12L);
+        article.setTitle("CloudOps Docker Knowledge Pack");
+        article.setCategory("Docker");
+        article.setContent("""
+                Docker Compose Networking
+                Inside Docker Compose, containers should usually connect to other services by service name,
+                not localhost. localhost inside a container refers to that container itself.
+                Service names are resolved by Docker Compose DNS on the shared Compose network.
+                For example, an app container should connect to postgres:5432 instead of localhost:5432.
                 """);
         article.setStatus("PUBLISHED");
         return article;

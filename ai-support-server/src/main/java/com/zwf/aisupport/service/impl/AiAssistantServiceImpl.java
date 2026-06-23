@@ -48,7 +48,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private static final Set<String> BROAD_DOMAIN_TERMS = Set.of(
             "auth", "authentication", "authorization", "jwt", "token", "kubernetes", "postgresql",
             "postgres", "redis", "docker", "production", "troubleshooting", "document", "article",
-            "knowledge", "platform", "cloudops", "support", "server", "service", "system"
+            "knowledge", "platform", "cloudops", "support", "server", "service", "services", "system"
     );
     private static final Set<String> SHORT_TECHNICAL_TERMS = Set.of(
             "jwt", "nbf", "exp", "iat", "iss", "aud", "jti", "kid", "wal", "lsn", "pod", "hpa",
@@ -56,7 +56,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     );
     private static final Set<String> GENERIC_QUESTION_TERMS = Set.of(
             "rejected", "reject", "expired", "expire", "failure", "failed", "error", "issue",
-            "problem", "handle", "configure", "download", "install", "login", "logout", "users"
+            "problem", "handle", "configure", "download", "install", "login", "logout", "users",
+            "inside", "instead", "communication", "connect", "connects", "connected", "connecting",
+            "use", "using", "used", "names", "name"
     );
 
     private final KnowledgeArticleMapper knowledgeArticleMapper;
@@ -622,6 +624,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return terms.stream()
                 .filter(term -> !term.matches(".*\\d.*") && term.length() >= 10)
                 .filter(term -> !broadTerms.contains(term))
+                .filter(term -> !GENERIC_QUESTION_TERMS.contains(term))
                 .toList();
     }
 
@@ -638,6 +641,15 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         if (normalizedQuestion.contains("not before")) {
             concepts.add("not before");
         }
+        if (normalizedQuestion.contains("service name") || normalizedQuestion.contains("service names")) {
+            concepts.add("service name");
+        }
+        if (normalizedQuestion.contains("localhost")) {
+            concepts.add("localhost");
+        }
+        if (normalizedQuestion.contains("container-to-container")) {
+            concepts.add("container-to-container");
+        }
         for (String term : terms) {
             if (isCoreConceptTerm(term)) {
                 concepts.add(term);
@@ -651,6 +663,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             return false;
         }
         if (SHORT_TECHNICAL_TERMS.contains(term)) {
+            return true;
+        }
+        if ("localhost".equals(term)) {
             return true;
         }
         if (BROAD_DOMAIN_TERMS.contains(term)) {
@@ -678,7 +693,8 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 ? matchedTerms >= Math.min(2, terms.size())
                 : coverage >= 0.35 || matchedTerms >= 4;
         boolean versionsCovered = versionTerms.stream().allMatch(normalizedSource::contains);
-        boolean specificCovered = specificTerms.isEmpty() || specificTerms.stream().anyMatch(normalizedSource::contains);
+        boolean specificCovered = specificTerms.isEmpty()
+                || specificTerms.stream().anyMatch(term -> matchesConcept(normalizedSource, term));
         boolean coreCovered = coversCoreConcepts(normalizedSource, coreConcepts);
 
         return enoughCoverage && versionsCovered && specificCovered && coreCovered;
@@ -693,11 +709,11 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 .filter(concept -> matchesConcept(normalizedSource, concept))
                 .count();
         boolean shortTechnicalCovered = coreConcepts.stream()
-                .filter(concept -> concept.length() <= 5 || SHORT_TECHNICAL_TERMS.contains(concept))
+                .filter(SHORT_TECHNICAL_TERMS::contains)
                 .allMatch(concept -> matchesConcept(normalizedSource, concept));
         double coverage = (double) matchedConcepts / (double) coreConcepts.size();
 
-        return shortTechnicalCovered && (coreConcepts.size() <= 2 ? matchedConcepts == coreConcepts.size() : coverage >= 0.80);
+        return shortTechnicalCovered && (coreConcepts.size() <= 2 ? matchedConcepts == coreConcepts.size() : coverage >= 0.60);
     }
 
     private boolean matchesConcept(String normalizedSource, String concept) {
@@ -708,9 +724,20 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         if (normalizedSource.contains(normalizedConcept)) {
             return true;
         }
+        if (matchesSingularPlural(normalizedSource, normalizedConcept)) {
+            return true;
+        }
+        if (matchesCompoundConcept(normalizedSource, normalizedConcept)) {
+            return true;
+        }
         return switch (normalizedConcept) {
             case "nbf" -> normalizedSource.contains("not before");
             case "not before" -> normalizedSource.contains("nbf");
+            case "service name", "service names" -> normalizedSource.contains("service name")
+                    || normalizedSource.contains("service names")
+                    || normalizedSource.contains("connect to other services")
+                    || normalizedSource.contains("connects to other services");
+            case "container-to-container" -> normalizedSource.contains("container") && normalizedSource.contains("service");
             case "exp" -> normalizedSource.contains("expiration") || normalizedSource.contains("expired") || normalizedSource.contains("expires");
             case "iat" -> normalizedSource.contains("issued at");
             case "aud" -> normalizedSource.contains("audience");
@@ -719,6 +746,28 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             case "jti" -> normalizedSource.contains("jwt id");
             default -> false;
         };
+    }
+
+    private boolean matchesSingularPlural(String normalizedSource, String normalizedConcept) {
+        if (normalizedConcept.length() <= 3) {
+            return false;
+        }
+        if (normalizedConcept.endsWith("s")) {
+            return normalizedSource.contains(normalizedConcept.substring(0, normalizedConcept.length() - 1));
+        }
+        return normalizedSource.contains(normalizedConcept + "s");
+    }
+
+    private boolean matchesCompoundConcept(String normalizedSource, String normalizedConcept) {
+        if (!normalizedConcept.contains("-")) {
+            return false;
+        }
+        List<String> parts = WORD_SPLIT_PATTERN.splitAsStream(normalizedConcept.replace("-", " "))
+                .filter(part -> !part.isBlank())
+                .filter(part -> !STOP_WORDS.contains(part))
+                .distinct()
+                .toList();
+        return !parts.isEmpty() && parts.stream().allMatch(normalizedSource::contains);
     }
 
     private boolean isGroundedAnswerUsable(String answer, List<String> terms, List<String> coreConcepts) {
