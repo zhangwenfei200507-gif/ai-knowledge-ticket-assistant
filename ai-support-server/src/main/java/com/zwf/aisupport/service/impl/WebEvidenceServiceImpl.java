@@ -9,44 +9,61 @@ import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.dto.WebEvidenceSearchDTO;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.WebEvidence;
+import com.zwf.aisupport.entity.WebEvidenceSource;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.WebEvidenceMapper;
+import com.zwf.aisupport.mapper.WebEvidenceSourceMapper;
 import com.zwf.aisupport.service.WebEvidenceService;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.PageVO;
 import com.zwf.aisupport.vo.WebEvidenceVO;
+import com.zwf.aisupport.vo.WebEvidenceSourceVO;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class WebEvidenceServiceImpl implements WebEvidenceService {
 
     private final WebSearchClient webSearchClient;
     private final WebEvidenceMapper webEvidenceMapper;
+    private final WebEvidenceSourceMapper webEvidenceSourceMapper;
     private final KnowledgeArticleMapper knowledgeArticleMapper;
     private final KnowledgePackReorganizer knowledgePackReorganizer;
+    private final KnowledgeArticleChunkManager articleChunkManager;
 
     public WebEvidenceServiceImpl(WebSearchClient webSearchClient,
                                   WebEvidenceMapper webEvidenceMapper,
+                                  WebEvidenceSourceMapper webEvidenceSourceMapper,
                                   KnowledgeArticleMapper knowledgeArticleMapper,
-                                  KnowledgePackReorganizer knowledgePackReorganizer) {
+                                  KnowledgePackReorganizer knowledgePackReorganizer,
+                                  KnowledgeArticleChunkManager articleChunkManager) {
         this.webSearchClient = webSearchClient;
         this.webEvidenceMapper = webEvidenceMapper;
+        this.webEvidenceSourceMapper = webEvidenceSourceMapper;
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.knowledgePackReorganizer = knowledgePackReorganizer;
+        this.articleChunkManager = articleChunkManager;
     }
 
     @Override
     public Optional<WebEvidence> searchAndStoreEvidence(String question, Long userId) {
         Optional<WebEvidence> evidence = webSearchClient.search(question, userId);
-        evidence.ifPresent(webEvidenceMapper::insert);
-        return evidence.map(savedEvidence -> {
-            WebEvidence reloaded = webEvidenceMapper.findById(savedEvidence.getId());
-            return reloaded == null ? savedEvidence : reloaded;
-        });
+        if (evidence.isEmpty()) {
+            return Optional.empty();
+        }
+        WebEvidence savedEvidence = evidence.get();
+        WebEvidence existing = webEvidenceMapper.findActiveByQuestionAndUrl(savedEvidence.getQuestion(), savedEvidence.getUrl());
+        if (existing != null) {
+            return Optional.of(reloadWithSources(existing));
+        }
+        webEvidenceMapper.insert(savedEvidence);
+        persistSources(savedEvidence);
+        return Optional.of(reloadWithSources(savedEvidence));
     }
 
     @Override
@@ -59,16 +76,17 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
         evidence.setDomain("OpenAI model");
         evidence.setSnippet(TextUtil.limit(answer, 1200));
         evidence.setExtractedContent(answer);
-        evidence.setSuggestedArticleTitle(TextUtil.limit("Reviewed Model Answer: " + question, 150));
+        evidence.setSuggestedArticleTitle(TextUtil.limit(buildModelTitle(question, evidence.getCategory()), 150));
         evidence.setSuggestedArticleContent(buildModelSuggestedArticle(question, answer));
         evidence.setCategory(KnowledgeCategoryResolver.infer(question + " " + answer));
-        evidence.setCredibilityScore(new BigDecimal("0.70"));
+        // A model-only answer has no external source quality score. Keep it unknown
+        // so the review UI cannot mistake an unverified answer for web evidence.
+        evidence.setCredibilityScore(null);
         evidence.setEvidenceOrigin("LLM_GENERATED");
         evidence.setStatus("NEEDS_REVIEW");
         evidence.setCreatedBy(userId);
         webEvidenceMapper.insert(evidence);
-        WebEvidence reloaded = webEvidenceMapper.findById(evidence.getId());
-        return reloaded == null ? evidence : reloaded;
+        return reloadWithSources(evidence);
     }
 
     @Override
@@ -87,7 +105,7 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
                         ? evidence.getSuggestedArticleContent()
                         : suggestedArticleContent
         );
-        WebEvidence updated = webEvidenceMapper.findById(id);
+        WebEvidence updated = findWithSources(id);
         return convertToVO(updated == null ? evidence : updated);
     }
 
@@ -105,15 +123,16 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
         CurrentUserUtil.requireAdmin("Only administrators can manage web evidence");
         int safePage = PageRequestUtil.page(page);
         int safeSize = PageRequestUtil.size(size);
-        List<WebEvidenceVO> items = webEvidenceMapper.findPage(
+        List<WebEvidence> evidencePage = webEvidenceMapper.findPage(
                         PageRequestUtil.optionalText(keyword),
                         PageRequestUtil.optionalText(status),
                         PageRequestUtil.optionalText(category),
                         PageRequestUtil.optionalText(origin),
                         PageRequestUtil.offset(safePage, safeSize),
                         safeSize
-                )
-                .stream()
+                );
+        attachSources(evidencePage);
+        List<WebEvidenceVO> items = evidencePage.stream()
                 .map(this::convertToVO)
                 .toList();
         long total = webEvidenceMapper.countPage(
@@ -126,6 +145,7 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
     }
 
     @Override
+    @Transactional
     public KnowledgeArticleVO approveToArticle(Long id) {
         CurrentUserUtil.requireAdmin("Only administrators can manage web evidence");
         Long currentUserId = CurrentUserUtil.requireCurrentUserId();
@@ -139,6 +159,9 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
         if ("REJECTED".equals(evidence.getStatus())) {
             throw new BusinessException("Rejected evidence cannot be converted to an article");
         }
+        if (!"NEEDS_REVIEW".equals(evidence.getStatus())) {
+            throw new BusinessException("Only pending evidence can be approved");
+        }
         if (isLowQualityKnowledgeContent(evidence.getSuggestedArticleContent())) {
             throw new BusinessException("Evidence is not useful enough to publish as internal knowledge");
         }
@@ -150,6 +173,7 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
                 currentUserId,
                 "Reviewed " + (evidence.getEvidenceOrigin() == null ? "external evidence" : evidence.getEvidenceOrigin())
         );
+        articleChunkManager.rebuildArticleChunks(article);
         webEvidenceMapper.markConverted(evidence.getId(), currentUserId, article.getId());
         return KnowledgeArticleVoMapper.toVO(article);
     }
@@ -158,8 +182,8 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
     public void reject(Long id) {
         CurrentUserUtil.requireAdmin("Only administrators can manage web evidence");
         WebEvidence evidence = requireEvidence(id);
-        if ("CONVERTED".equals(evidence.getStatus())) {
-            throw new BusinessException("Converted evidence cannot be rejected");
+        if (!"NEEDS_REVIEW".equals(evidence.getStatus())) {
+            throw new BusinessException("Only pending evidence can be rejected");
         }
         webEvidenceMapper.markRejected(evidence.getId(), CurrentUserUtil.requireCurrentUserId());
     }
@@ -185,7 +209,7 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
     }
 
     private WebEvidence requireEvidence(Long id) {
-        WebEvidence evidence = webEvidenceMapper.findById(id);
+        WebEvidence evidence = findWithSources(id);
         if (evidence == null) {
             throw new BusinessException("Web evidence not found");
         }
@@ -213,33 +237,82 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
         vo.setConvertedArticleId(evidence.getConvertedArticleId());
         vo.setCreatedTime(evidence.getCreatedTime());
         vo.setReviewedTime(evidence.getReviewedTime());
+        vo.setSources(Optional.ofNullable(evidence.getSources()).orElse(List.of()).stream()
+                .map(this::convertSourceToVO)
+                .toList());
+        return vo;
+    }
+
+    private void persistSources(WebEvidence evidence) {
+        if (evidence.getId() == null || evidence.getSources() == null) {
+            return;
+        }
+        for (WebEvidenceSource source : evidence.getSources()) {
+            source.setEvidenceId(evidence.getId());
+            webEvidenceSourceMapper.insert(source);
+        }
+    }
+
+    private WebEvidence reloadWithSources(WebEvidence fallback) {
+        WebEvidence reloaded = findWithSources(fallback.getId());
+        return reloaded == null ? fallback : reloaded;
+    }
+
+    private WebEvidence findWithSources(Long id) {
+        WebEvidence evidence = webEvidenceMapper.findById(id);
+        if (evidence != null) {
+            evidence.setSources(webEvidenceSourceMapper.findByEvidenceId(id));
+        }
+        return evidence;
+    }
+
+    private void attachSources(List<WebEvidence> evidence) {
+        List<Long> ids = evidence.stream().map(WebEvidence::getId).filter(java.util.Objects::nonNull).toList();
+        if (ids.isEmpty()) {
+            return;
+        }
+        Map<Long, List<WebEvidenceSource>> byEvidenceId = webEvidenceSourceMapper.findByEvidenceIds(ids).stream()
+                .collect(Collectors.groupingBy(WebEvidenceSource::getEvidenceId));
+        evidence.forEach(item -> item.setSources(byEvidenceId.getOrDefault(item.getId(), List.of())));
+    }
+
+    private WebEvidenceSourceVO convertSourceToVO(WebEvidenceSource source) {
+        WebEvidenceSourceVO vo = new WebEvidenceSourceVO();
+        vo.setId(source.getId());
+        vo.setTitle(source.getTitle());
+        vo.setUrl(source.getUrl());
+        vo.setDomain(source.getDomain());
+        vo.setExcerpt(source.getExcerpt());
+        vo.setCredibilityScore(source.getCredibilityScore());
+        vo.setSourceRank(source.getSourceRank());
+        vo.setSourceType(source.getSourceType());
+        vo.setOfficialSource(source.getOfficialSource());
+        vo.setPublishedTime(source.getPublishedTime());
+        vo.setRetrievedTime(source.getRetrievedTime());
+        vo.setSourceStatus(source.getSourceStatus());
         return vo;
     }
 
     private String buildModelSuggestedArticle(String question, String answer) {
         String category = KnowledgeCategoryResolver.infer(question + " " + answer);
         return """
-                # Reviewed Model Answer: %s
+                # %s
 
                 Category: %s
 
                 ## Overview
-                This knowledge explains the operational answer for the question and should be integrated into the closest existing Knowledge Pack if it is technically verified.
-
-                ## Core Answer
                 %s
-
-                ## Troubleshooting
-                - Verify the affected component, version, logs, metrics, and configuration before applying the guidance.
-                - Keep only reproducible checks and remove any advice that does not apply to the production environment.
-
-                ## Best Practices
-                - Integrate overlapping concepts into existing sections instead of creating duplicate explanations.
-                - Keep the final article concise and written as one official document.
-
-                ## References
-                - Add verified official documentation or approved internal references when available.
                 """.formatted(TextUtil.limit(question, 120), category, normalizeArticleBullets(answer));
+    }
+
+    private String buildModelTitle(String question, String category) {
+        String focus = question == null ? "Operational Knowledge" : question
+                .replaceFirst("(?i)^\\s*(what|why|how|when|where|which|can|could|should|does|do|is|are)\\b", "")
+                .replaceAll("[?!.]+$", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return (category == null || category.isBlank() ? "CloudOps" : category)
+                + ": " + TextUtil.limit(focus.isBlank() ? "Operational Knowledge" : focus, 105);
     }
 
     private String normalizeArticleBullets(String answer) {
@@ -262,6 +335,7 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
     private boolean isLowQualityKnowledgeContent(String content) {
         String normalized = content == null ? "" : content.toLowerCase();
         return normalized.contains("i could not find a reliable answer")
+                || normalized.contains("i do not have enough reliable knowledge")
                 || normalized.contains("add concrete checks, commands, dashboards, or logs")
                 || normalized.contains("add the final reviewed answer here before publishing");
     }

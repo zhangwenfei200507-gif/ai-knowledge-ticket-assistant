@@ -20,6 +20,30 @@ public interface AiQuestionLogMapper {
             source_document_name,
             source_chunk_id,
             source_chunk_index,
+            answer_mode,
+            answer_engine,
+            internal_attempted,
+            internal_sufficient,
+            web_attempted,
+            web_succeeded,
+            web_sufficient,
+            llm_attempted,
+            llm_succeeded,
+            retrieval_failure_reason,
+            total_latency_ms,
+            retrieval_trace_json,
+            llm_provider,
+            llm_model,
+            llm_input_tokens,
+            llm_output_tokens,
+            llm_total_tokens,
+            llm_estimated_cost,
+            llm_currency,
+            llm_usage_estimated,
+            llm_retry_count,
+            llm_latency_ms,
+            llm_request_status,
+            llm_error_category,
             suggest_create_ticket,
             created_ticket_id
         )
@@ -34,6 +58,30 @@ public interface AiQuestionLogMapper {
             #{sourceDocumentName},
             #{sourceChunkId},
             #{sourceChunkIndex},
+            #{answerMode},
+            #{answerEngine},
+            #{internalAttempted},
+            #{internalSufficient},
+            #{webAttempted},
+            #{webSucceeded},
+            #{webSufficient},
+            #{llmAttempted},
+            #{llmSucceeded},
+            #{retrievalFailureReason},
+            #{totalLatencyMs},
+            cast(#{retrievalTraceJson} as jsonb),
+            #{llmProvider},
+            #{llmModel},
+            #{llmInputTokens},
+            #{llmOutputTokens},
+            #{llmTotalTokens},
+            #{llmEstimatedCost},
+            #{llmCurrency},
+            #{llmUsageEstimated},
+            #{llmRetryCount},
+            #{llmLatencyMs},
+            #{llmRequestStatus},
+            #{llmErrorCategory},
             #{suggestCreateTicket},
             #{createdTicketId}
         )
@@ -176,4 +224,16 @@ public interface AiQuestionLogMapper {
 
     @Select("select count(*) from ai_question_logs where source_type = 'NONE'")
     Long countUnansweredQuestions();
+
+    @Select("""
+        select * from ai_question_logs
+        where source_type in ('NONE', 'WEB', 'LLM', 'ARTICLE', 'DOCUMENT')
+          and (
+              source_type in ('NONE', 'WEB', 'LLM')
+              or feedback = 'NOT_USEFUL'
+          )
+        order by created_time desc
+        limit #{limit}
+        """)
+    List<AiQuestionLog> findStewardCandidates(int limit);
 }

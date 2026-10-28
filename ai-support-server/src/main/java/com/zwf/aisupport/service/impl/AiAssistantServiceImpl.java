@@ -3,6 +3,7 @@ package com.zwf.aisupport.service.impl;
 import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.common.util.CurrentUserUtil;
 import com.zwf.aisupport.common.util.KnowledgeArticleVoMapper;
+import com.zwf.aisupport.common.util.KnowledgeCategoryResolver;
 import com.zwf.aisupport.common.util.PageRequestUtil;
 import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.dto.AiAskDTO;
@@ -13,22 +14,31 @@ import com.zwf.aisupport.entity.DocumentChunk;
 import com.zwf.aisupport.entity.KnowledgeArticle;
 import com.zwf.aisupport.entity.Ticket;
 import com.zwf.aisupport.entity.WebEvidence;
+import com.zwf.aisupport.entity.WebEvidenceSource;
 import com.zwf.aisupport.mapper.AiQuestionLogMapper;
 import com.zwf.aisupport.mapper.DocumentChunkMapper;
+import com.zwf.aisupport.mapper.KnowledgeArticleChunkMapper;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.service.AiAssistantService;
 import com.zwf.aisupport.service.DocumentService;
 import com.zwf.aisupport.service.LlmGatewayService;
 import com.zwf.aisupport.service.WebEvidenceService;
+import com.zwf.aisupport.service.model.LlmGenerationResult;
 import com.zwf.aisupport.vo.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -36,39 +46,29 @@ import java.util.regex.Pattern;
 @Service
 public class AiAssistantServiceImpl implements AiAssistantService {
 
-    private static final Pattern WORD_SPLIT_PATTERN = Pattern.compile("[^a-z0-9+#./-]+");
-    private static final Pattern QUESTION_TASK_SPLIT_PATTERN = Pattern.compile(
-            "\\?+|;+|\\band\\s+(?=(what|why|how|when|should|does|do|is|are|can)\\b)",
-            Pattern.CASE_INSENSITIVE
-    );
-    private static final Set<String> STOP_WORDS = Set.of(
-            "a", "an", "the", "and", "or", "but", "if", "then", "this", "that", "these", "those",
-            "in", "on", "at", "to", "for", "from", "with", "without", "after", "before", "behind",
-            "why", "what", "how", "when", "where", "which", "who", "does", "do", "did", "is", "are",
-            "was", "were", "be", "been", "being", "still", "first", "should", "check", "please",
-            "i", "we", "you", "my", "our", "your", "it", "its", "of", "by", "as", "into", "about",
-            "not", "because", "even", "though", "has", "have", "had", "than", "whether", "determine",
-            "difference", "between", "versus", "vs"
-    );
+    private static final Logger log = LoggerFactory.getLogger(AiAssistantServiceImpl.class);
+
     private static final Set<String> BROAD_DOMAIN_TERMS = Set.of(
             "auth", "authentication", "authorization", "jwt", "token", "kubernetes", "postgresql",
             "postgres", "redis", "docker", "production", "troubleshooting", "document", "article",
             "knowledge", "platform", "cloudops", "support", "server", "service", "services", "system",
             "container", "containers", "database", "backend", "frontend", "application"
     );
-    private static final Set<String> SHORT_TECHNICAL_TERMS = Set.of(
-            "jwt", "nbf", "exp", "iat", "iss", "aud", "jti", "kid", "wal", "lsn", "pod", "hpa",
-            "cpu", "api", "tls", "ssl", "dns", "rbac", "sso", "oidc", "csrf", "cors"
+    private static final Set<String> TECHNICAL_DOMAIN_TERMS = Set.of(
+            "docker", "postgresql", "postgres", "redis", "kubernetes", "jwt", "token", "ticket"
     );
     private static final Set<String> GENERIC_QUESTION_TERMS = Set.of(
             "rejected", "reject", "expired", "expire", "failure", "failed", "error", "issue",
             "problem", "handle", "configure", "download", "install", "login", "logout", "users",
             "inside", "instead", "communication", "connect", "connects", "connected", "connecting",
             "use", "using", "used", "names", "name", "running", "fail", "fails", "decide", "choose",
-            "classify", "classification"
+            "classify", "classification", "return", "returns", "returned", "purpose", "updated",
+            "update", "receives", "forbidden", "normal", "endpoint", "endpoints", "specific",
+            "interesting", "interestingly", "directly", "production", "named", "called", "logged", "system",
+            "architecture", "given", "likely", "root", "cause", "access", "analytics"
     );
-
     private final KnowledgeArticleMapper knowledgeArticleMapper;
+    private final KnowledgeArticleChunkMapper knowledgeArticleChunkMapper;
     private final TicketMapper ticketMapper;
     private final AiQuestionLogMapper aiQuestionLogMapper;
     private final DocumentChunkMapper documentChunkMapper;
@@ -76,16 +76,31 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private final WebEvidenceService webEvidenceService;
     private final LlmGatewayService llmGatewayService;
     private final KnowledgePackReorganizer knowledgePackReorganizer;
+    private final LlmUsagePolicy llmUsagePolicy;
+    private final AiQueryUnderstandingService queryUnderstandingService;
+    private final KnowledgeCoverageEvaluator coverageEvaluator;
+    private final KnowledgeChunkRanker knowledgeChunkRanker;
+    private final KnowledgeArticleChunkManager knowledgeArticleChunkManager;
+    private final RetrievalTraceCodec retrievalTraceCodec;
+    private final GroundedAnswerGuard groundedAnswerGuard = new GroundedAnswerGuard();
 
     public AiAssistantServiceImpl(KnowledgeArticleMapper knowledgeArticleMapper,
+                                  KnowledgeArticleChunkMapper knowledgeArticleChunkMapper,
                                   TicketMapper ticketMapper,
                                   AiQuestionLogMapper aiQuestionLogMapper,
                                   DocumentChunkMapper documentChunkMapper,
                                   DocumentService documentService,
                                   WebEvidenceService webEvidenceService,
                                   LlmGatewayService llmGatewayService,
-                                  KnowledgePackReorganizer knowledgePackReorganizer) {
+                                  KnowledgePackReorganizer knowledgePackReorganizer,
+                                  LlmUsagePolicy llmUsagePolicy,
+                                  AiQueryUnderstandingService queryUnderstandingService,
+                                  KnowledgeCoverageEvaluator coverageEvaluator,
+                                  KnowledgeChunkRanker knowledgeChunkRanker,
+                                   KnowledgeArticleChunkManager knowledgeArticleChunkManager,
+                                  RetrievalTraceCodec retrievalTraceCodec) {
         this.knowledgeArticleMapper = knowledgeArticleMapper;
+        this.knowledgeArticleChunkMapper = knowledgeArticleChunkMapper;
         this.ticketMapper = ticketMapper;
         this.aiQuestionLogMapper = aiQuestionLogMapper;
         this.documentChunkMapper = documentChunkMapper;
@@ -93,6 +108,12 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         this.webEvidenceService = webEvidenceService;
         this.llmGatewayService = llmGatewayService;
         this.knowledgePackReorganizer = knowledgePackReorganizer;
+        this.llmUsagePolicy = llmUsagePolicy;
+        this.queryUnderstandingService = queryUnderstandingService;
+        this.coverageEvaluator = coverageEvaluator;
+        this.knowledgeChunkRanker = knowledgeChunkRanker;
+        this.knowledgeArticleChunkManager = knowledgeArticleChunkManager;
+        this.retrievalTraceCodec = retrievalTraceCodec;
     }
 
     @Override
@@ -120,9 +141,27 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
         KnowledgeDocumentVO uploadedDocument = documentService.upload(file, "User Upload");
         List<DocumentSearchResultVO> uploadedDocumentResults = findUploadedDocumentAnswer(trimmedQuestion, uploadedDocument);
-        AiAnswerVO answerVO = uploadedDocumentResults.isEmpty()
-                ? findAnswerFromKnowledgeBase(trimmedQuestion)
-                : buildDocumentBasedAnswer(trimmedQuestion, uploadedDocumentResults);
+        AiAnswerVO answerVO;
+        if (uploadedDocumentResults.isEmpty()) {
+            answerVO = findAnswerFromKnowledgeBase(trimmedQuestion);
+        } else {
+            RetrievalTraceState trace = new RetrievalTraceState();
+            trace.start("QUERY_ANALYSIS");
+            AiQueryPlan plan = queryUnderstandingService.analyze(trimmedQuestion);
+            trace.finish("QUERY_ANALYSIS", "SUCCEEDED", "Question intent, domains, and required concepts identified", null);
+            trace.internalAttempted = true;
+            trace.internalSufficient = true;
+            trace.finish("INTERNAL_RETRIEVAL", "SUCCEEDED", "Relevant chunks selected from the uploaded file", null);
+            trace.finish("EVIDENCE_EVALUATION", "SUCCEEDED", "Uploaded-file evidence covers the question", null);
+            trace.finish("WEB_RETRIEVAL", "SKIPPED", "Internal uploaded-file evidence is sufficient", null);
+            trace.finish("LLM_FALLBACK", "SKIPPED", "Direct fallback is unnecessary", null);
+            trace.start("ANSWER_COMPOSITION");
+            answerVO = finalizeAnswer(
+                    buildDocumentBasedAnswer(trimmedQuestion, plan, uploadedDocumentResults),
+                    trace,
+                    null
+            );
+        }
 
         saveQuestionLog(trimmedQuestion, answerVO);
         return answerVO;
@@ -161,61 +200,342 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     }
 
     private AiAnswerVO findAnswerFromKnowledgeBase(String question) {
-        List<String> terms = extractSearchTerms(question);
-        List<String> specificTerms = extractSpecificTerms(terms);
-        List<String> versionTerms = extractVersionTerms(terms);
-        List<String> coreConcepts = extractCoreConcepts(question, terms);
+        RetrievalTraceState trace = new RetrievalTraceState();
+        trace.start("QUERY_ANALYSIS");
+        AiQueryPlan contract = queryUnderstandingService.analyze(question);
+        trace.finish("QUERY_ANALYSIS", "SUCCEEDED", "Question intent, domains, and required concepts identified", null);
+        trace.internalAttempted = true;
+        trace.start("INTERNAL_RETRIEVAL");
+        List<String> terms = contract.retrievalTerms();
+        List<String> specificTerms = queryUnderstandingService.extractSpecificTerms(terms);
+        List<String> versionTerms = queryUnderstandingService.extractVersionTerms(terms);
+        List<String> coreConcepts = contract.requiredConcepts();
+        List<AiAnswerSourceVO> internalSources = new ArrayList<>();
 
-        // Search uploaded document chunks with the full user question first.
-        List<DocumentSearchResultVO> documentResults = documentChunkMapper.searchChunks(question)
-                .stream()
-                .filter(result -> isReliableInternalSource(result.getContent(), terms, specificTerms, versionTerms, coreConcepts))
-                .toList();
-        if (!documentResults.isEmpty()) {
-            AiAnswerVO answer = buildDocumentBasedAnswer(question, documentResults);
-            if (isGroundedAnswerUsable(question, answer.getAnswer(), terms, coreConcepts)) {
-                return answer;
+        List<KnowledgeArticleChunkSearchResultVO> articleChunks = findRelevantArticleChunks(question, contract, terms, specificTerms, versionTerms, coreConcepts);
+        if (!articleChunks.isEmpty()) {
+            List<AiAnswerSourceVO> articleChunkSources = buildArticleChunkSources(articleChunks);
+            internalSources.addAll(articleChunkSources);
+            trace.start("EVIDENCE_EVALUATION");
+            if (!contract.externalEvidenceRequired()
+                    && hasSufficientCoverage(articleChunkSources, contract)) {
+                trace.start("ANSWER_COMPOSITION");
+                AiAnswerVO answer = buildArticleChunkBasedAnswer(question, contract, articleChunks);
+                trace.llmAttempted = shouldAttemptGroundedSynthesis("ARTICLE", articleChunkSources);
+                if (isGeneratedAnswerUsable(answer.getAnswer())) {
+                    trace.internalSufficient = true;
+                    trace.finish("INTERNAL_RETRIEVAL", "SUCCEEDED", "Internal article chunks selected", null);
+                    trace.finish("EVIDENCE_EVALUATION", "SUCCEEDED", "Internal evidence fully covers the question", null);
+                    return finalizeAnswer(answer, trace, null);
+                }
             }
         }
 
-        // Then use local article relevance scoring. This avoids matching broad stop words or loosely related topics.
-        List<KnowledgeArticle> articles = findRelevantArticles(question, terms, specificTerms, versionTerms, coreConcepts);
-        if (!articles.isEmpty()) {
-            AiAnswerVO answer = buildKnowledgeBasedAnswer(question, articles);
-            if (isGroundedAnswerUsable(question, answer.getAnswer(), terms, coreConcepts)) {
-                return answer;
+        // Whole-article matching is retained only for installations that have not built semantic chunks yet.
+        List<KnowledgeArticle> articles = List.of();
+        if (!hasPublishedArticleChunks()) {
+            articles = findRelevantArticles(question, contract, terms, specificTerms, versionTerms, coreConcepts);
+            if (!articles.isEmpty()) {
+                List<AiAnswerSourceVO> articleSources = buildArticleSources(articles);
+                internalSources.addAll(articleSources);
+                trace.start("EVIDENCE_EVALUATION");
+                if (!contract.externalEvidenceRequired()
+                        && hasSufficientCoverage(articleSources, contract)) {
+                    trace.start("ANSWER_COMPOSITION");
+                    AiAnswerVO answer = buildKnowledgeBasedAnswer(question, contract, articles);
+                    trace.llmAttempted = shouldAttemptGroundedSynthesis("ARTICLE", articleSources);
+                    if (isGeneratedAnswerUsable(answer.getAnswer())) {
+                        trace.internalSufficient = true;
+                        trace.finish("INTERNAL_RETRIEVAL", "SUCCEEDED", "Internal articles selected", null);
+                        trace.finish("EVIDENCE_EVALUATION", "SUCCEEDED", "Internal evidence fully covers the question", null);
+                        return finalizeAnswer(answer, trace, null);
+                    }
+                }
+            }
+        }
+
+        // Search document chunks after curated articles. Uploaded-file Q&A still has its own document-first path.
+        List<DocumentSearchResultVO> documentResults = documentChunkMapper.searchChunks(
+                        question,
+                        CurrentUserUtil.requireCurrentUserId(),
+                        CurrentUserUtil.isAdmin()
+                )
+                .stream()
+                .filter(result -> isReliableInternalSource(result.getContent(), terms, specificTerms, versionTerms, coreConcepts)
+                        || hasSufficientCoverage(result.getContent(), contract))
+                .toList();
+        if (!documentResults.isEmpty()) {
+            List<AiAnswerSourceVO> documentSources = buildDocumentSources(documentResults);
+            internalSources.addAll(documentSources);
+            trace.start("EVIDENCE_EVALUATION");
+            if (!contract.externalEvidenceRequired()
+                    && hasSufficientCoverage(documentSources, contract)) {
+                trace.start("ANSWER_COMPOSITION");
+                AiAnswerVO answer = buildDocumentBasedAnswer(question, contract, documentResults);
+                trace.llmAttempted = shouldAttemptGroundedSynthesis("DOCUMENT", documentSources);
+                if (isGeneratedAnswerUsable(answer.getAnswer())) {
+                    trace.internalSufficient = true;
+                    trace.finish("INTERNAL_RETRIEVAL", "SUCCEEDED", "Internal document chunks selected", null);
+                    trace.finish("EVIDENCE_EVALUATION", "SUCCEEDED", "Internal evidence fully covers the question", null);
+                    return finalizeAnswer(answer, trace, null);
+                }
             }
         }
 
         Long currentUserId = CurrentUserUtil.requireCurrentUserId();
-        Optional<WebEvidence> webEvidence = webEvidenceService.searchAndStoreEvidence(question, currentUserId);
+        trace.finish(
+                "INTERNAL_RETRIEVAL",
+                internalSources.isEmpty() ? "INSUFFICIENT" : "SUCCEEDED",
+                internalSources.isEmpty() ? "No relevant internal evidence selected" : internalSources.size() + " internal sources selected",
+                null
+        );
+        trace.finish("EVIDENCE_EVALUATION", "INSUFFICIENT", "Internal evidence does not fully cover the question", null);
+        boolean webSearchApplicable = !queryUnderstandingService.isCreativeOrHypothetical(question);
+        trace.webAttempted = webSearchApplicable;
+        if (webSearchApplicable) {
+            trace.start("WEB_RETRIEVAL");
+        } else {
+            trace.finish("WEB_RETRIEVAL", "SKIPPED", "Web retrieval is not applicable to creative or hypothetical questions", null);
+        }
+        Optional<WebEvidence> webEvidence = webSearchApplicable
+                ? webEvidenceService.searchAndStoreEvidence(question, currentUserId)
+                : Optional.empty();
+        trace.webSucceeded = webEvidence.isPresent();
+        if (webSearchApplicable) {
+            trace.finish(
+                    "WEB_RETRIEVAL",
+                    webEvidence.isPresent() ? "SUCCEEDED" : "INSUFFICIENT",
+                    webEvidence.isPresent() ? "External evidence collected" : "No acceptable external evidence found",
+                    null
+            );
+        }
         if (webEvidence.isPresent()) {
-            AiAnswerVO answer = buildWebEvidenceBasedAnswer(question, webEvidence.get(), articles, documentResults);
-            if (isGroundedAnswerUsable(question, answer.getAnswer(), terms, coreConcepts)) {
-                return answer;
+            List<AiAnswerSourceVO> webSources = new ArrayList<>(internalSources);
+            webSources.addAll(buildWebEvidenceSources(webEvidence.get()));
+            trace.start("EVIDENCE_EVALUATION");
+            if (hasSufficientCoverage(webSources, contract)) {
+                trace.webSufficient = true;
+                trace.finish("EVIDENCE_EVALUATION", "SUCCEEDED", "Combined internal and web evidence fully covers the question", null);
+                trace.llmAttempted = shouldAttemptGroundedSynthesis("WEB", webSources);
+                trace.start("ANSWER_COMPOSITION");
+                AiAnswerVO answer = buildWebEvidenceBasedAnswer(question, contract, webEvidence.get(), internalSources);
+                if (isGeneratedAnswerUsable(answer.getAnswer())) {
+                    return finalizeAnswer(answer, trace, null);
+                }
             }
         }
 
-        Optional<String> modelAnswer = llmGatewayService.generateDirectAnswer(question)
-                .map(this::normalizeUserAnswer)
-                .filter(answer -> !answer.isBlank());
+        boolean directFallbackAllowed = llmUsagePolicy.canUseDirectFallback(question);
+        trace.llmAttempted = directFallbackAllowed;
+        if (directFallbackAllowed) {
+            trace.start("LLM_FALLBACK");
+        } else {
+            trace.finish("LLM_FALLBACK", "SKIPPED", "Direct model fallback is disabled by policy", null);
+        }
+        LlmGenerationResult directResult = directFallbackAllowed ? safeGenerateDirectAnswer(question) : null;
+        Optional<String> modelAnswer = directResult == null
+                ? Optional.empty()
+                : directResult.answerOptional()
+                .map(this::normalizeEnterpriseAnswer)
+                .filter(answer -> !answer.isBlank())
+                .filter(this::isAnswerPresentationClean)
+                .filter(answer -> groundedAnswerGuard.containsOnlyVerifiedUrls(answer, List.of()))
+                .map(groundedAnswerGuard::markUnverifiedFallback);
         if (modelAnswer.isPresent()) {
+            trace.llmSucceeded = true;
+            trace.finish("LLM_FALLBACK", "SUCCEEDED", "Model fallback returned a usable answer", null);
             WebEvidence modelEvidence = webEvidenceService.storeModelGeneratedEvidence(question, modelAnswer.get(), currentUserId);
-            return buildModelGeneratedAnswer(modelEvidence, modelAnswer.get());
+            trace.start("ANSWER_COMPOSITION");
+            AiAnswerVO answer = buildModelGeneratedAnswer(modelEvidence, modelAnswer.get());
+            copyLlmResult(directResult, answer);
+            return finalizeAnswer(answer, trace, null);
         }
 
-        return buildFallbackAnswer();
+        String failureReason;
+        if (directFallbackAllowed && !llmGatewayService.isConfigured()) {
+            failureReason = "LLM_NOT_CONFIGURED";
+        } else if (directFallbackAllowed) {
+            failureReason = "LLM_NO_USABLE_RESPONSE";
+        } else if (webSearchApplicable && !trace.webSucceeded) {
+            failureReason = "WEB_NO_EVIDENCE";
+        } else if (trace.webSucceeded && !trace.webSufficient) {
+            failureReason = "WEB_INSUFFICIENT_COVERAGE";
+        } else {
+            failureReason = "NO_SUFFICIENT_EVIDENCE";
+        }
+        if (directFallbackAllowed) {
+            trace.finish("LLM_FALLBACK", "FAILED", "Model fallback did not return a usable answer", failureReason);
+        }
+        return finalizeAnswer(buildFallbackAnswer(), trace, failureReason);
+    }
+
+    private boolean shouldAttemptGroundedSynthesis(String sourceType, List<AiAnswerSourceVO> sources) {
+        return llmGatewayService.isConfigured() && llmUsagePolicy.canUseGroundedSynthesis(sourceType, sources);
+    }
+
+    private AiAnswerVO finalizeAnswer(AiAnswerVO answer,
+                                      RetrievalTraceState state,
+                                      String failureReason) {
+        if ("LLM".equals(answer.getAnswerEngine())) {
+            state.llmAttempted = true;
+            state.llmSucceeded = true;
+        }
+        AiRetrievalTraceVO trace = new AiRetrievalTraceVO();
+        trace.setInternalAttempted(state.internalAttempted);
+        trace.setInternalSufficient(state.internalSufficient);
+        trace.setWebAttempted(state.webAttempted);
+        trace.setWebSucceeded(state.webSucceeded);
+        trace.setWebSufficient(state.webSufficient);
+        trace.setLlmAttempted(state.llmAttempted);
+        trace.setLlmSucceeded(state.llmSucceeded);
+        trace.setFinalMode(answer.getAnswerMode());
+        trace.setFailureReason(failureReason);
+        state.finish(
+                "ANSWER_COMPOSITION",
+                isGeneratedAnswerUsable(answer.getAnswer()) ? "SUCCEEDED" : "FAILED",
+                isGeneratedAnswerUsable(answer.getAnswer()) ? "Answer composed for the selected route" : "No usable answer could be composed",
+                isGeneratedAnswerUsable(answer.getAnswer()) ? null : failureReason
+        );
+        trace.setTotalLatencyMs(state.totalLatencyMs());
+        trace.setStages(state.stageViews());
+        answer.setRetrievalTrace(trace);
+        return answer;
+    }
+
+    private static final class RetrievalTraceState {
+        private static final List<String> STAGE_ORDER = List.of(
+                "QUERY_RECEIVED",
+                "QUERY_ANALYSIS",
+                "INTERNAL_RETRIEVAL",
+                "EVIDENCE_EVALUATION",
+                "WEB_RETRIEVAL",
+                "LLM_FALLBACK",
+                "ANSWER_COMPOSITION",
+                "RESPONSE_PERSISTENCE"
+        );
+
+        private final LocalDateTime requestStartedAt = LocalDateTime.now();
+        private final Map<String, MutableTraceStage> stages = new LinkedHashMap<>();
+        private boolean internalAttempted;
+        private boolean internalSufficient;
+        private boolean webAttempted;
+        private boolean webSucceeded;
+        private boolean webSufficient;
+        private boolean llmAttempted;
+        private boolean llmSucceeded;
+
+        private RetrievalTraceState() {
+            finish("QUERY_RECEIVED", "SUCCEEDED", "Question accepted for routing", null);
+        }
+
+        private void start(String stage) {
+            stages.computeIfAbsent(stage, ignored -> new MutableTraceStage()).start();
+        }
+
+        private void finish(String stage, String status, String summary, String errorCategory) {
+            MutableTraceStage value = stages.computeIfAbsent(stage, ignored -> new MutableTraceStage());
+            value.finish(status, summary, errorCategory);
+        }
+
+        private long totalLatencyMs() {
+            return Math.max(0, Duration.between(requestStartedAt, LocalDateTime.now()).toMillis());
+        }
+
+        private List<AiRetrievalStageVO> stageViews() {
+            return STAGE_ORDER.stream().map(stage -> {
+                MutableTraceStage value = stages.get(stage);
+                AiRetrievalStageVO view = new AiRetrievalStageVO();
+                view.setStage(stage);
+                if (value == null) {
+                    view.setStatus("NOT_ATTEMPTED");
+                    return view;
+                }
+                view.setStatus(value.status == null ? "NOT_ATTEMPTED" : value.status);
+                view.setStartedAt(value.startedAt);
+                view.setCompletedAt(value.completedAt);
+                view.setDurationMs(value.durationMs());
+                view.setResultSummary(value.summary);
+                view.setErrorCategory(value.errorCategory);
+                return view;
+            }).toList();
+        }
+    }
+
+    private static final class MutableTraceStage {
+        private LocalDateTime startedAt;
+        private LocalDateTime completedAt;
+        private String status;
+        private String summary;
+        private String errorCategory;
+
+        private void start() {
+            if (startedAt == null) {
+                startedAt = LocalDateTime.now();
+            }
+        }
+
+        private void finish(String status, String summary, String errorCategory) {
+            start();
+            this.completedAt = LocalDateTime.now();
+            this.status = status;
+            this.summary = TextUtil.limit(summary, 240);
+            this.errorCategory = errorCategory;
+        }
+
+        private Long durationMs() {
+            if (startedAt == null || completedAt == null) {
+                return null;
+            }
+            return Math.max(0, Duration.between(startedAt, completedAt).toMillis());
+        }
+    }
+
+    private boolean hasPublishedArticleChunks() {
+        try {
+            return knowledgeArticleChunkMapper.countActivePublishedChunks() > 0;
+        } catch (Exception exception) {
+            log.warn("Could not check published knowledge chunk availability", exception);
+            return false;
+        }
+    }
+
+    private String combinedArticleText(List<KnowledgeArticle> articles) {
+        return articles.stream()
+                .map(this::combinedArticleText)
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("");
+    }
+
+    private String combinedDocumentText(List<DocumentSearchResultVO> documents) {
+        return documents.stream()
+                .map(DocumentSearchResultVO::getContent)
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("");
+    }
+
+    private String combinedAnswerSourceText(List<AiAnswerSourceVO> sources) {
+        return sources.stream()
+                .map(AiAnswerSourceVO::getPreviewContent)
+                .filter(content -> content != null && !content.isBlank())
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("");
     }
 
     private List<DocumentSearchResultVO> findUploadedDocumentAnswer(String question, KnowledgeDocumentVO document) {
-        List<String> terms = extractSearchTerms(question);
-        List<String> specificTerms = extractSpecificTerms(terms);
-        List<String> versionTerms = extractVersionTerms(terms);
-        List<String> coreConcepts = extractCoreConcepts(question, terms);
+        AiQueryPlan contract = queryUnderstandingService.analyze(question);
+        List<String> terms = contract.retrievalTerms();
+        List<String> specificTerms = queryUnderstandingService.extractSpecificTerms(terms);
+        List<String> versionTerms = queryUnderstandingService.extractVersionTerms(terms);
+        List<String> coreConcepts = contract.requiredConcepts();
 
-        List<DocumentSearchResultVO> preciseResults = documentChunkMapper.searchChunksByDocumentId(document.getId(), question)
+        Long currentUserId = CurrentUserUtil.requireCurrentUserId();
+        boolean admin = CurrentUserUtil.isAdmin();
+        List<DocumentSearchResultVO> preciseResults = documentChunkMapper.searchChunksByDocumentId(
+                        document.getId(), question, currentUserId, admin
+                )
                 .stream()
-                .filter(result -> isReliableInternalSource(result.getContent(), terms, specificTerms, versionTerms, coreConcepts))
+                .filter(result -> isReliableInternalSource(result.getContent(), terms, specificTerms, versionTerms, coreConcepts)
+                        || hasSufficientCoverage(result.getContent(), contract))
                 .toList();
         if (!preciseResults.isEmpty()) {
             return preciseResults;
@@ -261,6 +581,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private void saveQuestionLog(String question, AiAnswerVO answerVO) {
         Long currentUserId = CurrentUserUtil.requireCurrentUserId();
+        markResponsePersistenceSucceeded(answerVO.getRetrievalTrace());
 
         AiQuestionLog aiQuestionLog = new AiQuestionLog();
         aiQuestionLog.setUserId(currentUserId);
@@ -273,10 +594,63 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         aiQuestionLog.setSourceChunkIndex(answerVO.getSourceChunkIndex());
         aiQuestionLog.setSourceArticleId(answerVO.getSourceArticleId());
         aiQuestionLog.setSourceTitle(resolveQuestionLogSourceTitle(answerVO));
+        aiQuestionLog.setAnswerMode(answerVO.getAnswerMode());
+        aiQuestionLog.setAnswerEngine(answerVO.getAnswerEngine());
+        copyRetrievalTrace(answerVO.getRetrievalTrace(), aiQuestionLog);
+        aiQuestionLog.setTotalLatencyMs(answerVO.getRetrievalTrace() == null ? null : answerVO.getRetrievalTrace().getTotalLatencyMs());
+        aiQuestionLog.setRetrievalTraceJson(retrievalTraceCodec.encode(answerVO.getRetrievalTrace()));
+        copyLlmResult(answerVO, aiQuestionLog);
         aiQuestionLog.setSuggestCreateTicket(answerVO.getSuggestCreateTicket());
         aiQuestionLog.setCreatedTicketId(answerVO.getCreatedTicketId());
 
         aiQuestionLogMapper.insert(aiQuestionLog);
+    }
+
+    private void markResponsePersistenceSucceeded(AiRetrievalTraceVO trace) {
+        if (trace == null || trace.getStages() == null) {
+            return;
+        }
+        trace.getStages().stream()
+                .filter(stage -> "RESPONSE_PERSISTENCE".equals(stage.getStage()))
+                .findFirst()
+                .ifPresent(stage -> {
+                    LocalDateTime now = LocalDateTime.now();
+                    stage.setStatus("SUCCEEDED");
+                    stage.setStartedAt(now);
+                    stage.setCompletedAt(now);
+                    stage.setDurationMs(0L);
+                    stage.setResultSummary("Question log persisted");
+                    stage.setErrorCategory(null);
+                });
+    }
+
+    private void copyRetrievalTrace(AiRetrievalTraceVO trace, AiQuestionLog log) {
+        if (trace == null) {
+            return;
+        }
+        log.setInternalAttempted(trace.isInternalAttempted());
+        log.setInternalSufficient(trace.isInternalSufficient());
+        log.setWebAttempted(trace.isWebAttempted());
+        log.setWebSucceeded(trace.isWebSucceeded());
+        log.setWebSufficient(trace.isWebSufficient());
+        log.setLlmAttempted(trace.isLlmAttempted());
+        log.setLlmSucceeded(trace.isLlmSucceeded());
+        log.setRetrievalFailureReason(trace.getFailureReason());
+    }
+
+    private void copyLlmResult(AiAnswerVO answer, AiQuestionLog log) {
+        log.setLlmProvider(answer.getLlmProvider());
+        log.setLlmModel(answer.getLlmModel());
+        log.setLlmInputTokens(answer.getLlmInputTokens());
+        log.setLlmOutputTokens(answer.getLlmOutputTokens());
+        log.setLlmTotalTokens(answer.getLlmTotalTokens());
+        log.setLlmEstimatedCost(answer.getLlmEstimatedCost());
+        log.setLlmCurrency(answer.getLlmCurrency());
+        log.setLlmUsageEstimated(answer.getLlmUsageEstimated());
+        log.setLlmRetryCount(answer.getLlmRetryCount());
+        log.setLlmLatencyMs(answer.getLlmLatencyMs());
+        log.setLlmRequestStatus(answer.getLlmRequestStatus());
+        log.setLlmErrorCategory(answer.getLlmErrorCategory());
     }
 
     private String resolveQuestionLogSourceTitle(AiAnswerVO answerVO) {
@@ -349,6 +723,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 currentUserId,
                 "Reviewed knowledge gap answer"
         );
+        knowledgeArticleChunkManager.rebuildArticleChunks(article);
         aiQuestionLogMapper.linkKnowledgeArticle(logId, article.getId(), article.getTitle());
 
         return KnowledgeArticleVoMapper.toVO(article);
@@ -449,7 +824,42 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         vo.setFeedbackComment(aiQuestionLog.getFeedbackComment());
         vo.setFeedbackTime(aiQuestionLog.getFeedbackTime());
         vo.setCreatedTime(aiQuestionLog.getCreatedTime());
+        vo.setAnswerMode(aiQuestionLog.getAnswerMode());
+        vo.setAnswerEngine(aiQuestionLog.getAnswerEngine());
+        vo.setLlmProvider(aiQuestionLog.getLlmProvider());
+        vo.setLlmModel(aiQuestionLog.getLlmModel());
+        vo.setLlmInputTokens(aiQuestionLog.getLlmInputTokens());
+        vo.setLlmOutputTokens(aiQuestionLog.getLlmOutputTokens());
+        vo.setLlmTotalTokens(aiQuestionLog.getLlmTotalTokens());
+        vo.setLlmEstimatedCost(aiQuestionLog.getLlmEstimatedCost());
+        vo.setLlmCurrency(aiQuestionLog.getLlmCurrency());
+        vo.setLlmUsageEstimated(aiQuestionLog.getLlmUsageEstimated());
+        vo.setLlmRetryCount(aiQuestionLog.getLlmRetryCount());
+        vo.setLlmLatencyMs(aiQuestionLog.getLlmLatencyMs());
+        vo.setLlmRequestStatus(aiQuestionLog.getLlmRequestStatus());
+        vo.setLlmErrorCategory(aiQuestionLog.getLlmErrorCategory());
+        vo.setRetrievalTrace(toRetrievalTrace(aiQuestionLog));
         return vo;
+    }
+
+    private AiRetrievalTraceVO toRetrievalTrace(AiQuestionLog log) {
+        AiRetrievalTraceVO storedTrace = retrievalTraceCodec.decode(log.getRetrievalTraceJson());
+        if (storedTrace != null) {
+            return storedTrace;
+        }
+        AiRetrievalTraceVO trace = new AiRetrievalTraceVO();
+        trace.setInternalAttempted(Boolean.TRUE.equals(log.getInternalAttempted()));
+        trace.setInternalSufficient(Boolean.TRUE.equals(log.getInternalSufficient()));
+        trace.setWebAttempted(Boolean.TRUE.equals(log.getWebAttempted()));
+        trace.setWebSucceeded(Boolean.TRUE.equals(log.getWebSucceeded()));
+        trace.setWebSufficient(Boolean.TRUE.equals(log.getWebSufficient()));
+        trace.setLlmAttempted(Boolean.TRUE.equals(log.getLlmAttempted()));
+        trace.setLlmSucceeded(Boolean.TRUE.equals(log.getLlmSucceeded()));
+        trace.setFinalMode(log.getAnswerMode());
+        trace.setFailureReason(log.getRetrievalFailureReason());
+        trace.setTotalLatencyMs(log.getTotalLatencyMs());
+        trace.setStages(List.of());
+        return trace;
     }
     private String generateTicketTitle(String question) {
         String trimmedQuestion = question.trim();
@@ -482,12 +892,16 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return "MEDIUM";
     }
 
-    private AiAnswerVO buildKnowledgeBasedAnswer(String question, List<KnowledgeArticle> articles) {
+    private AiAnswerVO buildKnowledgeBasedAnswer(String question, AiQueryPlan contract, List<KnowledgeArticle> articles) {
         KnowledgeArticle article = articles.get(0);
         List<AiAnswerSourceVO> sources = buildArticleSources(articles);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(buildEnterpriseAnswer(question, "ARTICLE", sources, article.getContent()));
+        AnswerComposition composition = buildEnterpriseAnswer(question, contract, "ARTICLE", sources, article.getContent());
+        answerVO.setAnswer(composition.text());
+        answerVO.setAnswerEngine(composition.engine());
+        copyLlmResult(composition.llmResult(), answerVO);
+        answerVO.setAnswerMode("INTERNAL_RAG");
         answerVO.setSourceType("ARTICLE");
         answerVO.setSourceScore(null);
         answerVO.setSourceArticleId(article.getId());
@@ -502,17 +916,45 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return answerVO;
     }
 
+    private AiAnswerVO buildArticleChunkBasedAnswer(String question,
+                                                    AiQueryPlan contract,
+                                                    List<KnowledgeArticleChunkSearchResultVO> chunks) {
+        KnowledgeArticleChunkSearchResultVO topChunk = chunks.get(0);
+        List<AiAnswerSourceVO> sources = buildArticleChunkSources(chunks);
+
+        AiAnswerVO answerVO = new AiAnswerVO();
+        AnswerComposition composition = buildEnterpriseAnswer(question, contract, "ARTICLE", sources, topChunk.getContent());
+        answerVO.setAnswer(composition.text());
+        answerVO.setAnswerEngine(composition.engine());
+        copyLlmResult(composition.llmResult(), answerVO);
+        answerVO.setAnswerMode("INTERNAL_RAG");
+        answerVO.setSourceType("ARTICLE");
+        answerVO.setSourceScore(topChunk.getRelevanceScore());
+        answerVO.setSourceArticleId(topChunk.getArticleId());
+        answerVO.setSourceTitle(topChunk.getArticleTitle());
+        answerVO.setSourceDocumentId(null);
+        answerVO.setSourceDocumentName(null);
+        answerVO.setSourceChunkId(topChunk.getChunkId());
+        answerVO.setSourceChunkIndex(topChunk.getChunkIndex());
+        answerVO.setSuggestCreateTicket(false);
+        answerVO.setCreatedTicketId(null);
+        answerVO.setSources(sources);
+        return answerVO;
+    }
+
     private AiAnswerVO buildWebEvidenceBasedAnswer(String question,
+                                                   AiQueryPlan contract,
                                                    WebEvidence evidence,
-                                                   List<KnowledgeArticle> internalArticles,
-                                                   List<DocumentSearchResultVO> internalDocuments) {
-        List<AiAnswerSourceVO> sources = new ArrayList<>();
-        sources.addAll(buildArticleSources(internalArticles));
-        sources.addAll(buildDocumentSources(internalDocuments));
+                                                   List<AiAnswerSourceVO> internalSources) {
+        List<AiAnswerSourceVO> sources = new ArrayList<>(internalSources);
         sources.addAll(buildWebEvidenceSources(evidence));
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(buildEnterpriseAnswer(question, "WEB", sources, evidence.getExtractedContent()));
+        AnswerComposition composition = buildEnterpriseAnswer(question, contract, "WEB", sources, evidence.getExtractedContent());
+        answerVO.setAnswer(composition.text());
+        answerVO.setAnswerEngine(composition.engine());
+        copyLlmResult(composition.llmResult(), answerVO);
+        answerVO.setAnswerMode("LLM".equals(composition.engine()) ? "AI_ASSISTED_WEB" : "WEB_SEARCH");
         answerVO.setSourceType("WEB");
         answerVO.setSourceScore(evidence.getCredibilityScore() == null ? null : evidence.getCredibilityScore().doubleValue());
         answerVO.setSourceArticleId(null);
@@ -534,6 +976,8 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private AiAnswerVO buildModelGeneratedAnswer(WebEvidence evidence, String answer) {
         AiAnswerVO answerVO = new AiAnswerVO();
         answerVO.setAnswer(answer);
+        answerVO.setAnswerEngine("LLM");
+        answerVO.setAnswerMode("AI_ONLY");
         answerVO.setSourceType("LLM");
         answerVO.setSourceScore(evidence.getCredibilityScore() == null ? null : evidence.getCredibilityScore().doubleValue());
         answerVO.setSourceArticleId(null);
@@ -552,12 +996,16 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return answerVO;
     }
 
-    private AiAnswerVO buildDocumentBasedAnswer(String question, List<DocumentSearchResultVO> documentResults) {
+    private AiAnswerVO buildDocumentBasedAnswer(String question, AiQueryPlan contract, List<DocumentSearchResultVO> documentResults) {
         DocumentSearchResultVO documentResult = documentResults.get(0);
         List<AiAnswerSourceVO> sources = buildDocumentSources(documentResults);
 
         AiAnswerVO answerVO = new AiAnswerVO();
-        answerVO.setAnswer(buildEnterpriseAnswer(question, "DOCUMENT", sources, documentResult.getContent()));
+        AnswerComposition composition = buildEnterpriseAnswer(question, contract, "DOCUMENT", sources, documentResult.getContent());
+        answerVO.setAnswer(composition.text());
+        answerVO.setAnswerEngine(composition.engine());
+        copyLlmResult(composition.llmResult(), answerVO);
+        answerVO.setAnswerMode("INTERNAL_RAG");
         answerVO.setSourceType("DOCUMENT");
         answerVO.setSourceScore(documentResult.getRelevanceScore());
         answerVO.setSourceArticleId(null);
@@ -571,7 +1019,65 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         answerVO.setSources(sources);
         return answerVO;
     }
+
+    private List<KnowledgeArticleChunkSearchResultVO> findRelevantArticleChunks(String question,
+                                                                                AiQueryPlan contract,
+                                                                                List<String> terms,
+                                                                                List<String> specificTerms,
+                                                                                List<String> versionTerms,
+                                                                                List<String> coreConcepts) {
+        if (question == null || question.isBlank() || terms.isEmpty()) {
+            return List.of();
+        }
+
+        String searchExpression = terms.stream()
+                .map(term -> term.replace("\"", ""))
+                .filter(term -> !term.isBlank())
+                .distinct()
+                .reduce((left, right) -> left + " OR " + right)
+                .orElse(question);
+        try {
+            List<KnowledgeArticleChunkSearchResultVO> candidates = new ArrayList<>();
+            if (contract.domainCandidates().isEmpty()) {
+                candidates.addAll(knowledgeArticleChunkMapper.searchChunks(searchExpression, null, 24));
+            } else {
+                for (String category : contract.domainCandidates()) {
+                    candidates.addAll(knowledgeArticleChunkMapper.searchChunks(searchExpression, category, 16));
+                }
+            }
+
+            Map<Long, KnowledgeArticleChunkSearchResultVO> deduplicated = new LinkedHashMap<>();
+            candidates.stream()
+                    .filter(result -> result != null && result.getChunkId() != null)
+                    .filter(result -> contract.domainCandidates().isEmpty()
+                            || contract.domainCandidates().stream().anyMatch(domain -> domain.equalsIgnoreCase(result.getCategory())))
+                    .filter(result -> !isLowQualityKnowledgeContent(result.getContent()))
+                    .filter(result -> hasMeaningfulConceptOverlap(result, contract))
+                    .forEach(result -> deduplicated.putIfAbsent(result.getChunkId(), result));
+
+            Map<Long, List<KnowledgeArticleChunkSearchResultVO>> byArticle = deduplicated.values().stream()
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            KnowledgeArticleChunkSearchResultVO::getArticleId,
+                            LinkedHashMap::new,
+                            java.util.stream.Collectors.toList()
+                    ));
+            if (byArticle.isEmpty()) {
+                return List.of();
+            }
+            return knowledgeChunkRanker.select(byArticle, contract);
+        } catch (Exception exception) {
+            log.warn("Internal article chunk retrieval failed for question: {}", TextUtil.limit(question, 160), exception);
+            return List.of();
+        }
+    }
+
+    private boolean hasMeaningfulConceptOverlap(KnowledgeArticleChunkSearchResultVO result, AiQueryPlan contract) {
+        String source = result.getSectionTitle() + " " + result.getConceptTags() + " " + result.getContent();
+        return coverageEvaluator.contributesEvidence(source, result.getCategory(), contract);
+    }
+
     private List<KnowledgeArticle> findRelevantArticles(String question,
+                                                        AiQueryPlan contract,
                                                         List<String> terms,
                                                         List<String> specificTerms,
                                                         List<String> versionTerms,
@@ -580,39 +1086,43 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             return List.of();
         }
 
-        return knowledgeArticleMapper.findPublishedArticles().stream()
+        List<ArticleMatch> matches = knowledgeArticleMapper.findPublishedArticles().stream()
                 .filter(article -> !isLowQualityKnowledgeContent(article.getContent()))
+                .filter(article -> contract.domainCandidates().isEmpty()
+                        || contract.domainCandidates().stream().anyMatch(domain -> domain.equalsIgnoreCase(article.getCategory())))
                 .map(article -> new ArticleMatch(article, scoreArticle(article, terms)))
                 .filter(match -> match.score() >= 6)
-                .filter(match -> isReliableInternalSource(combinedArticleText(match.article()), terms, specificTerms, versionTerms, coreConcepts))
+                .filter(match -> contract.domainCandidates().size() > 1
+                        ? hasMeaningfulConceptOverlap(combinedArticleText(match.article()), match.article().getCategory(), contract)
+                        : hasSufficientCoverage(combinedArticleText(match.article()), contract))
                 .sorted(Comparator.comparingInt(ArticleMatch::score).reversed())
-                .limit(5)
-                .map(ArticleMatch::article)
                 .toList();
-    }
-
-    private List<String> extractSearchTerms(String question) {
-        String normalizedQuestion = question == null ? "" : question.toLowerCase();
-        return WORD_SPLIT_PATTERN.splitAsStream(normalizedQuestion)
-                .map(String::trim)
-                .filter(this::isSearchableTerm)
-                .filter(term -> !STOP_WORDS.contains(term))
-                .distinct()
-                .limit(12)
-                .toList();
-    }
-
-    private boolean isSearchableTerm(String term) {
-        if (term == null || term.isBlank()) {
-            return false;
+        if (contract.domainCandidates().size() <= 1) {
+            return matches.stream().limit(5).map(ArticleMatch::article).toList();
         }
-        return term.length() >= 3 || term.matches("[a-z]+\\d+") || term.matches("\\d+[a-z]+");
+
+        LinkedHashMap<Long, KnowledgeArticle> selected = new LinkedHashMap<>();
+        for (String domain : contract.domainCandidates()) {
+            matches.stream()
+                    .filter(match -> domain.equalsIgnoreCase(match.article().getCategory()))
+                    .findFirst()
+                    .ifPresent(match -> selected.putIfAbsent(match.article().getId(), match.article()));
+        }
+        matches.stream()
+                .map(ArticleMatch::article)
+                .forEach(article -> selected.putIfAbsent(article.getId(), article));
+        return selected.values().stream().limit(6).toList();
+    }
+
+    private boolean hasMeaningfulConceptOverlap(String source, String sourceDomain, AiQueryPlan contract) {
+        return coverageEvaluator.contributesEvidence(source, sourceDomain, contract);
     }
 
     private int scoreArticle(KnowledgeArticle article, List<String> terms) {
         String title = TextUtil.safeLower(article.getTitle());
         String category = TextUtil.safeLower(article.getCategory());
         String content = TextUtil.safeLower(article.getContent());
+        String inferredCategory = TextUtil.safeLower(KnowledgeCategoryResolver.infer(String.join(" ", terms)));
         int score = 0;
 
         for (String term : terms) {
@@ -626,74 +1136,12 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 score += 1;
             }
         }
-        if (terms.stream().anyMatch(term -> Set.of("container", "containers", "backend").contains(term))
-                && ("docker".equals(category) || title.contains("docker") || content.contains("docker compose"))) {
+        if (!inferredCategory.isBlank()
+                && (category.contains(inferredCategory) || inferredCategory.contains(category))) {
             score += 6;
-        }
-        if (terms.stream().anyMatch(term -> Set.of("postgresql", "postgres", "database").contains(term))
-                && (category.contains("postgres") || title.contains("postgres") || content.contains("postgres"))) {
-            score += 4;
         }
 
         return score;
-    }
-
-    private List<String> extractSpecificTerms(List<String> terms) {
-        Set<String> broadTerms = Set.of(
-                "kubernetes", "postgresql", "production", "troubleshooting", "document",
-                "article", "knowledge", "platform", "cloudops", "support"
-        );
-        return terms.stream()
-                .filter(term -> !term.matches(".*\\d.*") && term.length() >= 10)
-                .filter(term -> !broadTerms.contains(term))
-                .filter(term -> !GENERIC_QUESTION_TERMS.contains(term))
-                .toList();
-    }
-
-    private List<String> extractVersionTerms(List<String> terms) {
-        return terms.stream()
-                .filter(term -> term.matches(".*\\d.*"))
-                .toList();
-    }
-
-    private List<String> extractCoreConcepts(String question, List<String> terms) {
-        String normalizedQuestion = TextUtil.safeLower(question);
-        LinkedHashSet<String> concepts = new LinkedHashSet<>();
-
-        if (normalizedQuestion.contains("not before")) {
-            concepts.add("not before");
-        }
-        if (normalizedQuestion.contains("service name") || normalizedQuestion.contains("service names")) {
-            concepts.add("service name");
-        }
-        if (normalizedQuestion.contains("localhost")) {
-            concepts.add("localhost");
-        }
-        if (normalizedQuestion.contains("container-to-container")) {
-            concepts.add("container-to-container");
-        }
-        for (String term : terms) {
-            if (isCoreConceptTerm(term)) {
-                concepts.add(term);
-            }
-        }
-        return concepts.stream().limit(6).toList();
-    }
-
-    private boolean isCoreConceptTerm(String term) {
-        if (term == null || term.isBlank() || GENERIC_QUESTION_TERMS.contains(term)) {
-            return false;
-        }
-        if (SHORT_TECHNICAL_TERMS.contains(term)) {
-            return true;
-        }
-        if ("localhost".equals(term)) {
-            return true;
-        }
-        if (BROAD_DOMAIN_TERMS.contains(term)) {
-            return false;
-        }
-        return term.matches(".*[0-9+#./-].*");
     }
 
     private boolean isReliableInternalSource(String sourceText,
@@ -716,7 +1164,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 : coverage >= 0.35 || matchedTerms >= 4;
         boolean versionsCovered = versionTerms.stream().allMatch(normalizedSource::contains);
         boolean specificCovered = specificTerms.isEmpty()
-                || specificTerms.stream().anyMatch(term -> matchesConcept(normalizedSource, term));
+                || specificTerms.stream().anyMatch(term -> coverageEvaluator.matchesConcept(normalizedSource, term));
         boolean coreCovered = coversCoreConcepts(normalizedSource, coreConcepts);
 
         return enoughCoverage && versionsCovered && specificCovered && coreCovered;
@@ -728,134 +1176,35 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         }
 
         long matchedConcepts = coreConcepts.stream()
-                .filter(concept -> matchesConcept(normalizedSource, concept))
+                .filter(concept -> coverageEvaluator.matchesConcept(normalizedSource, concept))
                 .count();
-        boolean shortTechnicalCovered = coreConcepts.stream()
-                .filter(SHORT_TECHNICAL_TERMS::contains)
-                .allMatch(concept -> matchesConcept(normalizedSource, concept));
         double coverage = (double) matchedConcepts / (double) coreConcepts.size();
 
-        return shortTechnicalCovered && (coreConcepts.size() <= 2 ? matchedConcepts == coreConcepts.size() : coverage >= 0.60);
+        return coreConcepts.size() <= 2 ? matchedConcepts == coreConcepts.size() : coverage >= 0.60;
     }
 
-    private boolean matchesConcept(String normalizedSource, String concept) {
-        if (normalizedSource == null || concept == null || concept.isBlank()) {
-            return false;
-        }
-        String normalizedConcept = TextUtil.safeLower(concept);
-        if (normalizedSource.contains(normalizedConcept)) {
-            return true;
-        }
-        if (matchesSingularPlural(normalizedSource, normalizedConcept)) {
-            return true;
-        }
-        if (matchesCompoundConcept(normalizedSource, normalizedConcept)) {
-            return true;
-        }
-        return switch (normalizedConcept) {
-            case "nbf" -> normalizedSource.contains("not before");
-            case "not before" -> normalizedSource.contains("nbf");
-            case "service name", "service names" -> normalizedSource.contains("service name")
-                    || normalizedSource.contains("service names")
-                    || normalizedSource.contains("connect to other services")
-                    || normalizedSource.contains("connects to other services");
-            case "container-to-container" -> normalizedSource.contains("container") && normalizedSource.contains("service");
-            case "exp" -> normalizedSource.contains("expiration") || normalizedSource.contains("expired") || normalizedSource.contains("expires");
-            case "iat" -> normalizedSource.contains("issued at");
-            case "aud" -> normalizedSource.contains("audience");
-            case "iss" -> normalizedSource.contains("issuer");
-            case "kid" -> normalizedSource.contains("key id");
-            case "jti" -> normalizedSource.contains("jwt id");
-            default -> false;
-        };
+    boolean isGeneratedAnswerUsable(String answer) {
+        return answer != null && !answer.isBlank() && isAnswerPresentationClean(answer);
     }
 
-    private boolean matchesSingularPlural(String normalizedSource, String normalizedConcept) {
-        if (normalizedConcept.length() <= 3) {
-            return false;
-        }
-        if (normalizedConcept.endsWith("s")) {
-            return normalizedSource.contains(normalizedConcept.substring(0, normalizedConcept.length() - 1));
-        }
-        return normalizedSource.contains(normalizedConcept + "s");
-    }
-
-    private boolean matchesCompoundConcept(String normalizedSource, String normalizedConcept) {
-        if (!normalizedConcept.contains("-")) {
-            return false;
-        }
-        List<String> parts = WORD_SPLIT_PATTERN.splitAsStream(normalizedConcept.replace("-", " "))
-                .filter(part -> !part.isBlank())
-                .filter(part -> !STOP_WORDS.contains(part))
-                .distinct()
-                .toList();
-        return !parts.isEmpty() && parts.stream().allMatch(normalizedSource::contains);
-    }
-
-    private boolean isGroundedAnswerUsable(String question, String answer, List<String> terms, List<String> coreConcepts) {
-        if (answer == null || answer.isBlank()) {
-            return false;
-        }
-        String normalizedAnswer = TextUtil.safeLower(answer);
-        if (coversQuestionTasks(question, normalizedAnswer)) {
-            return true;
-        }
-        if (!coversCoreConcepts(normalizedAnswer, coreConcepts)) {
-            return false;
-        }
-        if (terms == null || terms.isEmpty()) {
-            return true;
-        }
-        if (classifyAnswerIntent(question) == AnswerIntent.CONCEPT) {
-            long matchedCoreTerms = terms.stream()
-                    .filter(term -> !GENERIC_QUESTION_TERMS.contains(term))
-                    .filter(term -> !BROAD_DOMAIN_TERMS.contains(term))
-                    .filter(term -> matchesConcept(normalizedAnswer, term))
-                    .count();
-            return matchedCoreTerms >= Math.min(2, terms.size());
-        }
-        long matchedTerms = terms.stream()
-                .filter(normalizedAnswer::contains)
-                .count();
-        return matchedTerms >= Math.min(2, terms.size());
-    }
-
-    private boolean coversQuestionTasks(String question, String normalizedAnswer) {
-        List<String> tasks = splitQuestionTasks(question);
-        if (tasks.size() <= 1) {
-            return false;
-        }
-        return tasks.stream().allMatch(task -> {
-            List<String> taskTerms = extractSearchTerms(task).stream()
-                    .filter(term -> !GENERIC_QUESTION_TERMS.contains(term))
-                    .filter(term -> !BROAD_DOMAIN_TERMS.contains(term))
-                    .toList();
-            if (taskTerms.isEmpty()) {
-                return true;
-            }
-            long matched = taskTerms.stream()
-                    .filter(term -> matchesConcept(normalizedAnswer, term))
-                    .count();
-            return matched >= Math.min(2, taskTerms.size());
-        });
-    }
-
-    private List<String> splitQuestionTasks(String question) {
-        String normalized = question == null ? "" : question.trim();
-        if (normalized.isBlank()) {
-            return List.of();
-        }
-        LinkedHashSet<String> tasks = new LinkedHashSet<>();
-        for (String rawPart : QUESTION_TASK_SPLIT_PATTERN.split(normalized)) {
-            String part = rawPart.trim();
-            if (part.length() >= 8) {
-                tasks.add(part);
-            }
-        }
-        if (tasks.isEmpty()) {
-            tasks.add(normalized);
-        }
-        return tasks.stream().limit(4).toList();
+    private boolean isAnswerPresentationClean(String answer) {
+        String normalized = TextUtil.safeLower(answer);
+        return !normalized.contains("primary keywords")
+                && !normalized.contains("source references")
+                && !normalized.contains("knowledge candidate")
+                && !normalized.contains("observed answer")
+                && !normalized.contains("review this content before publishing")
+                && !normalized.contains("uploaded document chunks remain retrieval evidence")
+                && !normalized.contains("consolidated reviewed internal knowledge")
+                && !normalized.contains("use this runbook")
+                && !normalized.contains("use this playbook")
+                && !normalized.contains("use this guide")
+                && !normalized.contains("runbook runbook")
+                && !normalized.contains("sop sop")
+                && !normalized.contains("window.")
+                && !normalized.contains("document.")
+                && !normalized.contains("__next")
+                && !normalized.matches("(?s).*[{};]{6,}.*");
     }
 
     private String combinedArticleText(KnowledgeArticle article) {
@@ -878,69 +1227,132 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private record ScoredPoint(String point, int score) {
     }
 
-    private record ConceptSummary(String directAnswer, String explanation, List<String> whenToUse, String example) {
+    private record ConceptSummary(String directAnswer, String explanation, List<String> whenToUse) {
     }
 
-    private enum AnswerIntent {
-        CONCEPT,
-        TROUBLESHOOTING,
-        PROCEDURE,
-        DECISION
+    private boolean hasSufficientCoverage(String sourceText, AiQueryPlan contract) {
+        return coverageEvaluator.isSufficient(sourceText, contract);
     }
 
-    private String buildConciseWebEvidenceAnswer(WebEvidence evidence) {
-        String content = evidence.getExtractedContent();
-        if (content == null || content.isBlank()) {
-            content = evidence.getSuggestedArticleContent();
-        }
-        String concise = buildConciseAnswer(evidence.getQuestion(), content);
-        if (concise.isBlank()) {
-            concise = "I found related external evidence, but it needs administrator review before becoming trusted internal knowledge.";
-        }
-        String domain = evidence.getDomain();
-        return domain == null || domain.isBlank() ? concise : concise + "\n\nSource: " + domain;
+    private boolean hasSufficientCoverage(List<AiAnswerSourceVO> sources, AiQueryPlan contract) {
+        return coverageEvaluator.evaluateEvidence(sources, contract).sufficient();
     }
 
-    private String buildEnterpriseAnswer(String question,
-                                         String sourceType,
-                                         List<AiAnswerSourceVO> sources,
-                                         String fallbackContent) {
-        String answerContext = buildAnswerContext(sources, fallbackContent);
-        if (!extractQuestionFocusedPoints(question, answerContext).isEmpty()) {
-            return buildTemplateAnswer(question, answerContext, sources);
-        }
-
-        Optional<String> modelAnswer = safeGenerateGroundedAnswer(question, sourceType, sources)
+    private AnswerComposition buildEnterpriseAnswer(String question,
+                                                     AiQueryPlan contract,
+                                                     String sourceType,
+                                                     List<AiAnswerSourceVO> sources,
+                                                     String fallbackContent) {
+        List<AiAnswerSourceVO> answerSources = sanitizeSourcesForAnswer(sources);
+        List<AiAnswerSourceVO> llmSources = llmGatewayService.isConfigured()
+                && llmUsagePolicy.canUseGroundedSynthesis(sourceType, answerSources)
+                ? llmUsagePolicy.selectSourcesForGroundedSynthesis(answerSources)
+                : List.of();
+        LlmGenerationResult llmResult = llmSources.isEmpty()
+                ? null
+                : safeGenerateGroundedAnswer(question, sourceType, llmSources);
+        Optional<String> modelAnswer = llmResult == null ? Optional.empty() : llmResult.answerOptional()
                 .map(this::normalizeEnterpriseAnswer)
-                .filter(answer -> !answer.isBlank());
+                .filter(answer -> !answer.isBlank())
+                .filter(this::isAnswerPresentationClean)
+                .filter(answer -> groundedAnswerGuard.containsOnlyVerifiedUrls(
+                        answer,
+                        answerSources.stream().map(AiAnswerSourceVO::getSourceUrl).toList()))
+                .map(answer -> groundedAnswerGuard.replaceReferencesWithVerifiedSources(
+                        answer,
+                        formatReferences(answerSources)));
         if (modelAnswer.isPresent()) {
-            return modelAnswer.get();
+            return new AnswerComposition(modelAnswer.get(), "LLM", llmResult);
         }
 
-        return buildTemplateAnswer(question, answerContext, sources);
+        String answerContext = buildAnswerContext(answerSources, fallbackContent);
+        return new AnswerComposition(buildTemplateAnswer(contract, answerContext, sources), "DETERMINISTIC", llmResult);
+    }
+
+    private record AnswerComposition(String text, String engine, LlmGenerationResult llmResult) {
     }
 
     private String buildAnswerContext(List<AiAnswerSourceVO> sources, String fallbackContent) {
         LinkedHashSet<String> context = new LinkedHashSet<>();
         if (fallbackContent != null && !fallbackContent.isBlank()) {
-            context.add(fallbackContent);
+            context.add(cleanAnswerContent(fallbackContent));
         }
         if (sources != null) {
             sources.stream()
                     .map(AiAnswerSourceVO::getPreviewContent)
                     .filter(preview -> preview != null && !preview.isBlank())
+                    .map(this::cleanAnswerContent)
+                    .filter(preview -> !preview.isBlank())
                     .forEach(context::add);
         }
         return String.join("\n\n", context);
     }
 
-    private Optional<String> safeGenerateGroundedAnswer(String question, String sourceType, List<AiAnswerSourceVO> sources) {
-        try {
-            Optional<String> answer = llmGatewayService.generateGroundedAnswer(question, sourceType, sources);
-            return answer == null ? Optional.empty() : answer;
-        } catch (Exception ignored) {
-            return Optional.empty();
+    private List<AiAnswerSourceVO> sanitizeSourcesForAnswer(List<AiAnswerSourceVO> sources) {
+        if (sources == null || sources.isEmpty()) {
+            return List.of();
         }
+        List<AiAnswerSourceVO> sanitized = new ArrayList<>();
+        for (AiAnswerSourceVO source : sources) {
+            AiAnswerSourceVO copy = new AiAnswerSourceVO();
+            copy.setSourceType(source.getSourceType());
+            copy.setSourceScore(source.getSourceScore());
+            copy.setSourceArticleId(source.getSourceArticleId());
+            copy.setSourceTitle(source.getSourceTitle());
+            copy.setSourceDocumentId(source.getSourceDocumentId());
+            copy.setSourceDocumentName(source.getSourceDocumentName());
+            copy.setSourceChunkId(source.getSourceChunkId());
+            copy.setSourceChunkIndex(source.getSourceChunkIndex());
+            copy.setSourceWebEvidenceId(source.getSourceWebEvidenceId());
+            copy.setSourceUrl(source.getSourceUrl());
+            copy.setSourceDomain(source.getSourceDomain());
+            copy.setSourceStatus(source.getSourceStatus());
+            copy.setPreviewContent(cleanAnswerContent(source.getPreviewContent()));
+            sanitized.add(copy);
+        }
+        return sanitized;
+    }
+
+    private LlmGenerationResult safeGenerateGroundedAnswer(String question, String sourceType, List<AiAnswerSourceVO> sources) {
+        try {
+            LlmGenerationResult result = llmGatewayService.generateGroundedAnswerResult(question, sourceType, sources);
+            return result == null
+                    ? LlmGenerationResult.skipped("OpenAI", null, com.zwf.aisupport.service.model.LlmErrorCategory.LLM_NO_USABLE_RESPONSE, "No LLM result")
+                    : result;
+        } catch (Exception exception) {
+            log.warn("Grounded LLM synthesis failed: {}", exception.getClass().getSimpleName());
+            return LlmGenerationResult.skipped("OpenAI", null, com.zwf.aisupport.service.model.LlmErrorCategory.LLM_PROVIDER_ERROR, "LLM invocation failed");
+        }
+    }
+
+    private LlmGenerationResult safeGenerateDirectAnswer(String question) {
+        try {
+            LlmGenerationResult result = llmGatewayService.generateDirectAnswerResult(question);
+            return result == null
+                    ? LlmGenerationResult.skipped("OpenAI", null, com.zwf.aisupport.service.model.LlmErrorCategory.LLM_NO_USABLE_RESPONSE, "No LLM result")
+                    : result;
+        } catch (Exception exception) {
+            log.warn("Direct LLM fallback failed: {}", exception.getClass().getSimpleName());
+            return LlmGenerationResult.skipped("OpenAI", null, com.zwf.aisupport.service.model.LlmErrorCategory.LLM_PROVIDER_ERROR, "LLM invocation failed");
+        }
+    }
+
+    private void copyLlmResult(LlmGenerationResult result, AiAnswerVO answer) {
+        if (result == null) {
+            return;
+        }
+        answer.setLlmProvider(result.provider());
+        answer.setLlmModel(result.model());
+        answer.setLlmInputTokens(result.inputTokens());
+        answer.setLlmOutputTokens(result.outputTokens());
+        answer.setLlmTotalTokens(result.totalTokens());
+        answer.setLlmEstimatedCost(result.estimatedCost());
+        answer.setLlmCurrency(result.currency());
+        answer.setLlmUsageEstimated(result.usageEstimated());
+        answer.setLlmRetryCount(result.retryCount());
+        answer.setLlmLatencyMs(result.latencyMs());
+        answer.setLlmRequestStatus(result.requestStatus());
+        answer.setLlmErrorCategory(result.errorCategory() == null ? null : result.errorCategory().name());
     }
 
     private String normalizeEnterpriseAnswer(String answer) {
@@ -948,53 +1360,48 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             return "";
         }
         String cleaned = answer.trim();
-        if (cleaned.contains("Direct Answer")
-                && (cleaned.contains("Recommended Actions") || cleaned.contains("When To Use") || cleaned.contains("Checks"))) {
+        if (TextUtil.safeLower(cleaned).contains("direct answer")) {
             return cleaned;
         }
-        return """
-                ## Direct Answer
-                %s
-
-                ## Explanation
-                The answer is synthesized from the available grounded sources. It avoids exposing raw article, chunk, or web evidence text.
-
-                ## Likely Causes
-                - The issue is usually caused by a configuration, timing, version, or state mismatch related to the question.
-
-                ## Checks
-                - Verify the exact error, configuration value, version, and runtime context before applying changes.
-
-                ## Fix
-                - Compare the current behavior against the referenced source and internal knowledge.
-
-                ## References
-                - See the grounding section for the evidence used.
-                """.formatted(cleaned);
+        return "## Direct Answer\n" + cleaned;
     }
 
-    private String buildTemplateAnswer(String question, String content, List<AiAnswerSourceVO> sources) {
-        List<String> points = extractQuestionFocusedPoints(question, content);
-        AnswerIntent intent = classifyAnswerIntent(question);
+    String buildTemplateAnswer(AiQueryPlan contract, String content, List<AiAnswerSourceVO> sources) {
+        List<String> points = extractQuestionFocusedPoints(contract, content);
+        if (points.isEmpty()) {
+            points = extractGroundedFallbackPoints(contract, content);
+        }
+        if (points.isEmpty()) {
+            return "";
+        }
+        AiAnswerIntent intent = contract.intent();
         List<String> references = formatReferences(sources);
 
-        if (intent == AnswerIntent.DECISION) {
-            return buildDecisionAnswer(points, references);
+        if (intent == AiAnswerIntent.DECISION) {
+            return buildDecisionAnswer(contract, points, references);
         }
-        if (intent == AnswerIntent.CONCEPT) {
-            return buildConceptAnswer(question, content, points, references);
+        if (intent == AiAnswerIntent.CONCEPT) {
+            return buildConceptAnswer(contract, content, points, references);
         }
-        if (intent == AnswerIntent.PROCEDURE) {
-            return buildProcedureAnswer(question, points, references);
+        if (intent == AiAnswerIntent.PROCEDURE) {
+            return buildProcedureAnswer(contract, points, references);
         }
 
-        String direct = points.isEmpty()
-                ? "The issue is likely caused by a configuration, network, credential, readiness, or runtime mismatch in the affected service."
-                : rewritePointAsAnswer(points.get(0));
-        String explanation = points.size() > 1
-                ? rewritePointAsAnswer(points.get(1))
-                : "Start by narrowing the problem to the exact failing component, connection path, configuration value, and runtime state.";
-        List<String> causes = points.stream().skip(2).limit(3).map(this::rewritePointAsAnswer).toList();
+        List<String> actionPoints = points.stream()
+                .filter(this::isProceduralAnswerPoint)
+                .map(this::rewritePointAsAction)
+                .distinct()
+                .limit(5)
+                .toList();
+        List<String> factualPoints = points.stream()
+                .filter(point -> !isProceduralAnswerPoint(point))
+                .map(this::rewritePointAsAnswer)
+                .distinct()
+                .toList();
+        String direct = factualPoints.isEmpty() ? rewritePointAsAnswer(points.get(0)) : factualPoints.get(0);
+        direct = ensureImportantConceptsVisible(contract, direct);
+        String explanation = factualPoints.stream().skip(1).findFirst().orElse(direct);
+        List<String> causes = factualPoints.stream().skip(2).limit(3).toList();
         return """
                 ## Direct Answer
                 %s
@@ -1002,59 +1409,50 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 ## Explanation
                 %s
 
-                ## Likely Causes
+                ## Common Causes
                 %s
 
-                ## Checks
-                - Verify the exact configuration, timestamp, version, and runtime context related to the failure.
-                - Check whether the specific mechanism named in the question is present in the active configuration or source evidence.
-
-                ## Fix
-                - Apply the smallest confirmed configuration or runtime change, restart only the affected component, and verify the same user-facing action again.
+                ## Recommended Actions
+                %s
 
                 ## References
                 %s
                 """.formatted(
                 direct,
                 explanation,
-                formatBullets(causes, "- The current evidence does not list a confirmed root cause."),
-                formatBullets(references, "- Grounding sources are attached below.")
+                 formatBullets(causes, "- No grounded cause was established."),
+                 formatBullets(actionPoints, "- No grounded action was established."),
+                 formatBullets(references, "- No reference was attached.")
         ).trim();
     }
 
-    private String buildDecisionAnswer(List<String> points, List<String> references) {
+    private List<String> extractGroundedFallbackPoints(AiQueryPlan contract, String content) {
+        String cleaned = cleanAnswerContent(content);
+        if (cleaned.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(cleaned.split("\\R+|(?<=[.!?])\\s+"))
+                .map(this::normalizeAnswerLine)
+                .filter(this::isUsefulAnswerPoint)
+                .filter(line -> !isAnswerNoiseLine(line))
+                .filter(this::isAnswerPresentationClean)
+                .filter(line -> contract.requiredConcepts().stream()
+                        .anyMatch(concept -> coverageEvaluator.matchesConcept(TextUtil.safeLower(line), concept)))
+                .distinct()
+                .sorted(Comparator.comparingInt((String line) -> scoreAnswerPoint(line, contract.retrievalTerms())).reversed())
+                .limit(6)
+                .toList();
+    }
+
+    private String buildDecisionAnswer(AiQueryPlan contract, List<String> points, List<String> references) {
         List<String> criteria = points.stream()
                 .map(this::rewritePointAsAnswer)
                 .filter(point -> !point.isBlank())
                 .limit(6)
                 .toList();
-        String direct = criteria.isEmpty()
-                ? "Decide by comparing the request against the grounded criteria, then choose the lowest level that still covers the actual risk and impact."
-                : "Decide by matching the request's impact, urgency, scope, and risk against the grounded criteria.";
-        return """
-                ## Direct Answer
-                %s
-
-                ## Decision Criteria
-                %s
-
-                ## How To Apply It
-                - Start with user impact and production risk.
-                - Check whether the issue affects one user, a team, a region, or a broad customer workflow.
-                - Raise the level when the issue involves security, data loss, authentication outage, production outage, or no safe workaround.
-                - Lower the level only when the issue is isolated, low risk, and has a clear workaround.
-
-                ## References
-                %s
-                """.formatted(
-                direct,
-                formatBullets(criteria, "- No explicit decision criteria were found in the grounded source."),
-                formatBullets(references, "- Grounding sources are attached below.")
-        ).trim();
-    }
-
-    private String buildConceptAnswer(String question, String content, List<String> points, List<String> references) {
-        ConceptSummary summary = summarizeConcept(question, content, points);
+        String direct = rewritePointAsAnswer(criteria.get(0));
+        direct = ensureImportantConceptsVisible(contract, direct);
+        List<String> application = criteria.stream().skip(1).limit(5).toList();
         return """
                 ## Direct Answer
                 %s
@@ -1062,10 +1460,36 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 ## Explanation
                 %s
 
-                ## When To Use
+                ## Common Causes
                 %s
 
-                ## Example
+                ## Recommended Actions
+                %s
+
+                ## References
+                %s
+                """.formatted(
+                direct,
+                 formatBullets(criteria, "- No grounded decision criteria were found."),
+                 "- No separate cause or trade-off was established by the grounded source.",
+                 formatBullets(application, "- No grounded application guidance was found."),
+                 formatBullets(references, "- No reference was attached.")
+        ).trim();
+    }
+
+    private String buildConceptAnswer(AiQueryPlan contract, String content, List<String> points, List<String> references) {
+        ConceptSummary summary = summarizeConcept(contract, content, points);
+        return """
+                ## Direct Answer
+                %s
+
+                ## Explanation
+                %s
+
+                ## Common Causes
+                - The source does not identify a separate failure cause for this concept.
+
+                ## Recommended Actions
                 %s
 
                 ## References
@@ -1073,96 +1497,122 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 """.formatted(
                 summary.directAnswer(),
                 summary.explanation(),
-                formatBullets(summary.whenToUse(), "- Use it when it directly improves reliability, delivery speed, security, or operational clarity."),
-                summary.example(),
-                formatBullets(references, "- Grounding sources are attached below.")
+                 formatBullets(summary.whenToUse(), "- No grounded usage guidance was found."),
+                 formatBullets(references, "- No reference was attached.")
         ).trim();
     }
 
-    private String buildProcedureAnswer(String question, List<String> points, List<String> references) {
-        String direct = points.isEmpty()
-                ? "Follow the validated steps from the grounded source, then verify the result in the running environment."
-                : rewritePointAsAnswer(points.get(0));
-        List<String> steps = points.isEmpty()
-                ? List.of("Confirm the target component and version.", "Apply the documented configuration or command.", "Verify logs, health checks, and user-facing behavior.")
-                : points.stream().limit(5).map(this::rewritePointAsAction).toList();
+    private String buildProcedureAnswer(AiQueryPlan contract, List<String> points, List<String> references) {
+        String direct = rewritePointAsAnswer(points.get(0));
+        direct = ensureImportantConceptsVisible(contract, direct);
+        List<String> steps = points.stream().limit(5).map(this::rewritePointAsAction).toList();
         return """
                 ## Direct Answer
                 %s
 
-                ## Steps
-                %s
+                ## Explanation
+                The available internal evidence describes the following sequence.
 
-                ## Verification
-                - Confirm the command or configuration changed the expected runtime behavior.
-                - Check logs and health signals before treating the task as complete.
+                ## Common Causes
+                - The source does not establish a separate cause beyond the question context.
+
+                ## Recommended Actions
+                %s
 
                 ## References
                 %s
                 """.formatted(
                 direct,
-                formatBullets(steps, "- No validated steps were found in the grounded source."),
-                formatBullets(references, "- Grounding sources are attached below.")
+                 formatBullets(steps, "- No grounded steps were found."),
+                 formatBullets(references, "- No reference was attached.")
         ).trim();
     }
 
-    private AnswerIntent classifyAnswerIntent(String question) {
-        String normalized = TextUtil.safeLower(question);
-        boolean troubleshooting = TextUtil.containsAny(normalized,
-                "fail", "fails", "failed", "failure", "error", "cannot", "can't", "unable",
-                "timeout", "rejected", "reject", "down", "not working", "not connect", "connection refused",
-                "keeps", "stuck", "broken", "slow", "latency");
-        if (troubleshooting) {
-            return AnswerIntent.TROUBLESHOOTING;
-        }
-        boolean decision = TextUtil.containsAny(normalized,
-                "determine", "classify", "classification", "decide", "choose", "priority", "severity", "routing", "route", "sla");
-        if (decision) {
-            return AnswerIntent.DECISION;
-        }
-        boolean concept = normalized.startsWith("what is")
-                || normalized.startsWith("what are")
-                || normalized.startsWith("why does")
-                || normalized.startsWith("why do")
-                || normalized.startsWith("why should")
-                || normalized.startsWith("how does")
-                || normalized.startsWith("how do")
-                || normalized.contains("purpose")
-                || normalized.contains("when should")
-                || normalized.contains("explain")
-                || normalized.contains("improve");
-        if (concept) {
-            return AnswerIntent.CONCEPT;
-        }
-        boolean procedure = normalized.startsWith("how to")
-                || normalized.startsWith("how can")
-                || normalized.contains("steps")
-                || normalized.contains("configure")
-                || normalized.contains("install");
-        return procedure ? AnswerIntent.PROCEDURE : AnswerIntent.CONCEPT;
-    }
-
-    private ConceptSummary summarizeConcept(String question, String content, List<String> points) {
-        String normalizedContent = TextUtil.safeLower(content);
-
+    private ConceptSummary summarizeConcept(AiQueryPlan contract, String content, List<String> points) {
         List<String> cleanPoints = points.stream()
                 .map(this::rewritePointAsAnswer)
                 .filter(point -> !point.isBlank())
+                .filter(point -> !isProceduralAnswerPoint(point))
+                .distinct()
                 .limit(8)
                 .toList();
-        String direct = cleanPoints.isEmpty()
-                ? "The concept helps improve how the system is built, configured, or operated, based on the grounded source."
-                : cleanPoints.get(0);
-        String explanation = cleanPoints.size() > 1
-                ? cleanPoints.get(1)
-                : "In practice, it matters because it changes how teams design, build, deploy, or troubleshoot the system.";
-        List<String> usage = cleanPoints.size() > 2
-                ? cleanPoints.stream().skip(2).limit(6).toList()
-                : List.of("Use it when it directly improves reliability, delivery speed, security, or operational clarity.");
-        String example = normalizedContent.contains("docker")
-                ? "For a Docker-based service, apply the concept in the Dockerfile or Compose configuration, then verify the resulting image or runtime behavior."
-                : "Apply it in the relevant configuration or workflow, then verify the behavior with logs, health checks, or a small controlled test.";
-        return new ConceptSummary(direct, explanation, usage, example);
+        List<String> groundedPoints = cleanPoints.isEmpty()
+                ? points.stream().map(this::rewritePointAsAnswer).filter(point -> !point.isBlank()).toList()
+                : cleanPoints;
+        String initialDirect = groundedPoints.get(0);
+        String direct = ensureImportantConceptsVisible(contract, initialDirect);
+        String explanation = groundedPoints.stream()
+                .skip(1)
+                .filter(point -> !sameMeaningForTemplate(point, direct))
+                .findFirst()
+                .orElse(direct);
+        List<String> usage = groundedPoints.size() > 2
+                ? groundedPoints.stream()
+                .skip(2)
+                .filter(point -> !sameMeaningForTemplate(point, direct))
+                .filter(point -> !sameMeaningForTemplate(point, explanation))
+                .limit(4)
+                .toList()
+                : List.of("The cited source does not provide a separate usage recommendation.");
+        return new ConceptSummary(direct, explanation, usage);
+    }
+
+    private String ensureImportantConceptsVisible(AiQueryPlan contract, String sentence) {
+        if (contract == null || sentence == null || sentence.isBlank()) {
+            return sentence == null ? "" : sentence;
+        }
+        String normalizedSentence = TextUtil.safeLower(sentence);
+        List<String> missing = contract.requiredConcepts().stream()
+                .filter(term -> isCoreAnswerTerm(contract.originalQuestion(), term))
+                .filter(term -> !coverageEvaluator.matchesConcept(normalizedSentence, term))
+                .limit(3)
+                .toList();
+        if (missing.isEmpty()) {
+            return sentence;
+        }
+        String prefix = missing.stream()
+                .map(concept -> displayConcept(contract.originalQuestion(), concept))
+                .distinct()
+                .reduce((left, right) -> left + ", " + right)
+                .orElse("");
+        if (prefix.isBlank()) {
+            return sentence;
+        }
+        String cleaned = sentence.trim();
+        return prefix + ": " + Character.toLowerCase(cleaned.charAt(0)) + cleaned.substring(1);
+    }
+
+    private boolean isCoreAnswerTerm(String question, String term) {
+        return TECHNICAL_DOMAIN_TERMS.contains(term)
+                || term.length() >= 6
+                || term.matches(".*[0-9+#./_-].*");
+    }
+
+    private String displayConcept(String question, String concept) {
+        if (question != null) {
+            var matcher = Pattern.compile("(?<![A-Za-z0-9])" + Pattern.quote(concept) + "(?![A-Za-z0-9])", Pattern.CASE_INSENSITIVE)
+                    .matcher(question);
+            if (matcher.find()) {
+                return matcher.group();
+            }
+        }
+        return concept.isEmpty() ? concept : Character.toUpperCase(concept.charAt(0)) + concept.substring(1);
+    }
+
+    private boolean isProceduralAnswerPoint(String point) {
+        String normalized = TextUtil.safeLower(point);
+        return normalized.matches("^(check|verify|confirm|validate|inspect|restart|read)\\b.*")
+                || normalized.startsWith("useful command");
+    }
+
+    private boolean sameMeaningForTemplate(String left, String right) {
+        String normalizedLeft = TextUtil.safeLower(left).replaceAll("[^a-z0-9]+", " ").trim();
+        String normalizedRight = TextUtil.safeLower(right).replaceAll("[^a-z0-9]+", " ").trim();
+        return !normalizedLeft.isBlank()
+                && !normalizedRight.isBlank()
+                && (normalizedLeft.equals(normalizedRight)
+                || normalizedLeft.contains(normalizedRight)
+                || normalizedRight.contains(normalizedLeft));
     }
 
     private String rewritePointAsAnswer(String point) {
@@ -1187,10 +1637,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             return "";
         }
         String normalized = TextUtil.safeLower(rewritten);
-        if (TextUtil.containsAny(normalized, "check", "verify", "confirm", "set", "configure", "run", "use")) {
-            return rewritten;
-        }
-        return "Verify " + Character.toLowerCase(rewritten.charAt(0)) + rewritten.substring(1);
+        return rewritten;
     }
 
     private List<String> formatReferences(List<AiAnswerSourceVO> sources) {
@@ -1234,57 +1681,24 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return builder.toString().trim();
     }
 
-    private String buildConciseAnswer(String question, String content) {
-        List<String> points = extractQuestionFocusedPoints(question, content);
-        if (points.isEmpty()) {
-            return "";
-        }
-
-        if (points.size() == 1) {
-            return points.get(0);
-        }
-
-        StringBuilder answer = new StringBuilder("Key answer:\n");
-        points.stream()
-                .limit(5)
-                .forEach(point -> answer.append("- ").append(point).append("\n"));
-        return answer.toString().trim();
-    }
-
-    private String normalizeUserAnswer(String answer) {
-        List<String> points = extractQuestionFocusedPoints("", answer);
-        if (points.isEmpty()) {
-            return "";
-        }
-        if (points.size() <= 2) {
-            return String.join("\n", points);
-        }
-
-        StringBuilder normalized = new StringBuilder("Key answer:\n");
-        points.stream()
-                .limit(5)
-                .forEach(point -> normalized.append("- ").append(point).append("\n"));
-        return normalized.toString().trim();
-    }
-
-    private List<String> extractQuestionFocusedPoints(String question, String content) {
+    private List<String> extractQuestionFocusedPoints(AiQueryPlan contract, String content) {
         String cleaned = cleanAnswerContent(content);
         if (cleaned.isBlank()) {
             return List.of();
         }
 
-        List<String> terms = extractSearchTerms(question == null ? "" : question);
+        List<String> terms = answerFocusTerms(contract);
         LinkedHashSet<String> candidates = new LinkedHashSet<>();
         for (String rawLine : cleaned.split("\\R+")) {
             String line = normalizeAnswerLine(rawLine);
-            if (isUsefulAnswerPoint(line)) {
+            if (isUsefulAnswerPoint(line) && isAnswerPresentationClean(line)) {
                 candidates.add(line);
             }
         }
 
         for (String sentence : cleaned.split("(?<=[.!?。！？])\\s+")) {
             String line = normalizeAnswerLine(sentence);
-            if (isUsefulAnswerPoint(line)) {
+            if (isUsefulAnswerPoint(line) && isAnswerPresentationClean(line)) {
                 candidates.add(line);
             }
         }
@@ -1292,9 +1706,10 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<String> lines = new ArrayList<>();
         candidates.stream()
                 .map(point -> new ScoredPoint(point, scoreAnswerPoint(point, terms)))
-                .filter(point -> terms.isEmpty() || point.score() > 0)
+                .filter(point -> isAllowedAnswerPointForQuestion(point.point(), contract))
+                .filter(point -> terms.isEmpty() || point.score() >= minimumAnswerPointScore(terms))
                 .sorted(Comparator.comparingInt(ScoredPoint::score).reversed())
-                .limit(8)
+                .limit(6)
                 .forEach(point -> lines.add(point.point()));
 
         if (!lines.isEmpty()) {
@@ -1307,42 +1722,98 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return List.of(limitAnswerPoint(cleaned));
     }
 
+    private List<String> answerFocusTerms(AiQueryPlan contract) {
+        LinkedHashSet<String> terms = new LinkedHashSet<>();
+        if (contract != null) {
+            contract.requiredConcepts().stream()
+                    .filter(term -> !GENERIC_QUESTION_TERMS.contains(term))
+                    .forEach(terms::add);
+            contract.retrievalTerms().stream()
+                    .filter(term -> !BROAD_DOMAIN_TERMS.contains(term) || TECHNICAL_DOMAIN_TERMS.contains(term))
+                    .filter(term -> !GENERIC_QUESTION_TERMS.contains(term))
+                    .filter(term -> term.length() >= 4 || term.matches(".*[0-9+#./_-].*"))
+                    .forEach(terms::add);
+        }
+        return terms.stream().limit(12).toList();
+    }
+
+    private int minimumAnswerPointScore(List<String> terms) {
+        return terms == null || terms.size() <= 2 ? 1 : 2;
+    }
+
     private int scoreAnswerPoint(String point, List<String> terms) {
         String normalized = TextUtil.safeLower(point);
+        if (isAnswerNoiseLine(point)) {
+            return -20;
+        }
         int score = 0;
         for (String term : terms) {
-            if (normalized.contains(term)) {
+            if (coverageEvaluator.matchesConcept(normalized, term)) {
                 score += term.length() >= 8 ? 3 : 1;
             }
         }
-        if (TextUtil.containsAny(normalized, "first", "check", "verify", "configure", "set", "run", "command", "cause", "because")) {
+        if (TextUtil.containsAny(normalized,
+                "means", "refers to", "different", "difference", "because", "caused by",
+                "first", "check", "verify", "configure", "set", "run", "command", "cause",
+                "should", "must", "use", "when", "instead", "avoid")) {
             score += 2;
         }
-        if (TextUtil.containsAny(normalized, "click", "subscribe", "copyright", "table of contents", "skip to content")) {
-            score -= 5;
+        if (TextUtil.containsAny(normalized,
+                "click", "subscribe", "copyright", "table of contents", "skip to content",
+                "source references", "primary keywords", "runbook", "playbook", "sop", "https://")) {
+            score -= 8;
         }
         return score;
+    }
+
+    private boolean isAllowedAnswerPointForQuestion(String point, AiQueryPlan contract) {
+        String normalized = TextUtil.safeLower(point);
+        List<String> terms = answerFocusTerms(contract);
+        return !containsUnaskedSideConcept(normalized, terms);
+    }
+
+    private boolean containsUnaskedSideConcept(String normalizedPoint, List<String> terms) {
+        if (terms == null || terms.isEmpty()) {
+            return false;
+        }
+        long matched = terms.stream().filter(term -> coverageEvaluator.matchesConcept(normalizedPoint, term)).count();
+        return matched == 0;
     }
 
     private String cleanAnswerContent(String content) {
         if (content == null) {
             return "";
         }
-        return content
+        String normalized = content
                 .replace('\u00a0', ' ')
-                .replaceAll("(?im)^#+\\s*", "")
+                .replaceAll("(?is)```.*?```", " ")
+                .replaceAll("(?im)^\\s*#{1,6}\\s+.*\\b(runbook|sop|playbook|knowledge pack|operations knowledge pack)\\b.*$", "")
+                .replaceAll("(?im)^\\s*#{1,6}\\s+", "")
                 .replaceAll("(?im)^category\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^primary keywords\\s*:\\s*.*$", "")
-                .replaceAll("(?im)^source references\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^source references\\s*:?\\s*$", "")
+                .replaceAll("(?im)^\\s*-?\\s*https?://\\S+\\s*$", "")
                 .replaceAll("(?im)^purpose\\s*:?\\s*$", "")
+                .replaceAll("(?im)^use this when\\s+.*$", "")
                 .replaceAll("(?im)^use this (playbook|guide|runbook) when\\s+.*$", "")
+                .replaceAll("(?im)^.*\\b(consolidated reviewed internal knowledge|uploaded document chunks remain retrieval evidence)\\b.*$", "")
                 .replaceAll("(?im)^original question\\s*:?\\s*$", "")
                 .replaceAll("(?im)^observed answer\\s*:?\\s*$", "")
+                .replaceAll("(?im)^knowledge candidate\\s*:?\\s*$", "")
                 .replaceAll("(?im)^review checklist\\s*:?\\s*$", "")
                 .replaceAll("(?im)^web evidence summary\\s*:?\\s*$", "")
                 .replaceAll("(?im)^model-generated answer\\s*:?\\s*$", "")
                 .replaceAll("(?im)^sources\\s*:?\\s*$", "")
+                .replaceAll("(?im)^source\\s*:\\s*.*$", "")
                 .trim();
+        StringBuilder cleaned = new StringBuilder();
+        for (String rawLine : normalized.split("\\R+")) {
+            String line = rawLine.trim();
+            if (!line.isBlank() && !isAnswerNoiseLine(line)) {
+                cleaned.append(line).append("\n");
+            }
+        }
+        return cleaned.toString().trim();
     }
 
     private String normalizeAnswerLine(String rawLine) {
@@ -1360,11 +1831,20 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private boolean isUsefulAnswerPoint(String line) {
         String normalized = TextUtil.safeLower(line);
         return line.length() >= 24
+                && !isAnswerNoiseLine(line)
                 && !normalized.startsWith("category:")
                 && !normalized.startsWith("primary keywords:")
                 && !normalized.startsWith("source references:")
                 && !normalized.startsWith("purpose:")
                 && !normalized.startsWith("sources:")
+                && !normalized.startsWith("this knowledge pack covers")
+                && !normalized.contains("explains the durable concepts")
+                && !normalized.contains("operational checks that support teams need")
+                && !normalized.contains("recommended response for users")
+                && !normalized.contains("keep one concept per section")
+                && !normalized.contains("final article readable")
+                && !normalized.contains("closest existing knowledge pack")
+                && !normalized.contains("verified operational concept")
                 && !normalized.contains("use this runbook")
                 && !normalized.contains("use this playbook")
                 && !normalized.contains("use this guide")
@@ -1389,6 +1869,63 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 && !normalized.matches(".*[{};]{4,}.*");
     }
 
+    private boolean isAnswerNoiseLine(String line) {
+        String normalized = TextUtil.safeLower(line);
+        return normalized.isBlank()
+                || normalized.matches("^#{1,6}\\s+.*$")
+                || normalized.matches("^https?://\\S+$")
+                || normalized.matches("^[-*]?\\s*https?://\\S+$")
+                || isLikelySectionHeading(line)
+                || normalized.matches("^(title|category|purpose|primary keywords|source references|sources|original question|observed answer)\\s*:?.*$")
+                || normalized.contains("knowledge candidate")
+                || normalized.contains("review checklist")
+                || normalized.contains("capture externally discovered evidence")
+                || normalized.contains("review this content before publishing")
+                || normalized.contains("saved for administrator review")
+                || normalized.contains("consolidated reviewed internal knowledge")
+                || normalized.contains("uploaded document chunks remain retrieval evidence")
+                || normalized.startsWith("this knowledge pack covers")
+                || normalized.contains("explains the durable concepts")
+                || normalized.contains("operational checks that support teams need")
+                || normalized.contains("recommended response for users")
+                || normalized.contains("keep one concept per section")
+                || normalized.contains("final article readable")
+                || normalized.contains("closest existing knowledge pack")
+                || normalized.contains("verified operational concept")
+                || normalized.startsWith("use this when")
+                || normalized.contains("use this runbook")
+                || normalized.contains("use this playbook")
+                || normalized.contains("use this guide")
+                || normalized.matches(".*\\b(runbook|playbook|sop)\\s+\\1\\b.*")
+                || normalized.contains("skip to content")
+                || normalized.contains("table of contents")
+                || normalized.contains("was this page helpful")
+                || normalized.contains("advertisement")
+                || normalized.contains("sponsored")
+                || normalized.contains("course curriculum")
+                || normalized.contains("window.")
+                || normalized.contains("document.")
+                || normalized.contains("__next")
+                || normalized.matches(".*[{};]{4,}.*");
+    }
+
+    private boolean isLikelySectionHeading(String line) {
+        String normalized = TextUtil.safeLower(line);
+        if (line.length() > 80 || line.contains(".") || line.contains("?") || line.contains("`")) {
+            return false;
+        }
+        if (TextUtil.containsAny(normalized,
+                "overview", "purpose", "impact model", "network model", "volume model",
+                "fast triage checklist", "checklist", "useful commands", "common root causes",
+                "recovery actions", "escalate when", "escalate immediately when",
+                "prevention controls", "priority model", "priority rules", "routing rules",
+                "sla model", "customer update template", "resolution template")) {
+            return true;
+        }
+        return line.matches("^[A-Z][A-Za-z0-9 /&()_-]{2,80}$")
+                && line.split("\\s+").length <= 7;
+    }
+
     private String limitAnswerPoint(String value) {
         if (value == null) {
             return "";
@@ -1403,6 +1940,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private AiAnswerVO buildFallbackAnswer() {
         AiAnswerVO answerVO = new AiAnswerVO();
         answerVO.setAnswer("I do not have enough reliable knowledge to answer this yet. Please create a support ticket or add reviewed knowledge for this topic.");
+        answerVO.setAnswerMode("NONE");
         answerVO.setSourceType("NONE");
         answerVO.setSourceScore(null);
         answerVO.setSourceArticleId(null);
@@ -1435,7 +1973,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             source.setSourceChunkIndex(result.getChunkIndex());
             source.setSourceWebEvidenceId(null);
             source.setSourceUrl(null);
-            source.setSourceDomain(null);
+            source.setSourceDomain(result.getCategory());
             source.setSourceStatus(null);
             source.setPreviewContent(result.getContent());
             sources.add(source);
@@ -1458,7 +1996,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             source.setSourceChunkIndex(null);
             source.setSourceWebEvidenceId(null);
             source.setSourceUrl(null);
-            source.setSourceDomain(null);
+            source.setSourceDomain(article.getCategory());
             source.setSourceStatus(null);
             source.setPreviewContent(article.getContent());
             sources.add(source);
@@ -1467,21 +2005,55 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return sources;
     }
 
+    private List<AiAnswerSourceVO> buildArticleChunkSources(List<KnowledgeArticleChunkSearchResultVO> chunks) {
+        List<AiAnswerSourceVO> sources = new ArrayList<>();
+
+        for (KnowledgeArticleChunkSearchResultVO chunk : chunks) {
+            AiAnswerSourceVO source = new AiAnswerSourceVO();
+            source.setSourceType("ARTICLE");
+            source.setSourceScore(chunk.getRelevanceScore());
+            source.setSourceArticleId(chunk.getArticleId());
+            source.setSourceTitle(chunk.getArticleTitle());
+            source.setSourceDocumentId(null);
+            source.setSourceDocumentName(null);
+            source.setSourceChunkId(chunk.getChunkId());
+            source.setSourceChunkIndex(chunk.getChunkIndex());
+            source.setSourceWebEvidenceId(null);
+            source.setSourceUrl(null);
+            source.setSourceDomain(chunk.getCategory());
+            source.setSourceStatus(null);
+            source.setPreviewContent("## " + chunk.getSectionTitle() + "\n\n" + chunk.getContent());
+            sources.add(source);
+        }
+
+        return sources;
+    }
+
     private List<AiAnswerSourceVO> buildWebEvidenceSources(WebEvidence evidence) {
+        if (evidence.getSources() != null && !evidence.getSources().isEmpty()) {
+            return evidence.getSources().stream()
+                    .map(item -> buildWebEvidenceSource(evidence, item))
+                    .toList();
+        }
+        return List.of(buildWebEvidenceSource(evidence, null));
+    }
+
+    private AiAnswerSourceVO buildWebEvidenceSource(WebEvidence evidence, WebEvidenceSource item) {
         AiAnswerSourceVO source = new AiAnswerSourceVO();
         source.setSourceType("WEB");
-        source.setSourceScore(evidence.getCredibilityScore() == null ? null : evidence.getCredibilityScore().doubleValue());
+        java.math.BigDecimal credibility = item == null ? evidence.getCredibilityScore() : item.getCredibilityScore();
+        source.setSourceScore(credibility == null ? null : credibility.doubleValue());
         source.setSourceArticleId(null);
-        source.setSourceTitle(evidence.getTitle());
+        source.setSourceTitle(item == null ? evidence.getTitle() : item.getTitle());
         source.setSourceDocumentId(null);
         source.setSourceDocumentName(null);
         source.setSourceChunkId(null);
         source.setSourceChunkIndex(null);
         source.setSourceWebEvidenceId(evidence.getId());
-        source.setSourceUrl(evidence.getUrl());
-        source.setSourceDomain(evidence.getDomain());
+        source.setSourceUrl(item == null ? evidence.getUrl() : item.getUrl());
+        source.setSourceDomain(item == null ? evidence.getDomain() : item.getDomain());
         source.setSourceStatus(evidence.getStatus());
-        source.setPreviewContent(evidence.getExtractedContent());
-        return List.of(source);
+        source.setPreviewContent(item == null ? evidence.getExtractedContent() : item.getExcerpt());
+        return source;
     }
 }

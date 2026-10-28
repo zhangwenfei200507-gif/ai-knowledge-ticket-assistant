@@ -20,6 +20,10 @@ public class JwtUtil {
     private Long ttl;
 
     public String createToken(Long userId, String username, String role) {
+        return createToken(userId, username, role, 0);
+    }
+
+    public String createToken(Long userId, String username, String role, Integer tokenVersion) {
         Date now = new Date();
         Date expiration = new Date(now.getTime() + ttl);
 
@@ -28,6 +32,7 @@ public class JwtUtil {
                 .subject(username)
                 .claim("userId", userId)
                 .claim("role", role)
+                .claim("tokenVersion", tokenVersion == null ? 0 : tokenVersion)
                 .issuedAt(now)
                 .expiration(expiration)
                 .signWith(getSecretKey())

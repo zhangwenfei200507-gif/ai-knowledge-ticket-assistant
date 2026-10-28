@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class WebEvidence {
@@ -27,4 +28,5 @@ public class WebEvidence {
     private Long convertedArticleId;
     private LocalDateTime createdTime;
     private LocalDateTime reviewedTime;
+    private List<WebEvidenceSource> sources;
 }

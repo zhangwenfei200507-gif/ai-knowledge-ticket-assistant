@@ -121,13 +121,25 @@ public interface DocumentChunkMapper {
         where d.status = 'ACTIVE'
           and dc.status = 'ACTIVE'
           and (
+              #{admin} = true
+              or d.uploaded_by = #{userId}
+              or exists (
+                  select 1 from users uploader
+                  where uploader.id = d.uploaded_by
+                    and uploader.role = 'ADMIN'
+                    and uploader.status = 1
+              )
+          )
+          and (
               to_tsvector('english', dc.content) @@ search_query.query
               or lower(dc.content) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
         order by relevance_score desc, d.created_time desc, dc.chunk_index asc
         limit 5
         """)
-    List<DocumentSearchResultVO> searchChunks(@Param("keyword") String keyword);
+    List<DocumentSearchResultVO> searchChunks(@Param("keyword") String keyword,
+                                              @Param("userId") Long userId,
+                                              @Param("admin") boolean admin);
 
     @Select("""
         with search_query as (
@@ -147,6 +159,16 @@ public interface DocumentChunkMapper {
           and dc.status = 'ACTIVE'
           and dc.document_id = #{documentId}
           and (
+              #{admin} = true
+              or d.uploaded_by = #{userId}
+              or exists (
+                  select 1 from users uploader
+                  where uploader.id = d.uploaded_by
+                    and uploader.role = 'ADMIN'
+                    and uploader.status = 1
+              )
+          )
+          and (
               to_tsvector('english', dc.content) @@ search_query.query
               or lower(dc.content) like lower(concat('%', cast(#{keyword} as varchar), '%'))
           )
@@ -154,7 +176,9 @@ public interface DocumentChunkMapper {
         limit 5
         """)
     List<DocumentSearchResultVO> searchChunksByDocumentId(@Param("documentId") Long documentId,
-                                                          @Param("keyword") String keyword);
+                                                          @Param("keyword") String keyword,
+                                                          @Param("userId") Long userId,
+                                                          @Param("admin") boolean admin);
 
     @Update("""
             update document_chunks

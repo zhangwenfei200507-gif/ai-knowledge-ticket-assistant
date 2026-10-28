@@ -2,6 +2,8 @@ package com.zwf.aisupport.security;
 
 import com.zwf.aisupport.common.constant.RedisKeyConstant;
 import com.zwf.aisupport.common.util.JwtUtil;
+import com.zwf.aisupport.entity.User;
+import com.zwf.aisupport.mapper.UserMapper;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -16,16 +18,24 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final StringRedisTemplate stringRedisTemplate;
+    private final UserMapper userMapper;
 
-    public JwtAuthenticationFilter(JwtUtil jwtUtil, StringRedisTemplate stringRedisTemplate) {
+    private static final Set<String> ALLOWED_ROLES = Set.of("ADMIN", "USER");
+
+    public JwtAuthenticationFilter(JwtUtil jwtUtil,
+                                   StringRedisTemplate stringRedisTemplate,
+                                   UserMapper userMapper) {
         this.jwtUtil = jwtUtil;
         this.stringRedisTemplate = stringRedisTemplate;
+        this.userMapper = userMapper;
     }
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -33,38 +43,38 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String authorizationHeader = request.getHeader("Authorization");
 
-        // JWT tokens are expected in the format: Authorization: Bearer <token>
         if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
 
+        SecurityContextHolder.clearContext();
         String token = authorizationHeader.substring(7);
-
-// Accept only tokens that are still stored in Redis.
-        Boolean tokenExists = stringRedisTemplate.hasKey(RedisKeyConstant.LOGIN_TOKEN_PREFIX + token);
-        if (!Boolean.TRUE.equals(tokenExists)) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
         try {
-            Claims claims = jwtUtil.parseToken(token);
-            Long userId = claims.get("userId", Long.class);
-            String username = claims.getSubject();
-            String role = claims.get("role", String.class);
-            // Store authenticated user information in Spring Security context for this request.
-            CurrentUser currentUser = new CurrentUser(userId, username, role);
-
-// Store current user details in the security context for downstream business code.
-            UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(
-                            currentUser,
-                            null,
-                            List.of(new SimpleGrantedAuthority("ROLE_" + role))
-                    );
-
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+            Boolean tokenExists = stringRedisTemplate.hasKey(RedisKeyConstant.LOGIN_TOKEN_PREFIX + token);
+            if (Boolean.TRUE.equals(tokenExists)) {
+                Claims claims = jwtUtil.parseToken(token);
+                Long userId = claims.get("userId", Long.class);
+                User user = userId == null ? null : userMapper.findAuthenticationStateById(userId);
+                Number tokenVersionClaim = claims.get("tokenVersion", Number.class);
+                String role = user == null || user.getRole() == null
+                        ? null
+                        : user.getRole().trim().toUpperCase(Locale.ROOT);
+                if (user != null
+                        && tokenVersionClaim != null
+                        && tokenVersionClaim.intValue() == (user.getTokenVersion() == null ? 0 : user.getTokenVersion())
+                        && Integer.valueOf(1).equals(user.getStatus())
+                        && ALLOWED_ROLES.contains(role)) {
+                    CurrentUser currentUser = new CurrentUser(user.getId(), user.getUsername(), role);
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(
+                                    currentUser,
+                                    null,
+                                    List.of(new SimpleGrantedAuthority("ROLE_" + role))
+                            );
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
+            }
         } catch (Exception exception) {
             SecurityContextHolder.clearContext();
         }

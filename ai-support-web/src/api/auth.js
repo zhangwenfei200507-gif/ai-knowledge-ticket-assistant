@@ -1,28 +1,26 @@
-const requestJson = async (path, payload) => {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
+const readResponse = async (response) => {
   let body = null;
   try {
     body = await response.json();
   } catch {
     body = null;
   }
-
   if (!response.ok || body?.code === 0) {
-    throw new Error(body?.message || 'Request failed. Please try again.');
+    throw new Error(body?.message || 'Unable to complete sign-in. Please try again.');
   }
-
   return body?.data ?? null;
 };
 
-export const login = (payload) => requestJson('/api/users/login', payload);
+export const getOAuthProviders = async (signal) => {
+  const response = await fetch('/api/auth/oauth/providers', { signal });
+  return readResponse(response);
+};
 
-export const register = (payload) => requestJson('/api/users/register', payload);
-
-export const resetPassword = (payload) => requestJson('/api/users/forgot-password', payload);
+export const exchangeOAuthCode = async (code) => {
+  const response = await fetch('/api/auth/oauth/exchange', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  return readResponse(response);
+};

@@ -20,6 +20,7 @@ import com.zwf.aisupport.vo.AdminDashboardOverviewVO;
 import com.zwf.aisupport.vo.AdminOperationsCenterVO;
 import com.zwf.aisupport.vo.DocumentCategoryStatsVO;
 import com.zwf.aisupport.vo.KnowledgeCategoryStatsVO;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -99,6 +100,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     private final DocumentChunkMapper documentChunkMapper;
     private final WebEvidenceMapper webEvidenceMapper;
     private final LlmGatewayService llmGatewayService;
+    private final String environmentName;
 
     public AdminDashboardServiceImpl(TicketMapper ticketMapper,
                                      KnowledgeArticleMapper knowledgeArticleMapper,
@@ -106,7 +108,8 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
                                      KnowledgeDocumentMapper knowledgeDocumentMapper,
                                      DocumentChunkMapper documentChunkMapper,
                                      WebEvidenceMapper webEvidenceMapper,
-                                     LlmGatewayService llmGatewayService) {
+                                     LlmGatewayService llmGatewayService,
+                                     @Value("${app.environment.name:Local}") String environmentName) {
         this.ticketMapper = ticketMapper;
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.aiQuestionLogMapper = aiQuestionLogMapper;
@@ -114,6 +117,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
         this.documentChunkMapper = documentChunkMapper;
         this.webEvidenceMapper = webEvidenceMapper;
         this.llmGatewayService = llmGatewayService;
+        this.environmentName = environmentName;
     }
 
     @Override
@@ -171,8 +175,8 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
     private AdminOperationsCenterVO.EnvironmentStatusVO buildEnvironmentStatus() {
         AdminOperationsCenterVO.EnvironmentStatusVO environment = new AdminOperationsCenterVO.EnvironmentStatusVO();
-        environment.setName("Production");
-        environment.setStatus("HEALTHY");
+        environment.setName(environmentName);
+        environment.setStatus("ACTIVE");
         return environment;
     }
 
@@ -182,7 +186,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
         return List.of(
                 serviceHealth("API", "HEALTHY"),
                 serviceHealth("Search", searchStatus),
-                serviceHealth("LLM Gateway", "NOT_CONFIGURED"),
+                serviceHealth("LLM Gateway", llmGatewayService.isConfigured() ? "CONFIGURED" : "NOT_CONFIGURED"),
                 serviceHealth("Storage", "HEALTHY")
         );
     }
@@ -486,18 +490,18 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
         modelProfile.setPrimaryModel(llmGatewayService.isConfigured() ? "OpenAI Responses API" : "Not configured");
         modelProfile.setEmbeddingModel("Not configured");
         modelProfile.setRerankerModel("Not configured");
-        modelProfile.setStatus(llmGatewayService.isConfigured() ? "LIVE" : "NOT_CONFIGURED");
+        modelProfile.setStatus(llmGatewayService.isConfigured() ? "CONFIGURED" : "NOT_CONFIGURED");
 
         AdminOperationsCenterVO.RetrievalStrategyVO retrievalStrategy = new AdminOperationsCenterVO.RetrievalStrategyVO();
-        retrievalStrategy.setTopKDocuments(8);
+        retrievalStrategy.setTopKDocuments(5);
         retrievalStrategy.setTopKArticles(5);
-        retrievalStrategy.setTopKWebEvidence(5);
-        retrievalStrategy.setRerankerEnabled(true);
+        retrievalStrategy.setTopKWebEvidence(3);
+        retrievalStrategy.setRerankerEnabled(false);
 
         AdminOperationsCenterVO.WebSearchSettingsVO webSearchSettings = new AdminOperationsCenterVO.WebSearchSettingsVO();
-        webSearchSettings.setWebFallbackThreshold(decimal("0.65"));
+        webSearchSettings.setWebFallbackThreshold(null);
         webSearchSettings.setTrustedDomains(nullToZero(webEvidenceMapper.countDistinctDomains()));
-        webSearchSettings.setMaxWebResults(5);
+        webSearchSettings.setMaxWebResults(3);
 
         AdminOperationsCenterVO.ModelSearchControlsVO controls = new AdminOperationsCenterVO.ModelSearchControlsVO();
         controls.setModelProfile(modelProfile);
@@ -519,7 +523,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
         BigDecimal internalRatio = BigDecimal.valueOf(internalAnswerCount(logs))
                 .divide(BigDecimal.valueOf(logs.size()), 2, RoundingMode.HALF_UP);
-        return internalRatio.max(decimal("0.50"));
+        return internalRatio;
     }
 
     private int calculateKnowledgeCoverage(List<KnowledgeCategoryStatsVO> articleStats,
@@ -657,7 +661,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     }
 
     private String trend(long value, String label) {
-        return "+ " + value + " " + label;
+        return value + " " + label;
     }
 
     private long nullToZero(Long value) {

@@ -14,6 +14,7 @@ public class User {
     private String email;
     private String role;
     private Integer status;
+    private Integer tokenVersion;
     private LocalDateTime createdTime;
     private LocalDateTime updatedTime;
 }

@@ -158,6 +158,44 @@ class DocumentServiceImplTest {
                 .contains("Check Redis health and JWT refresh flow.");
     }
 
+    @Test
+    void documentListIsScopedToTheAuthenticatedUser() {
+        authenticateAsUser();
+        when(knowledgeDocumentMapper.findPage(null, null, "ACTIVE", 7L, false, 0, 10))
+                .thenReturn(java.util.List.of());
+        when(knowledgeDocumentMapper.countPage(null, null, "ACTIVE", 7L, false)).thenReturn(0L);
+
+        documentService.listDocuments(null, null, null, 1, 10);
+
+        verify(knowledgeDocumentMapper).findPage(null, null, "ACTIVE", 7L, false, 0, 10);
+        verify(knowledgeDocumentMapper).countPage(null, null, "ACTIVE", 7L, false);
+    }
+
+    @Test
+    void administratorDocumentListIncludesAllOwners() {
+        authenticateAsAdmin();
+        when(knowledgeDocumentMapper.findPage(null, null, "ACTIVE", 99L, true, 0, 10))
+                .thenReturn(java.util.List.of());
+        when(knowledgeDocumentMapper.countPage(null, null, "ACTIVE", 99L, true)).thenReturn(0L);
+
+        documentService.listDocuments(null, null, null, 1, 10);
+
+        verify(knowledgeDocumentMapper).findPage(null, null, "ACTIVE", 99L, true, 0, 10);
+        verify(knowledgeDocumentMapper).countPage(null, null, "ACTIVE", 99L, true);
+    }
+
+    @Test
+    void userCannotReadAnotherUsersDocumentChunks() {
+        authenticateAsUser();
+        when(knowledgeDocumentMapper.findAccessibleById(99L, 7L, false)).thenReturn(null);
+
+        assertThatThrownBy(() -> documentService.listChunks(99L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Document not found");
+
+        verify(documentChunkMapper, never()).findByDocumentId(99L);
+    }
+
     private byte[] createDocxBytes(String... paragraphs) throws Exception {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (ZipOutputStream zipOutputStream = new ZipOutputStream(outputStream)) {
@@ -181,6 +219,13 @@ class DocumentServiceImplTest {
 
     private void authenticateAsUser() {
         CurrentUser currentUser = new CurrentUser(7L, "alice", "USER");
+        UsernamePasswordAuthenticationToken authentication =
+                new UsernamePasswordAuthenticationToken(currentUser, null);
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    private void authenticateAsAdmin() {
+        CurrentUser currentUser = new CurrentUser(99L, "admin", "ADMIN");
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(currentUser, null);
         SecurityContextHolder.getContext().setAuthentication(authentication);

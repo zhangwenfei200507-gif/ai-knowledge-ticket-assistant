@@ -48,6 +48,17 @@ public interface WebEvidenceMapper {
     @Select("""
         select * from web_evidence
         where status <> 'ARCHIVED'
+          and lower(coalesce(question, '')) = lower(#{question})
+          and coalesce(url, '') = coalesce(#{url}, '')
+        order by created_time desc
+        limit 1
+        """)
+    WebEvidence findActiveByQuestionAndUrl(@Param("question") String question,
+                                           @Param("url") String url);
+
+    @Select("""
+        select * from web_evidence
+        where status <> 'ARCHIVED'
         order by created_time desc
         """)
     List<WebEvidence> findAll();
@@ -101,6 +112,14 @@ public interface WebEvidenceMapper {
         """)
     List<WebEvidence> findPendingReview();
 
+    @Select("""
+        select * from web_evidence
+        where status = 'NEEDS_REVIEW'
+        order by created_time desc
+        limit #{limit}
+        """)
+    List<WebEvidence> findPendingReviewLimited(int limit);
+
     @Select("select * from web_evidence where id = #{id}")
     WebEvidence findById(Long id);
 
@@ -149,7 +168,7 @@ public interface WebEvidenceMapper {
     @Delete("delete from web_evidence where id = #{id}")
     void deleteById(Long id);
 
-    @Select("select count(*) from web_evidence")
+    @Select("select count(*) from web_evidence where status <> 'ARCHIVED'")
     Long countAll();
 
     @Select("select count(*) from web_evidence where status = 'NEEDS_REVIEW'")

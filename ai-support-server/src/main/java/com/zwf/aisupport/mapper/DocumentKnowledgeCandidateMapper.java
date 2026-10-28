@@ -161,4 +161,12 @@ public interface DocumentKnowledgeCandidateMapper {
 
     @Select("select count(*) from document_knowledge_candidates where status = 'NEEDS_REVIEW'")
     Long countPendingReview();
+
+    @Select("""
+        select * from document_knowledge_candidates
+        where status = 'NEEDS_REVIEW'
+        order by created_time desc
+        limit #{limit}
+        """)
+    List<DocumentKnowledgeCandidate> findPendingReviewLimited(int limit);
 }

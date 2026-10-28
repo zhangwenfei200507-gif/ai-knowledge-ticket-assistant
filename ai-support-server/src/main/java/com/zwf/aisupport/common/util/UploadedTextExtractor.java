@@ -11,7 +11,12 @@ import org.xml.sax.InputSource;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.StringReader;
+import java.io.Writer;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Set;
@@ -21,6 +26,11 @@ import java.util.zip.ZipInputStream;
 public final class UploadedTextExtractor {
 
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("txt", "md", "pdf", "docx");
+    private static final int MAX_EXTRACTED_TEXT_CHARS = 1_000_000;
+    private static final int MAX_PDF_PAGES = 1_000;
+    private static final int MAX_DOCX_ENTRIES = 2_000;
+    private static final int MAX_DOCX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024;
+    private static final int MAX_DOCX_XML_BYTES = 10 * 1024 * 1024;
 
     private UploadedTextExtractor() {
     }
@@ -41,6 +51,9 @@ public final class UploadedTextExtractor {
         String normalizedContent = normalizeContent(content);
         if (normalizedContent.isBlank()) {
             throw new BusinessException(capitalize(fileLabel) + " file content cannot be blank");
+        }
+        if (normalizedContent.length() > MAX_EXTRACTED_TEXT_CHARS) {
+            throw new BusinessException(capitalize(fileLabel) + " extracted text exceeds the 1,000,000 character limit");
         }
 
         return new ExtractedText(filename, extension.toUpperCase(Locale.ROOT), normalizedContent);
@@ -81,7 +94,14 @@ public final class UploadedTextExtractor {
 
     private static String readPlainText(MultipartFile file, String fileLabel) {
         try {
-            return new String(file.getBytes(), StandardCharsets.UTF_8);
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(file.getBytes()))
+                    .toString()
+                    .replaceFirst("^\\uFEFF", "");
+        } catch (CharacterCodingException exception) {
+            throw new BusinessException(capitalize(fileLabel) + " text must be valid UTF-8");
         } catch (Exception exception) {
             throw new BusinessException("Failed to read " + fileLabel + " text content");
         }
@@ -89,8 +109,15 @@ public final class UploadedTextExtractor {
 
     private static String readPdf(MultipartFile file, String fileLabel) {
         try (PDDocument document = PDDocument.load(file.getInputStream())) {
+            if (document.getNumberOfPages() > MAX_PDF_PAGES) {
+                throw new BusinessException(capitalize(fileLabel) + " PDF exceeds the 1,000 page limit");
+            }
             PDFTextStripper stripper = new PDFTextStripper();
-            return stripper.getText(document);
+            LimitedTextWriter writer = new LimitedTextWriter(MAX_EXTRACTED_TEXT_CHARS);
+            stripper.writeText(document, writer);
+            return writer.toString();
+        } catch (BusinessException exception) {
+            throw exception;
         } catch (Exception exception) {
             throw new BusinessException("Failed to extract text from " + fileLabel + " PDF");
         }
@@ -99,25 +126,45 @@ public final class UploadedTextExtractor {
     private static String readDocx(MultipartFile file, String fileLabel) {
         try (ZipInputStream zipInputStream = new ZipInputStream(file.getInputStream())) {
             ZipEntry entry;
+            int entryCount = 0;
+            int totalUncompressedBytes = 0;
             while ((entry = zipInputStream.getNextEntry()) != null) {
-                if ("word/document.xml".equals(entry.getName())) {
-                    return extractDocxDocumentText(readZipEntry(zipInputStream));
+                if (++entryCount > MAX_DOCX_ENTRIES) {
+                    throw new BusinessException("DOCX archive exceeds the entry limit");
+                }
+                boolean mainDocument = "word/document.xml".equals(entry.getName());
+                int remainingBytes = MAX_DOCX_UNCOMPRESSED_BYTES - totalUncompressedBytes;
+                int entryLimit = mainDocument ? Math.min(remainingBytes, MAX_DOCX_XML_BYTES) : remainingBytes;
+                byte[] entryContent = readZipEntry(zipInputStream, entryLimit);
+                totalUncompressedBytes += entryContent.length;
+                if (mainDocument) {
+                    return extractDocxDocumentText(new String(entryContent, StandardCharsets.UTF_8));
                 }
             }
             throw new BusinessException("DOCX main document content was not found");
+        } catch (BusinessException exception) {
+            throw exception;
         } catch (Exception exception) {
             throw new BusinessException("Failed to extract text from " + fileLabel + " DOCX");
         }
     }
 
-    private static String readZipEntry(ZipInputStream zipInputStream) throws Exception {
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+    private static byte[] readZipEntry(ZipInputStream zipInputStream, int maxBytes) throws IOException {
+        if (maxBytes <= 0) {
+            throw new BusinessException("DOCX archive exceeds the uncompressed size limit");
+        }
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream(Math.min(maxBytes, 8192));
         byte[] buffer = new byte[4096];
+        int totalBytes = 0;
         int length;
         while ((length = zipInputStream.read(buffer)) != -1) {
+            totalBytes += length;
+            if (totalBytes > maxBytes) {
+                throw new BusinessException("DOCX archive exceeds the uncompressed size limit");
+            }
             outputStream.write(buffer, 0, length);
         }
-        return outputStream.toString(StandardCharsets.UTF_8);
+        return outputStream.toByteArray();
     }
 
     private static String extractDocxDocumentText(String documentXml) throws Exception {
@@ -165,5 +212,36 @@ public final class UploadedTextExtractor {
     }
 
     public record ExtractedText(String filename, String fileType, String content) {
+    }
+
+    private static final class LimitedTextWriter extends Writer {
+
+        private final int maxChars;
+        private final StringBuilder content = new StringBuilder();
+
+        private LimitedTextWriter(int maxChars) {
+            this.maxChars = maxChars;
+        }
+
+        @Override
+        public void write(char[] chars, int offset, int length) throws IOException {
+            if (content.length() + length > maxChars) {
+                throw new IOException("Extracted PDF text exceeds the configured limit");
+            }
+            content.append(chars, offset, length);
+        }
+
+        @Override
+        public void flush() {
+        }
+
+        @Override
+        public void close() {
+        }
+
+        @Override
+        public String toString() {
+            return content.toString();
+        }
     }
 }

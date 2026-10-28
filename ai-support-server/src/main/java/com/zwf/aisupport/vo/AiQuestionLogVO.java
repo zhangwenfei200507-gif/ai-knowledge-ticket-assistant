@@ -24,4 +24,19 @@ public class AiQuestionLogVO {
     private String sourceDocumentName;
     private Long sourceChunkId;
     private Integer sourceChunkIndex;
+    private String answerMode;
+    private String answerEngine;
+    private AiRetrievalTraceVO retrievalTrace;
+    private String llmProvider;
+    private String llmModel;
+    private Integer llmInputTokens;
+    private Integer llmOutputTokens;
+    private Integer llmTotalTokens;
+    private java.math.BigDecimal llmEstimatedCost;
+    private String llmCurrency;
+    private Boolean llmUsageEstimated;
+    private Integer llmRetryCount;
+    private Long llmLatencyMs;
+    private String llmRequestStatus;
+    private String llmErrorCategory;
 }

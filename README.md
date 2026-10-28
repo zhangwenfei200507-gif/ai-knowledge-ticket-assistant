@@ -4,7 +4,7 @@ An enterprise-style AI knowledge support platform for CloudOps and B2B SaaS supp
 
 The long-term product direction is clear: support engineers upload internal runbooks, SOPs, configuration notes, and troubleshooting guides; users ask operational questions; the system searches internal documents and knowledge articles first, uses trusted web evidence as a later-stage fallback when internal knowledge is insufficient, and creates support tickets when the issue still needs human handling.
 
-The current backend focuses on the first stable foundation plus the first document knowledge layer: authentication, ticket workflow, structured knowledge articles, uploaded `.txt` / `.md` documents, document chunk search, AI-style question answering, AI logs, feedback, knowledge gaps, and admin analytics. RAG, semantic retrieval, and web-augmented answering will be added in later stages.
+The current backend provides OAuth sign-in, role-aware administration, uploaded knowledge sources, article packs and chunks, knowledge review, web evidence, tickets, and an answer path that prioritizes internal evidence before external search and configured OpenAI synthesis. Retrieval currently uses PostgreSQL full-text and lexical coverage logic; embeddings and vector reranking are not implemented.
 
 ## Product Direction
 
@@ -76,7 +76,7 @@ Priority seed documents and articles:
 ## Project Highlights
 
 - JWT authentication with Redis-backed token validation and logout.
-- User registration, login, current-user query, and role-based access control.
+- Google and GitHub OAuth sign-in, current-user query, and role-based access control.
 - Ticket lifecycle management, including creation, assignment, resolution, and closure.
 - Knowledge base article creation, search, update, archive, and category statistics.
 - Uploaded document metadata, text chunking, keyword search, archive flow, and category stats.
@@ -85,7 +85,7 @@ Priority seed documents and articles:
 - Closed-loop knowledge improvement: unanswered AI questions can be converted into reusable knowledge articles.
 - Docker Compose based local infrastructure with PostgreSQL and Redis.
 - Clear layered backend structure: Controller -> Service -> Mapper -> Database.
-- A staged AI roadmap: structured and document knowledge search first, RAG later, and web search as an advanced fallback.
+- Internal-first answer routing with web fallback and optional OpenAI grounded synthesis.
 - CloudOps-focused knowledge scope covering authentication, Redis, PostgreSQL, Docker, Kubernetes, incident SOPs, tickets, and trusted external sources.
 
 ## Tech Stack
@@ -107,16 +107,15 @@ Priority seed documents and articles:
 
 ### Current Phase
 
-The current implementation uses uploaded document chunks first and structured knowledge articles second. This keeps the foundation stable before adding embeddings, semantic retrieval, and web-augmented answers.
+The current implementation searches internal document/article content before external web evidence. It does not use vector embeddings or a trained reranker; answer quality must be assessed with the repository evaluation set rather than described as perfect semantic retrieval.
 
 ### User And Authentication
 
-- User registration and login.
-- BCrypt password encoding.
-- JWT token generation.
-- Redis-backed active token storage.
-- Logout by removing token state from Redis.
-- Current user context extracted from authenticated requests.
+- Google OpenID Connect and GitHub OAuth2 sign-in.
+- Verified provider email is required; GitHub's verified-email endpoint is queried when needed.
+- Existing users are linked by verified email without changing their role; new accounts are created as USER.
+- Provider identities are stored separately from profile email, and OAuth callback codes are single-use, short-lived Redis values.
+- Application JWTs are stored in Redis for revocation and current role/status are reloaded from PostgreSQL on protected requests.
 
 ### Ticket Workflow
 
@@ -169,7 +168,7 @@ The current implementation uses uploaded document chunks first and structured kn
 - Return answers with document and chunk-level sources.
 - Track whether AI answers came from documents, articles, or no internal source.
 
-### Future Web-Augmented Answering
+### Web-Augmented Answering
 
 - Search trusted web sources when internal knowledge cannot answer a question.
 - Return external source links for review.
@@ -203,7 +202,27 @@ ai-knowledge-ticket-assistant
 `-- docker-compose.yml  Local PostgreSQL and Redis
 ```
 
-### 1. Start Infrastructure
+### 1. Configure Local Environment
+
+Create a local environment file once:
+
+```cmd
+copy .env.example .env
+```
+
+Open `.env` and set a private `APP_JWT_SECRET` of at least 32 random characters. Configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET` for OAuth login. Add `OPENAI_API_KEY` and `SERPER_API_KEY` only when those integrations are enabled. Never commit `.env` or expose provider/API secrets to the frontend.
+
+Register these exact local OAuth callback URLs with the providers:
+
+```text
+Google: http://localhost:8090/login/oauth2/code/google
+GitHub: http://localhost:8090/login/oauth2/code/github
+Frontend callback: http://localhost:5173/auth/callback
+```
+
+Use the matching HTTPS URLs for a deployed environment.
+
+### 2. Start Infrastructure
 
 From the project root:
 
@@ -218,7 +237,7 @@ This starts:
 | PostgreSQL | ai-support-postgres | 5433 |
 | Redis | ai-support-redis | 6380 |
 
-### 2. Run SQL Scripts
+### 3. Apply Database Scripts
 
 SQL scripts are stored in:
 
@@ -226,7 +245,7 @@ SQL scripts are stored in:
 docs/sql
 ```
 
-Run them in order when setting up a fresh local database:
+For a new empty database, apply SQL files in numeric order. For an existing database, apply only migrations that have not already been run; never clear the database or replay migrations against existing data.
 
 ```text
 000_create_users_table.sql
@@ -236,14 +255,20 @@ Run them in order when setting up a fresh local database:
 004_add_feedback_to_ai_question_logs.sql
 005_create_documents_tables.sql
 006_add_document_source_to_ai_question_logs.sql
+...
+018_create_knowledge_steward_tasks.sql
 ```
 
-### 3. Start Backend
+Also apply `019_add_user_session_version.sql` and `020_create_user_oauth_identities.sql` when they are not already present. Back up the database first and never replay scripts blindly against an existing database.
+
+### 4. Start Backend
 
 ```powershell
 cd ai-support-server
-mvn clean spring-boot:run
+mvn spring-boot:run
 ```
+
+The local Spring profile loads the project-root `.env` file. Keep this terminal's working directory at `ai-support-server` so that configuration is found.
 
 The backend runs on:
 
@@ -257,14 +282,14 @@ Health check:
 GET /api/health
 ```
 
-### 4. Start Frontend
+### 5. Start Frontend
 
 The frontend is stored separately from the backend:
 
 ```powershell
 cd ai-support-web
-pnpm install
-pnpm dev
+npm.cmd install
+npm.cmd run dev
 ```
 
 The frontend runs on:
@@ -278,6 +303,8 @@ During local development, Vite proxies `/api` requests to:
 ```text
 http://localhost:8090
 ```
+
+The OAuth authorization and callback paths are proxied to the backend as well.
 
 ## UI Direction References
 
@@ -295,11 +322,10 @@ These images define the intended CloudOps product style: premium, practical, evi
 ### User APIs
 
 ```text
-POST /api/users/register
-POST /api/users/login
+GET  /api/auth/oauth/providers
+POST /api/auth/oauth/exchange
 POST /api/users/logout
 GET  /api/users/me
-GET  /api/users/{username}
 ```
 
 ### Ticket APIs
@@ -396,9 +422,9 @@ Local test JSON and markdown files are stored under `TestFiles/` for manual API 
 
 ### Stage 2: Document Knowledge Base
 
-- Add document upload. Done for `.txt` and `.md`.
+- Add document upload. The current parser supports `.txt`, `.md`, `.pdf`, and `.docx` with resource limits.
 - Store document metadata. Done.
-- Parse `.txt` and `.md` first, then expand to `.pdf` and `.docx`. Current parser supports `.txt` and `.md`.
+- Parse supported text and office formats within bounded resource limits.
 - Split documents into searchable chunks. Done.
 - Let AI answers reference document sources. Done.
 - Next: add focused tests and prepare for frontend product flows.
@@ -411,16 +437,15 @@ Local test JSON and markdown files are stored under `TestFiles/` for manual API 
 - Build an admin knowledge operations console.
 - Keep the visual style restrained and premium rather than overly obvious or decorative AI styling.
 
-### Stage 4: RAG And Semantic Retrieval
+### Stage 4: Retrieval Quality
 
-- Add embeddings.
-- Add vector-based semantic search.
-- Support multi-source answer generation.
-- Add confidence and source ranking.
+- Current retrieval is PostgreSQL full-text plus lexical/coverage heuristics.
+- Embeddings and vector reranking remain unimplemented and require an evaluated migration plan.
+- Continue evaluating route selection, evidence coverage, and citation grounding.
 
 ### Stage 5: Web-Augmented Support
 
-- Add web search fallback for questions not covered by internal knowledge.
+- Continue hardening the existing web-search fallback and provider reliability.
 - Record external search evidence.
 - Let administrators review and save useful findings into the internal knowledge base.
 

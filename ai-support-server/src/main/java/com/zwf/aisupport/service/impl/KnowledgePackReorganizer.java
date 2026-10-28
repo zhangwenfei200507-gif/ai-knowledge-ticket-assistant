@@ -70,6 +70,7 @@ public class KnowledgePackReorganizer {
         if (article == null || !"PUBLISHED".equals(article.getStatus())) {
             throw new BusinessException("Knowledge article not found");
         }
+        ensureSameDomain(article, category);
         article.setTitle(cleanTitle(title, safeCategory(category)));
         article.setCategory(safeCategory(category));
         article.setContent(buildKnowledgePackContent(null, title, category, content, sourceLabel));
@@ -137,30 +138,42 @@ public class KnowledgePackReorganizer {
         builder.append("# ").append(title).append("\n\n")
                 .append("Category: ").append(resolvedCategory).append("\n\n")
                 .append("## Overview\n")
-                .append("This Knowledge Pack covers ").append(resolvedCategory)
-                .append(" knowledge for AegisCloud support. It explains the durable concepts, configuration points, workflows, and operational checks that support teams need.\n\n")
-                .append("## Core Concepts\n")
-                .append(formatSection(buckets.coreConcepts(), "- Add concise durable concepts for this Knowledge Pack.")).append("\n\n");
+                .append(buildOverview(knowledgePoints)).append("\n\n");
 
+        appendOptionalSection(builder, "Core Concepts", buckets.coreConcepts());
         appendOptionalSection(builder, "Configuration", buckets.configuration());
         appendOptionalSection(builder, "Workflow", buckets.workflow());
-
-        builder.append("## Troubleshooting\n")
-                .append(formatSection(buckets.troubleshooting(), "- Add concrete checks, logs, metrics, commands, and escalation signals.")).append("\n\n")
-                .append("## Best Practices\n")
-                .append(formatSection(buckets.bestPractices(), "- Keep this Knowledge Pack focused, deduplicated, and easy to use.")).append("\n\n")
-                .append("## References\n")
-                .append("- Add verified official documentation links or approved internal references when they are safe to expose.\n");
+        appendOptionalSection(builder, "Troubleshooting", buckets.troubleshooting());
+        appendOptionalSection(builder, "Best Practices", buckets.bestPractices());
 
         return removeProcessArtifacts(builder.toString()).trim();
+    }
+
+    /**
+     * Build the overview from verified knowledge points instead of adding a
+     * generic description that may claim coverage the pack does not have.
+     */
+    private String buildOverview(List<String> knowledgePoints) {
+        if (knowledgePoints == null || knowledgePoints.isEmpty()) {
+            return "No verified overview is available yet.";
+        }
+        return knowledgePoints.stream()
+                .filter(point -> point != null && !point.isBlank())
+                .limit(2)
+                .reduce((left, right) -> left + " " + right)
+                .orElse("No verified overview is available yet.");
     }
 
     private void appendOptionalSection(StringBuilder builder, String heading, List<String> points) {
         if (points == null || points.isEmpty()) {
             return;
         }
+        String formatted = formatSection(points);
+        if (formatted.isBlank()) {
+            return;
+        }
         builder.append("## ").append(heading).append("\n")
-                .append(formatSection(points, "")).append("\n\n");
+                .append(formatted).append("\n\n");
     }
 
     private SectionBuckets organizeKnowledgePoints(List<String> points) {
@@ -221,6 +234,7 @@ public class KnowledgePackReorganizer {
                 .replaceAll("(?im)^Type\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^Knowledge Candidate\\s*:?\\s*.*$", "")
                 .replaceAll("(?im)^Source references\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^\\s*-?\\s*https?://\\S+\\s*$", "")
                 .replaceAll("(?im)^Source document\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^Source chunk\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^Knowledge to reorganize\\s*:?\\s*$", "")
@@ -230,6 +244,14 @@ public class KnowledgePackReorganizer {
                 .replaceAll("(?im)^References\\s*$", "")
                 .replaceAll("(?im)^Maintenance rule\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^Chunk rule\\s*:\\s*.*$", "")
+                .replaceAll("(?im)^.*verified operational concept behind the user's question.*$", "")
+                .replaceAll("(?im)^.*should be integrated into the closest existing Knowledge Pack.*$", "")
+                .replaceAll("(?im)^.*if the evidence is only partially related.*$", "")
+                .replaceAll("(?im)^.*remove assumptions.*$", "")
+                .replaceAll("(?im)^.*keep one concept per section.*$", "")
+                .replaceAll("(?im)^.*keep the final article readable as one official document.*$", "")
+                .replaceAll("(?im)^Recommended response for users\\s*$", "")
+                .replaceAll("(?im)^.*regardless of what schema is used.*$", "")
                 .replaceAll("(?im)^Source type\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^Source domain\\s*:\\s*.*$", "")
                 .replaceAll("(?im)^Source URL\\s*:\\s*.*$", "")
@@ -243,13 +265,16 @@ public class KnowledgePackReorganizer {
         }
         return raw.replaceAll("^\\s*[-*]\\s*", "")
                 .replaceAll("^\\s*\\d+[.)]\\s*", "")
+                .replaceAll("(?i)\\b(runbooks?|playbooks?|sops?)\\b", "")
                 .replaceAll("\\s+", " ")
+                .replaceAll("\\s+([,.;:])", "$1")
                 .trim();
     }
 
     private boolean isDurableKnowledgePoint(String point) {
         String normalized = point.toLowerCase(Locale.ROOT);
         return point.length() >= 24
+                && !looksLikePackTitleOrTemplate(point)
                 && !normalized.startsWith("overview")
                 && !normalized.startsWith("core concepts")
                 && !normalized.startsWith("configuration")
@@ -258,9 +283,14 @@ public class KnowledgePackReorganizer {
                 && !normalized.startsWith("best practices")
                 && !normalized.startsWith("references")
                 && !normalized.startsWith("source:")
+                && !normalized.startsWith("http://")
+                && !normalized.startsWith("https://")
                 && !normalized.startsWith("title:")
                 && !normalized.startsWith("purpose:")
+                && !normalized.startsWith("primary keywords:")
                 && !normalized.startsWith("type:")
+                && !normalized.contains("durable answer source")
+                && !normalized.contains("uploaded document chunks remain retrieval evidence")
                 && !normalized.contains("knowledge candidate")
                 && !normalized.contains("knowledge architecture checklist")
                 && !normalized.contains("review checklist")
@@ -275,6 +305,7 @@ public class KnowledgePackReorganizer {
                 && !normalized.contains("reviewed by administrator")
                 && !normalized.contains("administrator review")
                 && !normalized.contains("approval")
+                && !normalized.contains("source references")
                 && !normalized.contains("retrieval chunk")
                 && !normalized.contains("source chunk")
                 && !normalized.contains("source document")
@@ -282,15 +313,42 @@ public class KnowledgePackReorganizer {
                 && !normalized.contains("maintenance rule:")
                 && !normalized.contains("create a new pack only")
                 && !normalized.contains("place this knowledge in the closest existing knowledge pack")
+                && !normalized.contains("should be integrated into the closest existing knowledge pack")
+                && !normalized.contains("verified operational concept behind the user's question")
+                && !normalized.contains("if the evidence is only partially related")
+                && !normalized.contains("remove assumptions")
+                && !normalized.contains("keep one concept per section")
+                && !normalized.contains("keep the final article readable as one official document")
+                && !normalized.contains("recommended response for users")
+                && !normalized.contains("regardless of what schema is used")
                 && !normalized.contains("rewrite the affected section")
                 && !normalized.contains("remove duplicate or low-density wording")
                 && !normalized.contains("reorganize retrieval chunks")
                 && !normalized.contains("this draft captures");
     }
 
-    private String formatSection(List<String> points, String fallback) {
+    private boolean looksLikePackTitleOrTemplate(String point) {
+        String normalized = point.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9 /-]+", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return normalized.endsWith(" knowledge pack")
+                || normalized.endsWith(" pack")
+                || normalized.matches("cloudops .+ knowledge pack")
+                || normalized.matches("[a-z0-9 /-]+ knowledge pack")
+                || normalized.contains("this knowledge pack covers")
+                || normalized.contains("explains the durable concepts")
+                || normalized.contains("configuration points workflows and operational checks")
+                || normalized.contains("add verified official documentation")
+                || normalized.contains("add reviewed knowledge")
+                || normalized.contains("add concise durable concepts")
+                || normalized.contains("add concrete checks")
+                || normalized.contains("keep this knowledge pack focused");
+    }
+
+    private String formatSection(List<String> points) {
         if (points == null || points.isEmpty()) {
-            return fallback == null || fallback.isBlank() ? "- Add reviewed knowledge for this section." : fallback;
+            return "";
         }
         StringBuilder builder = new StringBuilder();
         points.stream()
@@ -325,10 +383,21 @@ public class KnowledgePackReorganizer {
                 .replaceFirst("^Knowledge Candidate:\\s*", "")
                 .replaceFirst("^Reviewed Model Answer:\\s*", "")
                 .replaceFirst("^Reviewed Web Answer:\\s*", "")
-                .replaceFirst("^External Evidence:\\s*", "");
+                .replaceFirst("^External Evidence:\\s*", "")
+                .replaceAll("(?i)\\b(runbooks?|playbooks?|sops?)\\b", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (cleaned.isBlank()) {
+            cleaned = safeCategory(category);
+        }
         if (!cleaned.toLowerCase(Locale.ROOT).contains("knowledge pack")) {
+            if (cleaned.toLowerCase(Locale.ROOT).endsWith(" pack")) {
+                return TextUtil.limit(cleaned, 180);
+            }
             cleaned = cleaned + " Knowledge Pack";
         }
+        cleaned = cleaned.replaceAll("(?i)\\s+Pack\\s+Knowledge Pack$", " Pack");
+        cleaned = cleaned.replaceAll("(?i)(\\s+Knowledge Pack){2,}$", " Knowledge Pack");
         return TextUtil.limit(cleaned, 180);
     }
 

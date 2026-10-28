@@ -84,14 +84,14 @@ public class TicketServiceImpl implements TicketService {
 
     @Override
     public void updateStatus(Long id, TicketStatusUpdateDTO ticketStatusUpdateDTO) {
-        requireVisibleTicket(id, CurrentUserUtil.requireCurrentUserId());
+        CurrentUserUtil.requireAdmin("Only administrators can update ticket status directly");
 
         String status = ticketStatusUpdateDTO.getStatus().trim().toUpperCase();
         if (!ALLOWED_STATUSES.contains(status)) {
             throw new BusinessException("Invalid ticket status");
         }
 
-        // Admins can operate the support queue; users can update tickets they created or own.
+        // Users follow the dedicated resolve/close actions to preserve ticket lifecycle rules.
         ticketMapper.updateStatus(id, status);
     }
     @Override

@@ -13,6 +13,7 @@ import com.zwf.aisupport.vo.DocumentKnowledgeCandidateVO;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.PageVO;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -22,13 +23,16 @@ public class DocumentKnowledgeCandidateServiceImpl implements DocumentKnowledgeC
     private final DocumentKnowledgeCandidateMapper candidateMapper;
     private final KnowledgeArticleMapper knowledgeArticleMapper;
     private final KnowledgePackReorganizer knowledgePackReorganizer;
+    private final KnowledgeArticleChunkManager articleChunkManager;
 
     public DocumentKnowledgeCandidateServiceImpl(DocumentKnowledgeCandidateMapper candidateMapper,
                                                  KnowledgeArticleMapper knowledgeArticleMapper,
-                                                 KnowledgePackReorganizer knowledgePackReorganizer) {
+                                                 KnowledgePackReorganizer knowledgePackReorganizer,
+                                                 KnowledgeArticleChunkManager articleChunkManager) {
         this.candidateMapper = candidateMapper;
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.knowledgePackReorganizer = knowledgePackReorganizer;
+        this.articleChunkManager = articleChunkManager;
     }
 
     @Override
@@ -52,6 +56,7 @@ public class DocumentKnowledgeCandidateServiceImpl implements DocumentKnowledgeC
     }
 
     @Override
+    @Transactional
     public KnowledgeArticleVO approveToArticle(Long id) {
         CurrentUserUtil.requireAdmin("Only administrators can manage document knowledge candidates");
         Long currentUserId = CurrentUserUtil.requireCurrentUserId();
@@ -64,6 +69,9 @@ public class DocumentKnowledgeCandidateServiceImpl implements DocumentKnowledgeC
         }
         if ("REJECTED".equals(candidate.getStatus())) {
             throw new BusinessException("Rejected document knowledge cannot be converted to an article");
+        }
+        if (!"NEEDS_REVIEW".equals(candidate.getStatus())) {
+            throw new BusinessException("Only pending document knowledge can be approved");
         }
 
         KnowledgeArticle article = candidate.getSuggestedArticleId() == null
@@ -80,6 +88,7 @@ public class DocumentKnowledgeCandidateServiceImpl implements DocumentKnowledgeC
                 candidate.getContent(),
                 "Uploaded document knowledge candidate");
 
+        articleChunkManager.rebuildArticleChunks(article);
         candidateMapper.markConverted(candidate.getId(), currentUserId, article.getId());
         return KnowledgeArticleVoMapper.toVO(article);
     }
@@ -99,8 +108,8 @@ public class DocumentKnowledgeCandidateServiceImpl implements DocumentKnowledgeC
     public void reject(Long id) {
         CurrentUserUtil.requireAdmin("Only administrators can manage document knowledge candidates");
         DocumentKnowledgeCandidate candidate = requireCandidate(id);
-        if ("CONVERTED".equals(candidate.getStatus())) {
-            throw new BusinessException("Converted document knowledge cannot be rejected");
+        if (!"NEEDS_REVIEW".equals(candidate.getStatus())) {
+            throw new BusinessException("Only pending document knowledge can be rejected");
         }
         candidateMapper.markRejected(candidate.getId(), CurrentUserUtil.requireCurrentUserId());
     }

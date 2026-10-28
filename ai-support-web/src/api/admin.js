@@ -21,6 +21,8 @@ export const getOperationsCenter = async () => {
   return body?.data ?? null;
 };
 
+export const getLlmGatewayStatus = () => requestJson('/api/admin/ai/llm/status');
+
 const requestJson = async (path, options = {}) => {
   const token = localStorage.getItem('aegiscloud_token');
   const response = await fetch(path, {
@@ -164,6 +166,15 @@ export const deleteKnowledgeGap = (id) => requestJson(`/api/ai/knowledge-gaps/${
 });
 
 export const getCurrentUser = () => requestJson('/api/users/me');
+
+export const getAdminUsers = (params = {}) => requestJson(`/api/admin/users${buildQuery(params)}`);
+
+export const getAdminUser = (id) => requestJson(`/api/admin/users/${id}`);
+
+export const updateAdminUserAccess = (id, payload) => requestJson(`/api/admin/users/${id}/access`, {
+  method: 'PATCH',
+  body: JSON.stringify(payload),
+});
 
 export const logoutCurrentUser = () => requestJson('/api/users/logout', {
   method: 'POST',

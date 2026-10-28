@@ -14,6 +14,7 @@ import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.KnowledgeCategoryStatsVO;
 import com.zwf.aisupport.vo.PageVO;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -25,28 +26,34 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
 
     private final KnowledgeArticleMapper knowledgeArticleMapper;
     private final KnowledgePackReorganizer knowledgePackReorganizer;
+    private final KnowledgeArticleChunkManager articleChunkManager;
 
     public KnowledgeArticleServiceImpl(KnowledgeArticleMapper knowledgeArticleMapper,
-                                       KnowledgePackReorganizer knowledgePackReorganizer) {
+                                       KnowledgePackReorganizer knowledgePackReorganizer,
+                                       KnowledgeArticleChunkManager articleChunkManager) {
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.knowledgePackReorganizer = knowledgePackReorganizer;
+        this.articleChunkManager = articleChunkManager;
     }
 
     @Override
+    @Transactional
     public void create(KnowledgeArticleCreateDTO knowledgeArticleCreateDTO) {
         CurrentUserUtil.requireAdmin("Only administrators can create knowledge articles");
         Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
-        knowledgePackReorganizer.reorganizeOrCreate(
+        KnowledgeArticle article = knowledgePackReorganizer.reorganizeOrCreate(
                 knowledgeArticleCreateDTO.getTitle(),
                 knowledgeArticleCreateDTO.getCategory(),
                 knowledgeArticleCreateDTO.getContent(),
                 currentUserId,
                 "Manual administrator knowledge entry"
         );
+        articleChunkManager.rebuildArticleChunks(article);
     }
 
     @Override
+    @Transactional
     public KnowledgeArticleVO upload(MultipartFile file, String category, String title) {
         CurrentUserUtil.requireAdmin("Only administrators can upload knowledge articles");
         Long currentUserId = CurrentUserUtil.requireCurrentUserId();
@@ -60,6 +67,7 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
                 currentUserId,
                 "Administrator uploaded article file: " + extractedText.filename()
         );
+        articleChunkManager.rebuildArticleChunks(article);
         return KnowledgeArticleVoMapper.toVO(article);
     }
 
@@ -111,6 +119,7 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
                 .toList();
     }
     @Override
+    @Transactional
     public KnowledgeArticleVO update(Long id, KnowledgeArticleUpdateDTO updateDTO) {
         CurrentUserUtil.requireAdmin("Only administrators can update knowledge articles");
 
@@ -126,10 +135,12 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
                 updateDTO.getContent(),
                 "Manual administrator Knowledge Pack edit"
         );
+        articleChunkManager.rebuildArticleChunks(updatedArticle);
         return KnowledgeArticleVoMapper.toVO(updatedArticle);
     }
 
     @Override
+    @Transactional
     public void archive(Long id) {
         CurrentUserUtil.requireAdmin("Only administrators can archive knowledge articles");
 
@@ -140,6 +151,7 @@ public class KnowledgeArticleServiceImpl implements KnowledgeArticleService {
 
         // Archive outdated knowledge instead of deleting it permanently.
         knowledgeArticleMapper.archive(id);
+        articleChunkManager.archiveArticleChunks(id);
     }
     @Override
     public List<KnowledgeCategoryStatsVO> getCategoryStats() {

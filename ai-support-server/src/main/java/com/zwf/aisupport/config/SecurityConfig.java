@@ -1,13 +1,15 @@
 package com.zwf.aisupport.config;
 
 import com.zwf.aisupport.security.JwtAuthenticationFilter;
+import com.zwf.aisupport.security.OAuthLoginSuccessHandler;
+import com.zwf.aisupport.security.OAuthLoginFailureHandler;
+import com.zwf.aisupport.service.impl.GitHubOAuth2UserService;
+import com.zwf.aisupport.service.impl.GoogleOidcUserService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -15,25 +17,36 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final OAuthLoginSuccessHandler oauthLoginSuccessHandler;
+    private final OAuthLoginFailureHandler oauthLoginFailureHandler;
+    private final GitHubOAuth2UserService gitHubOAuth2UserService;
+    private final GoogleOidcUserService googleOidcUserService;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+                          OAuthLoginSuccessHandler oauthLoginSuccessHandler,
+                          OAuthLoginFailureHandler oauthLoginFailureHandler,
+                          GitHubOAuth2UserService gitHubOAuth2UserService,
+                          GoogleOidcUserService googleOidcUserService) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.oauthLoginSuccessHandler = oauthLoginSuccessHandler;
+        this.oauthLoginFailureHandler = oauthLoginFailureHandler;
+        this.gitHubOAuth2UserService = gitHubOAuth2UserService;
+        this.googleOidcUserService = googleOidcUserService;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // Disable CSRF because this backend uses stateless REST APIs.
+                // REST APIs authenticate with bearer tokens; OAuth's transient state is kept in a short-lived session.
                 .csrf(csrf -> csrf.disable())
-                // JWT authentication does not rely on server-side HTTP sessions.
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints used before a user has a token.
                         .requestMatchers(
                                 "/api/health",
-                                "/api/users/register",
-                                "/api/users/login",
-                                "/api/users/forgot-password"
+                                "/api/auth/oauth/providers",
+                                "/api/auth/oauth/exchange",
+                                "/oauth2/**",
+                                "/login/oauth2/**"
                         ).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET,
@@ -58,15 +71,16 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/ai/logs/*").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
+                .oauth2Login(oauth -> oauth
+                        .userInfoEndpoint(userInfo -> userInfo
+                                .userService(gitHubOAuth2UserService)
+                                .oidcUserService(googleOidcUserService))
+                        .successHandler(oauthLoginSuccessHandler)
+                        .failureHandler(oauthLoginFailureHandler)
+                )
                 // Run JWT parsing before Spring Security checks whether the request is authenticated.
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        // BCrypt automatically adds salt and is suitable for password storage.
-        return new BCryptPasswordEncoder();
     }
 }

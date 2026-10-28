@@ -29,17 +29,20 @@ public class KnowledgeLibraryMaintenanceServiceImpl implements KnowledgeLibraryM
     private final DocumentChunkMapper documentChunkMapper;
     private final KnowledgePackReorganizer knowledgePackReorganizer;
     private final SemanticChunkManagementStage chunkManagementStage;
+    private final KnowledgeArticleChunkManager articleChunkManager;
 
     public KnowledgeLibraryMaintenanceServiceImpl(KnowledgeArticleMapper knowledgeArticleMapper,
                                                   KnowledgeDocumentMapper knowledgeDocumentMapper,
                                                   DocumentChunkMapper documentChunkMapper,
                                                   KnowledgePackReorganizer knowledgePackReorganizer,
-                                                  SemanticChunkManagementStage chunkManagementStage) {
+                                                  SemanticChunkManagementStage chunkManagementStage,
+                                                  KnowledgeArticleChunkManager articleChunkManager) {
         this.knowledgeArticleMapper = knowledgeArticleMapper;
         this.knowledgeDocumentMapper = knowledgeDocumentMapper;
         this.documentChunkMapper = documentChunkMapper;
         this.knowledgePackReorganizer = knowledgePackReorganizer;
         this.chunkManagementStage = chunkManagementStage;
+        this.articleChunkManager = articleChunkManager;
     }
 
     @Override
@@ -64,6 +67,7 @@ public class KnowledgeLibraryMaintenanceServiceImpl implements KnowledgeLibraryM
                     MAINTENANCE_SOURCE
             );
             rewrittenArticles.add(rewritten);
+            result.setChunksCreated(result.getChunksCreated() + articleChunkManager.rebuildArticleChunks(rewritten));
             result.setArticlesRewritten(result.getArticlesRewritten() + 1);
         }
 
@@ -92,7 +96,9 @@ public class KnowledgeLibraryMaintenanceServiceImpl implements KnowledgeLibraryM
                         duplicate.getContent(),
                         MAINTENANCE_SOURCE
                 );
+                result.setChunksCreated(result.getChunksCreated() + articleChunkManager.rebuildArticleChunks(primary));
                 knowledgeArticleMapper.archive(duplicate.getId());
+                articleChunkManager.archiveArticleChunks(duplicate.getId());
                 result.setDuplicateArticlesArchived(result.getDuplicateArticlesArchived() + 1);
             }
         }

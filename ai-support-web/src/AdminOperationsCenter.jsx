@@ -16,8 +16,7 @@ import {
   GitBranch,
   Globe2,
   Home,
-  LifeBuoy,
-  LockKeyhole,
+  Menu,
   Megaphone,
   Network,
   PanelLeftClose,
@@ -31,7 +30,9 @@ import {
   Ticket,
   Upload,
   UserRound,
+  UsersRound,
 } from 'lucide-react';
+import AdminUserManagement from './components/AdminUserManagement';
 import {
   approveDocumentKnowledgeCandidate,
   approveWebEvidence,
@@ -55,6 +56,7 @@ import {
   getKnowledgeGaps,
   getKnowledgeArticles,
   getKnowledgeDocuments,
+  getLlmGatewayStatus,
   getOperationsCenter,
   getTickets,
   getTicketDetail,
@@ -77,9 +79,7 @@ import {
 } from './api/admin';
 
 const fallbackData = {
-  title: 'CloudOps AI Knowledge Operations Center',
-  subtitle: 'Operate knowledge. Improve answers. Deliver reliable support.',
-  environment: { name: 'Production', status: 'UNKNOWN' },
+  environment: { name: 'Unknown', status: 'UNKNOWN' },
   serviceHealth: [
     { name: 'API', status: 'UNKNOWN' },
     { name: 'Search', status: 'UNKNOWN' },
@@ -87,40 +87,15 @@ const fallbackData = {
     { name: 'Storage', status: 'UNKNOWN' },
   ],
   metrics: [
-    { key: 'totalKnowledgeArticles', label: 'Total Knowledge Articles', value: '0', trend: '+ 0 this week', trendType: 'neutral', detail: 'Published internal articles', icon: 'article' },
-    { key: 'runbookDocuments', label: 'Runbook Documents', value: '0', trend: '+ 0 this week', trendType: 'neutral', detail: 'Active uploaded documents', icon: 'book' },
-    { key: 'knowledgeCoverage', label: 'Knowledge Coverage', value: '0%', trend: '0% of core domains covered', trendType: 'warning', detail: 'Based on article and document categories', icon: 'coverage' },
-    { key: 'questionsAnswered7d', label: 'Questions Answered (7D)', value: '0', trend: '+ 0 last 7 days', trendType: 'neutral', detail: 'Recorded AI answers in the last 7 days', icon: 'question' },
-    { key: 'avgAnswerConfidence', label: 'Avg Answer Confidence', value: '0.00', trend: '0 internal-source ratio', trendType: 'neutral', detail: 'Calculated from answered source types', icon: 'target' },
-    { key: 'openTickets', label: 'Open Tickets', value: '0', trend: '+ 0 active queue', trendType: 'neutral', detail: 'Open or in-progress support tickets', icon: 'ticket' },
+    { key: 'totalKnowledgeArticles', label: 'Knowledge Packs', value: '—', trend: 'Unavailable', trendType: 'neutral', detail: 'Waiting for live backend data', icon: 'article' },
+    { key: 'runbookDocuments', label: 'Source Documents', value: '—', trend: 'Unavailable', trendType: 'neutral', detail: 'Waiting for live backend data', icon: 'book' },
+    { key: 'knowledgeCoverage', label: 'Knowledge Coverage', value: '—', trend: 'Unavailable', trendType: 'warning', detail: 'Requires live article and domain data', icon: 'coverage' },
+    { key: 'questionsAnswered7d', label: 'Questions Answered (7D)', value: '—', trend: 'Unavailable', trendType: 'neutral', detail: 'Waiting for live AI activity data', icon: 'question' },
+    { key: 'avgAnswerConfidence', label: 'Avg Answer Confidence', value: '—', trend: 'Unavailable', trendType: 'neutral', detail: 'Waiting for live AI activity data', icon: 'target' },
+    { key: 'openTickets', label: 'Open Tickets', value: '—', trend: 'Unavailable', trendType: 'neutral', detail: 'Waiting for live ticket data', icon: 'ticket' },
   ],
-  knowledgeCore: {
-    categories: [
-      'Auth / JWT',
-      'Redis Cache',
-      'PostgreSQL',
-      'Docker',
-      'Kubernetes',
-      'Incident SOP',
-      'Ticket Rules',
-      'Customer Templates',
-    ].map((category) => ({
-      category,
-      articleCount: 0,
-      documentCount: 0,
-      coveragePercent: 0,
-      freshnessPercent: 0,
-      icon: 'folder',
-    })),
-    trustedSources: { domainCount: 0, coveragePercent: 0 },
-  },
-  ingestionPipeline: {
-    steps: ['Upload', 'Parse', 'Chunk', 'Index', 'Embed', 'Ready'].map((name, index) => ({
-      name,
-      status: index < 5 ? 'COMPLETED' : 'WAITING',
-    })),
-    recentJobs: [],
-  },
+  knowledgeCore: { categories: [], trustedSources: null },
+  ingestionPipeline: { steps: [], recentJobs: [] },
   externalEvidence: {
     queue: [],
     summary: { searches: 0, usefulEvidence: 0, convertedToArticles: 0, pendingReview: 0 },
@@ -145,21 +120,21 @@ const fallbackData = {
   },
   modelSearchControls: {
     modelProfile: {
-      primaryModel: 'Not configured',
-      embeddingModel: 'Not configured',
-      rerankerModel: 'Not configured',
-      status: 'NOT_CONFIGURED',
+      primaryModel: 'Not reported',
+      embeddingModel: 'Not reported',
+      rerankerModel: 'Not reported',
+      status: 'UNKNOWN',
     },
     retrievalStrategy: {
-      topKDocuments: 8,
-      topKArticles: 5,
-      topKWebEvidence: 5,
-      rerankerEnabled: true,
+      topKDocuments: null,
+      topKArticles: null,
+      topKWebEvidence: null,
+      rerankerEnabled: null,
     },
     webSearchSettings: {
-      webFallbackThreshold: 0.65,
-      trustedDomains: 0,
-      maxWebResults: 0,
+      webFallbackThreshold: null,
+      trustedDomains: null,
+      maxWebResults: null,
     },
   },
   adminTip: 'Review high priority knowledge gaps and convert valuable web evidence into internal articles to improve answer quality.',
@@ -186,16 +161,30 @@ const categoryIconMap = {
 };
 
 const navItems = [
-  ['command', 'Command Center', Home],
+  ['command', 'Dashboard', Home],
   ['knowledge', 'Knowledge Library', BookOpen],
-  ['documents', 'Document Library', FileText],
-  ['chunks', 'Chunk Library', Database],
+  ['documents', 'Source Library', FileText],
   ['documentLearning', 'Knowledge Review', Target],
   ['webEvidence', 'Web Evidence', Globe2],
   ['ai', 'AI Activity', Bot],
   ['gaps', 'Knowledge Gaps', AlertTriangle],
   ['tickets', 'Tickets', GitBranch],
+  ['users', 'User Management', UsersRound],
+  ['settings', 'Settings', Settings],
 ];
+
+const pageHeadings = {
+  command: ['Dashboard', 'System overview and key operational metrics'],
+  knowledge: ['Knowledge Library', 'Maintain reviewed, durable knowledge packs'],
+  documents: ['Source Library', 'Manage uploaded documents and retrieval sources'],
+  documentLearning: ['Knowledge Review', 'Review and approve knowledge candidates'],
+  webEvidence: ['Web Evidence', 'Review external evidence before it becomes internal knowledge'],
+  ai: ['AI Activity', 'Inspect real AI usage, grounding, and answer quality'],
+  gaps: ['Knowledge Gaps', 'Find and resolve unanswered or low-confidence questions'],
+  tickets: ['Tickets', 'Manage support requests and escalations'],
+  users: ['User Management', 'Manage registered users, roles, and account access'],
+  settings: ['Settings', 'Inspect system configuration and service readiness'],
+};
 
 const LIBRARY_PAGE_SIZE = 8;
 const REVIEW_PAGE_SIZE = 6;
@@ -217,8 +206,8 @@ function statusText(status) {
 
 function statusClass(status) {
   const normalized = String(status || '').toLowerCase();
-  if (normalized === 'healthy') return 'healthy';
-  if (normalized === 'empty' || normalized === 'not_configured') return 'neutral';
+  if (normalized === 'healthy' || normalized === 'active') return 'healthy';
+  if (normalized === 'empty' || normalized === 'not_configured' || normalized === 'configured') return 'neutral';
   return 'warning';
 }
 
@@ -488,6 +477,19 @@ function WebEvidenceWorkspace({
               <div className="webEvidenceArticlePreview">
                 <h3>Suggested Internal Article</h3>
                 <KnowledgeContentBlock content={selectedEvidence.suggestedArticleContent || selectedEvidence.extractedContent} />
+              </div>
+              <div className="webEvidenceArticlePreview">
+                <h3>All Retrieved Sources</h3>
+                {selectedEvidence.sources?.length ? selectedEvidence.sources.map((source) => (
+                  <div className="evidenceSourceRow" key={source.id || source.url}>
+                    <div>
+                      <strong>{source.title || source.domain || 'Untitled source'}</strong>
+                      <span>{source.domain || 'Unknown domain'} · {source.sourceType || 'SOURCE'} · {source.officialSource ? 'Official' : 'Technical source'}</span>
+                    </div>
+                    <small>{source.publishedTime ? `Published ${formatDateTime(source.publishedTime)}` : 'Published date unknown'} · Retrieved {formatDateTime(source.retrievedTime)}</small>
+                    {source.url && <a href={source.url} target="_blank" rel="noreferrer">Open source</a>}
+                  </div>
+                )) : <EmptyState text="No source-level records were saved for this evidence." />}
               </div>
             </>
           ) : <EmptyState text="Select a web evidence record to review its source and suggested article." />}
@@ -870,6 +872,7 @@ function AdminOperationsCenter() {
   const [ticketSearch, setTicketSearch] = useState('');
   const [profile, setProfile] = useState(null);
   const [metricContext, setMetricContext] = useState(null);
+  const [llmStatus, setLlmStatus] = useState(null);
   const [activePage, setActivePage] = useState('command');
   const [readNotificationKeys, setReadNotificationKeys] = useState(() => {
     try {
@@ -879,6 +882,7 @@ function AdminOperationsCenter() {
     }
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const user = useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem('aegiscloud_user') || '{}');
@@ -891,7 +895,8 @@ function AdminOperationsCenter() {
     setLoadState('loading');
     getOperationsCenter()
       .then((result) => {
-        setData(result || fallbackData);
+        if (!result) throw new Error('Operations API returned no dashboard data.');
+        setData(result);
         setLoadState('live');
         getDocumentKnowledgeCandidates()
           .then((candidateResult) => {
@@ -939,6 +944,15 @@ function AdminOperationsCenter() {
   useEffect(() => {
     loadOperationsCenter();
   }, [loadOperationsCenter]);
+
+  useEffect(() => {
+    if (activeModal !== 'modelStatus' && activePage !== 'settings') {
+      return;
+    }
+    getLlmGatewayStatus()
+      .then(setLlmStatus)
+      .catch(() => setLlmStatus(null));
+  }, [activeModal, activePage]);
 
   const openModal = (modal) => {
     setActionStatus({ type: '', text: '' });
@@ -1133,11 +1147,6 @@ function AdminOperationsCenter() {
     }
   };
 
-  const openDocumentLibrary = async () => {
-    openModal('documentLibrary');
-    await loadDocuments();
-  };
-
   const loadAdminChunks = async (page = chunkPage) => {
     setActionStatus({ type: 'loading', text: 'Loading searchable retrieval chunks...' });
     try {
@@ -1155,6 +1164,11 @@ function AdminOperationsCenter() {
       setSelectedAdminChunk(null);
       setActionStatus({ type: 'error', text: error.message });
     }
+  };
+
+  const openRetrievalIndex = async () => {
+    openModal('retrievalIndex');
+    await loadAdminChunks(1);
   };
 
   const loadDocumentCandidates = async (page = candidatePage) => {
@@ -1235,10 +1249,10 @@ function AdminOperationsCenter() {
     };
     setAdminChunks([selected]);
     setSelectedAdminChunk(selected);
+    setChunkPageInfo({ page: 1, size: 1, total: 1, pageCount: 1 });
     setChunkSearch('');
     setActionStatus({ type: '', text: '' });
-    setActiveModal(null);
-    setActivePage('chunks');
+    setActiveModal('retrievalIndex');
   };
 
   const openChunkEditor = (chunk) => {
@@ -1319,10 +1333,6 @@ function AdminOperationsCenter() {
     setActionStatus({ type: '', text: '' });
   };
 
-  const scrollToSection = (id) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
   const handleNavAction = (label) => {
     const actions = {
       command: () => {
@@ -1336,10 +1346,6 @@ function AdminOperationsCenter() {
       documents: async () => {
         setActivePage('documents');
         await loadDocuments();
-      },
-      chunks: async () => {
-        setActivePage('chunks');
-        await loadAdminChunks();
       },
       documentLearning: async () => {
         setActivePage('documentLearning');
@@ -1361,7 +1367,10 @@ function AdminOperationsCenter() {
         setActivePage('tickets');
         await loadTickets();
       },
+      users: () => setActivePage('users'),
+      settings: () => setActivePage('settings'),
     };
+    setMobileSidebarOpen(false);
     actions[label]?.();
   };
 
@@ -1370,6 +1379,24 @@ function AdminOperationsCenter() {
     setActionStatus({ type: '', text: '' });
     setActiveModal('globalSearch');
   };
+
+  useEffect(() => {
+    const handleGlobalShortcut = (event) => {
+      if (event.key === 'Escape') {
+        setMobileSidebarOpen(false);
+        return;
+      }
+      const target = event.target;
+      const isTyping = target instanceof HTMLElement
+        && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+      if (!isTyping && ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k')) {
+        event.preventDefault();
+        openGlobalSearch();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalShortcut);
+    return () => window.removeEventListener('keydown', handleGlobalShortcut);
+  }, []);
 
   const handleMetricClick = (metricKey) => {
     const actions = {
@@ -1855,8 +1882,9 @@ Prevention controls:
       });
       setAdminChunks((current) => current.map((chunk) => chunk.id === updated.id ? updated : chunk));
       setSelectedAdminChunk(updated);
-      setActionStatus({ type: 'success', text: 'Chunk updated. Future document retrieval will use the revised passage.' });
-      setActiveModal(null);
+      setActiveModal('retrievalIndex');
+      await loadAdminChunks(chunkPage);
+      setActionStatus({ type: 'success', text: 'Retrieval unit updated. Future searches will use the revised passage.' });
       loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -1913,10 +1941,8 @@ Prevention controls:
     setActionStatus({ type: 'loading', text: 'Archiving retrieval chunk...' });
     try {
       await archiveAdminChunk(selectedAdminChunk.id);
-      const remaining = adminChunks.filter((chunk) => chunk.id !== selectedAdminChunk.id);
-      setAdminChunks(remaining);
-      setSelectedAdminChunk(remaining[0] ?? null);
-      setActionStatus({ type: 'success', text: 'Chunk archived and removed from active retrieval.' });
+      await loadAdminChunks(chunkPage);
+      setActionStatus({ type: 'success', text: 'Retrieval unit archived and removed from active search.' });
       loadOperationsCenter();
     } catch (error) {
       setActionStatus({ type: 'error', text: error.message });
@@ -2108,12 +2134,13 @@ Prevention controls:
     <section className="adminPageSurface">
       <div className="adminPageHeader">
         <div>
-          <span>Document Library</span>
-          <h2>Uploaded Documents and Retrieval Chunks</h2>
-          <p>Inspect source files and their searchable chunks. Chunks are retrieval evidence, not published articles.</p>
+          <span>Source Library</span>
+          <h2>Documents and Retrieval Sources</h2>
+          <p>Manage uploaded source files and inspect the retrieval index behind them. Only reviewed knowledge becomes a Knowledge Pack.</p>
         </div>
         <div>
           <button type="button" onClick={() => loadDocuments(1)}>Refresh</button>
+          <button type="button" onClick={openRetrievalIndex}>Inspect Retrieval Index</button>
           <button type="button" onClick={() => openModal('uploadDocument')}>Upload Document</button>
         </div>
       </div>
@@ -2138,52 +2165,9 @@ Prevention controls:
           actions={selectedDocument && (
             <>
               <button type="button" onClick={() => viewDocumentChunks(selectedDocument)}>Refresh Chunks</button>
+              <button type="button" onClick={openRetrievalIndex}>Open Retrieval Index</button>
               <button type="button" onClick={() => copyToClipboard(selectedChunks.map((chunk) => chunk.content).join('\n\n'), 'Document chunks copied.')}>Copy Chunks</button>
               <button className="danger" type="button" onClick={archiveSelectedDocument}>Archive</button>
-            </>
-          )}
-        />
-      </div>
-    </section>
-  );
-
-  const renderChunkPage = () => (
-    <section className="adminPageSurface">
-      <div className="adminPageHeader">
-        <div>
-          <span>Chunk Library</span>
-          <h2>Semantic Retrieval Chunks</h2>
-          <p>Govern the precise passages used by document retrieval. Chunks are compact evidence units; durable knowledge belongs in Knowledge Packs after review.</p>
-        </div>
-        <div>
-          <button type="button" onClick={() => loadAdminChunks(1)}>Refresh</button>
-          <button type="button" onClick={rebuildLibraryQuality}>Rebuild Chunks</button>
-          <button type="button" onClick={() => openModal('uploadDocument')}>Upload Document</button>
-        </div>
-      </div>
-      <div className="knowledgeLibrary embedded">
-        <div className="libraryList">
-          <div className="libraryToolbar">
-            <strong>{chunkPageInfo.total} Active Chunks</strong>
-            <button type="button" onClick={() => loadAdminChunks(1)}>Reload</button>
-          </div>
-          <input className="librarySearch" value={chunkSearch} placeholder="Search chunk content, filename, category..." onChange={(event) => setChunkSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadAdminChunks(1); }} />
-          {actionStatus.text && activePage === 'chunks' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
-          {pagedAdminChunks.length ? pagedAdminChunks.map((chunk) => (
-            <button className={selectedAdminChunk?.id === chunk.id ? 'active' : ''} type="button" key={chunk.id} onClick={() => setSelectedAdminChunk(chunk)}>
-              <strong>{chunk.originalFilename || `Document #${chunk.documentId}`}</strong>
-              <span>{chunk.category || 'Uncategorized'} / Chunk {chunk.chunkIndex} / {statusText(chunk.status)}</span>
-            </button>
-          )) : <EmptyState text="No active retrieval chunks yet. Upload a document to create searchable evidence." />}
-          <LibraryPager page={chunkPageInfo.page} pageCount={chunkPageInfo.pageCount} total={chunkPageInfo.total} onPageChange={loadAdminChunks} />
-        </div>
-        <KnowledgeReader
-          chunks={selectedAdminChunk ? [selectedAdminChunk] : []}
-          actions={selectedAdminChunk && (
-            <>
-              <button type="button" onClick={() => openChunkEditor(selectedAdminChunk)}>Edit</button>
-              <button type="button" onClick={() => copyToClipboard(selectedAdminChunk.content, 'Chunk content copied.')}>Copy</button>
-              <button className="danger" type="button" onClick={archiveSelectedChunk}>Archive</button>
             </>
           )}
         />
@@ -2272,8 +2256,9 @@ Prevention controls:
           {pagedAiLogs.length ? pagedAiLogs.map((log) => (
             <button className="recordButton" type="button" key={log.id} onClick={() => openAiLogDetail(log)}>
               <strong>{log.question}</strong>
-              <span>{statusText(log.sourceType)} · {formatDateTime(log.createdTime)}</span>
+              <span>{statusText(log.answerMode || log.sourceType)} · {statusText(log.answerEngine)} · {formatDateTime(log.createdTime)}</span>
               <p>{log.answer}</p>
+              <small>{log.llmTotalTokens ? `${formatCount(log.llmTotalTokens)} tokens` : 'Token usage not reported'} · {log.retrievalTrace?.totalLatencyMs ? `${log.retrievalTrace.totalLatencyMs} ms` : 'latency not reported'}</small>
               <em onClick={(event) => { event.stopPropagation(); deleteSelectedAiLog(log); }}>Delete</em>
             </button>
           )) : <EmptyState text="No AI question logs loaded yet." />}
@@ -2361,15 +2346,103 @@ Prevention controls:
     );
   };
 
+  const renderSettingsPage = () => {
+    const model = data.modelSearchControls?.modelProfile ?? {};
+    const retrieval = data.modelSearchControls?.retrievalStrategy ?? {};
+    const web = data.modelSearchControls?.webSearchSettings ?? {};
+    const services = data.serviceHealth ?? [];
+    const searchServiceStatus = services.find((service) => service.name === 'Search')?.status;
+    const reported = (value) => value === undefined || value === null || value === '' ? 'Not reported by backend' : String(value);
+
+    return (
+      <section className="adminPageSurface settingsPage">
+        <div className="settingsIntro">
+          <div>
+            <span>Configuration Snapshot</span>
+            <h2>Current system configuration</h2>
+            <p>Values below are read from the running backend. This workspace does not expose unpersisted settings controls.</p>
+          </div>
+          <button type="button" onClick={loadOperationsCenter}><RefreshCw size={15} /> Refresh status</button>
+        </div>
+        <div className="settingsGrid">
+          <section className="settingsPanel">
+            <header><Bot size={18} /><div><h3>AI Configuration</h3><p>Model gateway state and usage health</p></div></header>
+            <dl>
+              <div><dt>Primary model</dt><dd>{reported(model.primaryModel)}</dd></div>
+              <div><dt>Gateway</dt><dd>{llmStatus ? (llmStatus.configured ? 'Configured' : 'Not configured') : reported(model.status)}</dd></div>
+              <div><dt>Successful calls</dt><dd>{llmStatus ? formatCount(llmStatus.successfulCalls) : 'Not reported'}</dd></div>
+              <div><dt>Failed calls</dt><dd>{llmStatus ? formatCount(llmStatus.failedCalls) : 'Not reported'}</dd></div>
+            </dl>
+            <button className="settingsTextAction" type="button" onClick={() => openModal('modelStatus')}>View gateway details <ChevronDown size={14} /></button>
+          </section>
+          <section className="settingsPanel">
+            <header><Database size={18} /><div><h3>Knowledge Retrieval</h3><p>Active retrieval configuration</p></div></header>
+            <dl>
+              <div><dt>Document candidates</dt><dd>{reported(retrieval.topKDocuments)}</dd></div>
+              <div><dt>Knowledge packs</dt><dd>{reported(retrieval.topKArticles)}</dd></div>
+              <div><dt>Reranker</dt><dd>{retrieval.rerankerEnabled === undefined || retrieval.rerankerEnabled === null ? 'Not reported by backend' : retrieval.rerankerEnabled ? 'Enabled' : 'Disabled'}</dd></div>
+              <div><dt>Embedding model</dt><dd>{reported(model.embeddingModel)}</dd></div>
+            </dl>
+          </section>
+          <section className="settingsPanel">
+            <header><Globe2 size={18} /><div><h3>Web Search</h3><p>Fallback and source policy values</p></div></header>
+            <dl>
+              <div><dt>Fallback threshold</dt><dd>{reported(web.webFallbackThreshold)}</dd></div>
+              <div><dt>Trusted domains</dt><dd>{reported(web.trustedDomains)}</dd></div>
+              <div><dt>Maximum results</dt><dd>{reported(web.maxWebResults)}</dd></div>
+              <div><dt>Search service</dt><dd>{searchServiceStatus ? statusText(searchServiceStatus) : 'Not reported by backend'}</dd></div>
+            </dl>
+            <button className="settingsTextAction" type="button" onClick={() => handleNavAction('webEvidence')}>Open Web Evidence <ChevronDown size={14} /></button>
+          </section>
+          <section className="settingsPanel">
+            <header><ShieldCheck size={18} /><div><h3>Security & Access</h3><p>Current administrator session</p></div></header>
+            <dl>
+              <div><dt>Authentication</dt><dd>OAuth</dd></div>
+              <div><dt>Role</dt><dd>{user.role || 'Administrator'}</dd></div>
+              <div><dt>Session identity</dt><dd>{user.email || user.username || 'Current account'}</dd></div>
+              <div><dt>Secret handling</dt><dd>Credentials remain server-side</dd></div>
+            </dl>
+            <button className="settingsTextAction" type="button" onClick={openProfile}>View account profile <ChevronDown size={14} /></button>
+          </section>
+          <section className="settingsPanel settingsServices">
+            <header><Activity size={18} /><div><h3>System Health</h3><p>Live state reported by the operations API</p></div></header>
+            {services.length ? <div className="settingsServiceList">{services.map((service) => (
+              <div key={service.name}>
+                <span className={`serviceDot ${statusClass(service.status)}`} />
+                <strong>{service.name}</strong>
+                <span>{statusText(service.status)}</span>
+              </div>
+            ))}</div> : <EmptyState text="Service health is unavailable until the backend responds." />}
+          </section>
+        </div>
+      </section>
+    );
+  };
+
   const renderActivePage = () => {
+    if (activePage === 'command' && loadState !== 'live') {
+      return (
+        <section className="adminUnavailableState" aria-live="polite">
+          {loadState === 'loading' ? <RefreshCw size={22} className="loadingIcon" /> : <Server size={22} />}
+          <div>
+            <h2>{loadState === 'loading' ? 'Loading live operations data' : 'Dashboard data is unavailable'}</h2>
+            <p>{loadState === 'loading'
+              ? 'Metrics and activity will appear after the operations API responds.'
+              : 'No sample metrics are shown. Check the backend connection, then refresh to load real data.'}</p>
+          </div>
+          {loadState === 'fallback' && <button type="button" onClick={loadOperationsCenter}>Retry connection</button>}
+        </section>
+      );
+    }
     if (activePage === 'knowledge') return renderKnowledgePage();
     if (activePage === 'documents') return renderDocumentPage();
-    if (activePage === 'chunks') return renderChunkPage();
     if (activePage === 'documentLearning') return renderDocumentLearningPage();
     if (activePage === 'webEvidence') return renderWebEvidencePage();
     if (activePage === 'ai') return renderAiPage();
     if (activePage === 'gaps') return renderGapsPage();
     if (activePage === 'tickets') return renderTicketsPage();
+    if (activePage === 'users') return <AdminUserManagement />;
+    if (activePage === 'settings') return renderSettingsPage();
     return renderCommandCenterPage();
   };
 
@@ -2435,7 +2508,7 @@ Prevention controls:
             {questionAnswer && (
               <div className="detailReadableBlock aiAnswerBlock">
                 <div className="answerHeaderRow">
-                  <strong>{statusText(questionAnswer.sourceType)} answer</strong>
+                  <strong>{statusText(questionAnswer.sourceType)} answer · {questionAnswer.answerEngine === 'LLM' ? 'Model synthesized' : 'Knowledge grounded'}</strong>
                   <div>
                     <button type="button" onClick={() => copyToClipboard(questionAnswer.answer, 'AI answer copied.')}>Copy</button>
                     <button type="button" onClick={() => setAnswerGroundingOpen((value) => !value)}>{answerGroundingOpen ? 'Hide Grounding' : 'Show Grounding'}</button>
@@ -2445,6 +2518,7 @@ Prevention controls:
                 {answerGroundingOpen && (
                   <InfoGroup title="Grounding" rows={[
                     ['Source Type', statusText(questionAnswer.sourceType)],
+                    ['Answer Engine', questionAnswer.answerEngine === 'LLM' ? 'LLM synthesized' : 'Deterministic grounded answer'],
                     ['Document', questionAnswer.sourceDocumentName],
                     ['Article', questionAnswer.sourceTitle],
                     ['Web', questionAnswer.sourceDomain],
@@ -2468,11 +2542,40 @@ Prevention controls:
             </div>
             <InfoGroup title="Grounding" rows={[
               ['Source Type', statusText(selectedAiLog.sourceType)],
+              ['Answer Mode', selectedAiLog.answerMode || 'Not recorded'],
+              ['Answer Engine', selectedAiLog.answerEngine || 'Not recorded'],
               ['Article', selectedAiLog.sourceTitle],
               ['Document', selectedAiLog.sourceDocumentName],
               ['Chunk', selectedAiLog.sourceChunkIndex],
               ['Created Ticket', selectedAiLog.createdTicketId],
             ]} />
+            <InfoGroup title="Model Usage" rows={[
+              ['Provider', selectedAiLog.llmProvider],
+              ['Model', selectedAiLog.llmModel],
+              ['Tokens', selectedAiLog.llmTotalTokens == null ? null : `${selectedAiLog.llmInputTokens ?? 0} in / ${selectedAiLog.llmOutputTokens ?? 0} out`],
+              ['Estimated Cost', selectedAiLog.llmEstimatedCost == null ? null : `${selectedAiLog.llmCurrency || 'USD'} ${selectedAiLog.llmEstimatedCost}`],
+              ['Latency', selectedAiLog.llmLatencyMs == null ? null : `${selectedAiLog.llmLatencyMs} ms`],
+              ['Request Status', selectedAiLog.llmRequestStatus],
+              ['Error Category', selectedAiLog.llmErrorCategory],
+            ]} />
+            <div className="detailReadableBlock retrievalTraceBlock">
+              <h3>Retrieval Trace</h3>
+              {selectedAiLog.retrievalTrace?.stages?.length ? (
+                <div className="retrievalTraceList">
+                  {selectedAiLog.retrievalTrace.stages.map((stage) => (
+                    <div className="retrievalTraceRow" key={stage.stage}>
+                      <strong>{stage.stage}</strong>
+                      <span className={`statusPill ${String(stage.status || 'NOT_ATTEMPTED').toLowerCase()}`}>{stage.status || 'NOT_ATTEMPTED'}</span>
+                      <small>{stage.durationMs == null ? '—' : `${stage.durationMs} ms`}</small>
+                      <p>{stage.resultSummary || stage.errorCategory || 'No stage detail recorded.'}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p>No structured trace was recorded for this historical question.</p>
+              )}
+              {selectedAiLog.retrievalTrace?.failureReason && <p className="traceFailure">Failure reason: {selectedAiLog.retrievalTrace.failureReason}</p>}
+            </div>
             <div className="detailReadableBlock">
               <h3>Answer</h3>
               <KnowledgeContentBlock content={selectedAiLog.answer} />
@@ -2699,37 +2802,51 @@ Prevention controls:
       );
     }
 
-    if (activeModal === 'documentLibrary') {
+    if (activeModal === 'retrievalIndex') {
       return (
-        <AdminModal title="Uploaded Documents and Chunks" onClose={closeModal}>
-          <div className="knowledgeLibrary">
+        <AdminModal title="Retrieval Index" onClose={closeModal}>
+          <div className="knowledgeLibrary retrievalIndexWorkspace">
             <div className="libraryList">
               <div className="libraryToolbar">
-                <strong>{documents.length} Documents</strong>
-                <button type="button" onClick={() => openModal('uploadDocument')}>Upload New</button>
+                <div>
+                  <strong>{chunkPageInfo.total} Active Retrieval Units</strong>
+                  <span>Semantic passages used for search; these are not separate knowledge articles.</span>
+                </div>
+                <div className="formButtonRow">
+                  <button type="button" onClick={() => loadAdminChunks(1)}>Refresh</button>
+                  <button type="button" onClick={rebuildLibraryQuality}>Rebuild Index</button>
+                </div>
               </div>
-              <input className="librarySearch" value={documentSearch} placeholder="Search filename, category, type..." onChange={(event) => setDocumentSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadDocuments(1); }} />
+              <input
+                className="librarySearch"
+                value={chunkSearch}
+                placeholder="Search retrieval units..."
+                onChange={(event) => setChunkSearch(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') loadAdminChunks(1); }}
+                autoFocus
+              />
               {actionStatus.text && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
-              {pagedDocuments.length ? pagedDocuments.map((document) => (
+              {pagedAdminChunks.length ? pagedAdminChunks.map((chunk) => (
                 <button
-                  className={selectedDocument?.id === document.id ? 'active' : ''}
+                  className={selectedAdminChunk?.id === chunk.id ? 'active' : ''}
                   type="button"
-                  key={document.id}
-                  onClick={() => viewDocumentChunks(document)}
+                  key={chunk.id}
+                  onClick={() => setSelectedAdminChunk(chunk)}
                 >
-                  <strong>{document.originalFilename}</strong>
-                  <span>{document.category || 'Uncategorized'} · {formatFileSize(document.fileSize)} · {statusText(document.status)}</span>
+                  <strong>{chunk.originalFilename || `Article ${chunk.articleId || '-'}`} Â· Chunk {chunk.chunkIndex ?? '-'}</strong>
+                  <span>{chunk.category || 'Uncategorized'} Â· {statusText(chunk.status)}</span>
+                  <p>{chunk.content}</p>
                 </button>
-              )) : <EmptyState text="No documents uploaded yet." />}
-              <LibraryPager page={documentPageInfo.page} pageCount={documentPageInfo.pageCount} total={documentPageInfo.total} onPageChange={loadDocuments} />
+              )) : <EmptyState text="No active retrieval units match this search." />}
+              <LibraryPager page={chunkPageInfo.page} pageCount={chunkPageInfo.pageCount} total={chunkPageInfo.total} onPageChange={loadAdminChunks} />
             </div>
             <KnowledgeReader
-              chunks={selectedChunks}
-              actions={selectedDocument && (
+              chunks={selectedAdminChunk ? [selectedAdminChunk] : []}
+              actions={selectedAdminChunk && (
                 <>
-                  <button type="button" onClick={() => viewDocumentChunks(selectedDocument)}>Refresh Chunks</button>
-                  <button type="button" onClick={() => copyToClipboard(selectedChunks.map((chunk) => chunk.content).join('\n\n'), 'Document chunks copied.')}>Copy Chunks</button>
-                  <button className="danger" type="button" onClick={archiveSelectedDocument}>Archive</button>
+                  <button type="button" onClick={() => openChunkEditor(selectedAdminChunk)}>Edit</button>
+                  <button type="button" onClick={() => copyToClipboard(selectedAdminChunk.content, 'Retrieval unit copied.')}>Copy</button>
+                  <button className="danger" type="button" onClick={archiveSelectedChunk}>Archive</button>
                 </>
               )}
             />
@@ -2933,6 +3050,10 @@ Prevention controls:
                 ['Embedding Model', profile.embeddingModel],
                 ['Reranker Model', profile.rerankerModel],
                 ['Status', statusText(profile.status)],
+                ['Configured', llmStatus?.configured ? 'Yes' : 'No'],
+                ['Last Call', llmStatus?.lastCallType || 'No call recorded'],
+                ['Successful Calls', llmStatus?.successfulCalls ?? 0],
+                ['Failed Calls', llmStatus?.failedCalls ?? 0],
               ]} />
               <InfoGroup title="Retrieval" rows={[
                 ['Top-K Documents', retrieval.topKDocuments],
@@ -2941,6 +3062,11 @@ Prevention controls:
                 ['Web Threshold', web.webFallbackThreshold],
               ]} />
             </div>
+            {llmStatus?.lastFailureReason && (
+              <div className="adminActionStatus error">
+                Last model failure: {llmStatus.lastFailureReason}
+              </div>
+            )}
           </div>
         </AdminModal>
       );
@@ -2966,40 +3092,26 @@ Prevention controls:
   return (
     <div className={`adminShell ${sidebarCollapsed ? 'sidebarCollapsed' : ''}`}>
       {renderModal()}
-      <aside className="adminSidebar">
+      {mobileSidebarOpen && <button className="mobileSidebarScrim" type="button" aria-label="Close navigation" onClick={() => setMobileSidebarOpen(false)} />}
+      <aside className={`adminSidebar ${mobileSidebarOpen ? 'mobileOpen' : ''}`}>
         <div className="adminLogo">
           <Cloud size={38} />
           <div>
             <strong>AegisCloud</strong>
-            <span>CloudOps Support Platform</span>
+            <span>CloudOps AI Knowledge Platform</span>
           </div>
         </div>
         <nav className="adminNav">
           {navItems.map(([id, label, Icon]) => (
-            <button className={activePage === id ? 'active' : ''} type="button" key={id} onClick={() => handleNavAction(id)}>
+            <button className={activePage === id ? 'active' : ''} type="button" key={id} title={sidebarCollapsed ? label : undefined} aria-current={activePage === id ? 'page' : undefined} onClick={() => handleNavAction(id)}>
               <Icon size={18} />
               <span>{label}</span>
             </button>
           ))}
         </nav>
-        <div className="quickActions">
-          <div className="quickActionsHeader">
-            <strong>Quick Actions</strong>
-            <span>Live</span>
-          </div>
-          <button className="primary" type="button" onClick={() => openModal('uploadArticle')}><FileText size={15} />New Article</button>
-          <button className="primary" type="button" onClick={() => openModal('uploadDocument')}><Upload size={15} />Upload Document</button>
-          <button className="primary" type="button" onClick={openWebEvidencePage}><Globe2 size={15} />Web Evidence</button>
-          <button type="button" onClick={openGlobalSearch}><Search size={15} />Search Knowledge</button>
-          <button type="button" onClick={async () => { setActivePage('knowledge'); await loadArticles(); }}><BookOpen size={15} />Manage Articles</button>
-          <button type="button" onClick={async () => { setActivePage('documents'); await loadDocuments(); }}><FileText size={15} />Manage Documents</button>
-          <button type="button" onClick={async () => { setActivePage('chunks'); await loadAdminChunks(); }}><Database size={15} />Manage Chunks</button>
-          <button type="button" onClick={async () => { setActivePage('gaps'); await loadKnowledgeGaps(1); }}><Target size={15} />Review Gaps</button>
-          <button type="button" onClick={async () => { setActivePage('tickets'); await loadTickets(); }}><Ticket size={15} />Open Tickets</button>
-        </div>
         <button className="lastUpdated" type="button" onClick={loadOperationsCenter}>
-          <span>Last Updated</span>
-          <strong>{new Date().toLocaleString('en-US', { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</strong>
+          <span>Operations data</span>
+          <strong>{loadState === 'live' ? 'Refresh live status' : loadState === 'loading' ? 'Loading status…' : 'Backend unavailable'}</strong>
           <RefreshCw size={16} />
         </button>
         <button className="collapseButton" type="button" onClick={() => setSidebarCollapsed((value) => !value)}><PanelLeftClose size={18} />Collapse</button>
@@ -3008,18 +3120,20 @@ Prevention controls:
       <main className="adminMain">
         <header className="adminTopSection">
           <div className="adminTopbar">
+            <button className="mobileMenuButton" type="button" aria-label="Open navigation" onClick={() => setMobileSidebarOpen(true)}><Menu size={20} /></button>
             <div className="adminTitleBlock">
-              <span className="adminEyebrow">Command Center</span>
-              <h1>{data.title}</h1>
-              <p>{data.subtitle}</p>
+              <span className="adminEyebrow">AegisCloud Operations</span>
+              <h1>{pageHeadings[activePage]?.[0] ?? 'Dashboard'}</h1>
+              <p>{pageHeadings[activePage]?.[1] ?? 'System overview and key operational metrics'}</p>
             </div>
             <div className="topbarControls">
               <button className={`environmentPill ${statusClass(data.environment?.status)}`} type="button" onClick={() => openModal('environmentInfo')}>
-                <span />{data.environment?.name ?? 'Production'}<ChevronDown size={14} />
+                <span />{data.environment?.name ?? 'Unknown'}<ChevronDown size={14} />
               </button>
               <form className="adminSearch" onSubmit={submitGlobalSearch}>
-                <input value={globalSearch} placeholder="Search stored knowledge..." onChange={(event) => setGlobalSearch(event.target.value)} />
+                <input value={globalSearch} placeholder="Search knowledge, documents..." aria-label="Search knowledge and documents" onChange={(event) => setGlobalSearch(event.target.value)} />
                 <button type="submit" aria-label="Search stored knowledge"><Search size={18} /></button>
+                <kbd>Ctrl K</kbd>
               </form>
               <button className={`notificationButton ${unreadNotificationCount > 0 ? 'hasUnread' : ''}`} type="button" onClick={openNotifications}>
                 <Bell size={19} />
@@ -3033,7 +3147,7 @@ Prevention controls:
             </div>
           </div>
 
-          <div className="serviceHealthBar">
+          <div className="serviceHealthBar" aria-label="Service health">
             {(data.serviceHealth ?? []).map((service) => (
               <button className={statusClass(service.status)} type="button" key={service.name} onClick={() => service.name === 'LLM Gateway' ? openModal('modelStatus') : openModal('environmentInfo')}>
                 <span />

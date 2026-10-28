@@ -1,0 +1,13 @@
+package com.zwf.aisupport.service.model;
+
+public enum LlmErrorCategory {
+    LLM_NOT_CONFIGURED,
+    LLM_TIMEOUT,
+    LLM_RATE_LIMITED,
+    LLM_INVALID_MODEL,
+    LLM_AUTHENTICATION_FAILED,
+    LLM_NETWORK_FAILURE,
+    LLM_EMPTY_RESPONSE,
+    LLM_PROVIDER_ERROR,
+    LLM_NO_USABLE_RESPONSE
+}

@@ -5,23 +5,32 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zwf.aisupport.common.util.KnowledgeCategoryResolver;
 import com.zwf.aisupport.common.util.TextUtil;
 import com.zwf.aisupport.entity.WebEvidence;
+import com.zwf.aisupport.entity.WebEvidenceSource;
+import com.zwf.aisupport.service.WebSearchProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,7 +38,10 @@ import java.util.regex.Pattern;
 @Component
 public class WebSearchClient {
 
+    private static final Logger log = LoggerFactory.getLogger(WebSearchClient.class);
+
     private static final int MAX_CONTENT_LENGTH = 5000;
+    private static final int MAX_PAGE_RESPONSE_BYTES = 1_500_000;
     private static final Pattern RESULT_LINK_PATTERN = Pattern.compile(
             "<a[^>]+class=\"result__a\"[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL
@@ -41,21 +53,38 @@ public class WebSearchClient {
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final AiQueryUnderstandingService queryUnderstandingService;
+    private final WebSearchProvider serperSearchProvider;
+    private final ExternalUrlPolicy externalUrlPolicy = new ExternalUrlPolicy();
 
-    public WebSearchClient(ObjectMapper objectMapper) {
+    public WebSearchClient(ObjectMapper objectMapper,
+                           AiQueryUnderstandingService queryUnderstandingService,
+                           WebSearchProvider serperSearchProvider) {
         this.objectMapper = objectMapper;
+        this.queryUnderstandingService = queryUnderstandingService;
+        this.serperSearchProvider = serperSearchProvider;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(8))
-                .followRedirects(HttpClient.Redirect.NORMAL)
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
     }
 
     public Optional<WebEvidence> search(String question, Long userId) {
         List<WebEvidence> evidenceCandidates = new ArrayList<>();
         for (String query : buildQueries(question)) {
-            searchDuckDuckGoInstantAnswer(question, query, userId).ifPresent(evidenceCandidates::add);
-            searchDuckDuckGoHtml(question, query, userId).ifPresent(evidenceCandidates::add);
-            if (hasStrongOfficialCoverage(evidenceCandidates)) {
+            List<WebEvidence> providerResults = searchSerper(question, query, userId);
+            if (providerResults.isEmpty()) {
+                Optional<WebEvidence> instantAnswer = searchDuckDuckGoInstantAnswer(question, query, userId);
+                if (instantAnswer.isPresent()) {
+                    evidenceCandidates.add(instantAnswer.get());
+                } else {
+                    searchDuckDuckGoHtml(question, query, userId).ifPresent(evidenceCandidates::add);
+                }
+            } else {
+                evidenceCandidates.addAll(providerResults);
+            }
+            evidenceCandidates = deduplicateEvidence(evidenceCandidates);
+            if (hasStrongOfficialCoverage(question, evidenceCandidates)) {
                 break;
             }
         }
@@ -64,11 +93,74 @@ public class WebSearchClient {
             return Optional.empty();
         }
 
-        List<WebEvidence> ranked = evidenceCandidates.stream()
+        List<WebEvidence> ranked = deduplicateEvidence(evidenceCandidates).stream()
                 .sorted(Comparator.comparingInt((WebEvidence evidence) -> sourceQualityScore(evidence.getUrl(), evidence.getTitle(), evidence.getExtractedContent())).reversed())
                 .limit(3)
                 .toList();
-        return Optional.of(mergeEvidence(question, ranked, userId));
+        WebEvidence merged = mergeEvidence(question, ranked, userId);
+        merged.setSources(toEvidenceSources(ranked));
+        return Optional.of(merged);
+    }
+
+    private List<WebEvidenceSource> toEvidenceSources(List<WebEvidence> evidence) {
+        List<WebEvidenceSource> sources = new ArrayList<>();
+        for (int index = 0; index < evidence.size(); index++) {
+            WebEvidence item = evidence.get(index);
+            if (item.getUrl() == null || item.getUrl().isBlank()) {
+                continue;
+            }
+            WebEvidenceSource source = new WebEvidenceSource();
+            source.setTitle(item.getTitle());
+            source.setUrl(item.getUrl());
+            source.setDomain(item.getDomain());
+            source.setExcerpt(TextUtil.limit(item.getExtractedContent(), 1800));
+            source.setCredibilityScore(item.getCredibilityScore());
+            source.setSourceRank(index + 1);
+            source.setSourceType(isOfficialDocumentation(item.getUrl()) ? "OFFICIAL_DOCUMENTATION" : "TECHNICAL_SOURCE");
+            source.setOfficialSource(isOfficialDocumentation(item.getUrl()));
+            source.setRetrievedTime(LocalDateTime.now());
+            source.setSourceStatus("RETRIEVED");
+            sources.add(source);
+        }
+        return sources;
+    }
+
+    private List<WebEvidence> deduplicateEvidence(List<WebEvidence> evidence) {
+        Map<String, WebEvidence> byUrl = new java.util.LinkedHashMap<>();
+        for (WebEvidence item : evidence) {
+            if (item != null && item.getUrl() != null && !item.getUrl().isBlank()) {
+                byUrl.putIfAbsent(item.getUrl(), item);
+            }
+        }
+        return new ArrayList<>(byUrl.values());
+    }
+
+    private List<WebEvidence> searchSerper(String question, String query, Long userId) {
+        WebSearchProvider.ProviderResult providerResult = serperSearchProvider.search(query, 8);
+        if (!providerResult.succeeded()) {
+            if (providerResult.safeErrorMessage() != null) {
+                log.warn("Search provider {} unavailable for query '{}': {}",
+                        providerResult.provider(), TextUtil.limit(query, 120), providerResult.safeErrorMessage());
+            }
+            return List.of();
+        }
+
+        List<WebEvidence> evidence = new ArrayList<>();
+        for (WebSearchProvider.SearchResult item : providerResult.results()) {
+            if (evidence.size() >= 3) {
+                break;
+            }
+            String title = clean(item.title());
+            String url = item.url();
+            String snippet = clean(item.snippet());
+            String extracted = fetchReadableText(url).orElse(snippet);
+            if (!extracted.isBlank()
+                    && hasQuestionCoverage(query, title + " " + snippet + " " + extracted)
+                    && isAcceptableEvidenceSource(url, title, snippet, extracted)) {
+                evidence.add(buildEvidence(question, query, title, url, snippet, extracted, userId));
+            }
+        }
+        return evidence;
     }
 
     private Optional<WebEvidence> searchDuckDuckGoInstantAnswer(String question, String query, Long userId) {
@@ -82,6 +174,7 @@ public class WebSearchClient {
             String heading = root.path("Heading").asText("");
 
             if (!abstractText.isBlank() && !abstractUrl.isBlank()
+                    && hasQuestionCoverage(query, abstractText)
                     && isAcceptableEvidenceSource(abstractUrl, heading, abstractText, abstractText)) {
                 return Optional.of(buildEvidence(
                         question,
@@ -106,6 +199,7 @@ public class WebSearchClient {
                 String text = clean(best.path("Text").asText(""));
                 String firstUrl = best.path("FirstURL").asText("");
                 if (!text.isBlank() && !firstUrl.isBlank()
+                        && hasQuestionCoverage(query, text)
                         && isAcceptableEvidenceSource(firstUrl, shortTitle(text), text, text)) {
                     return Optional.of(buildEvidence(
                             question,
@@ -118,7 +212,8 @@ public class WebSearchClient {
                     ));
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception exception) {
+            log.debug("DuckDuckGo instant-answer search failed for query '{}': {}", TextUtil.limit(query, 120), exception.getMessage());
             return Optional.empty();
         }
         return Optional.empty();
@@ -137,6 +232,7 @@ public class WebSearchClient {
                 String extracted = fetchReadableText(candidate.url())
                         .orElse(candidate.snippet());
                 if (!extracted.isBlank()
+                        && hasQuestionCoverage(query, candidate.title() + " " + candidate.snippet() + " " + extracted)
                         && isAcceptableEvidenceSource(candidate.url(), candidate.title(), candidate.snippet(), extracted)) {
                     return Optional.of(buildEvidence(
                             question,
@@ -149,7 +245,8 @@ public class WebSearchClient {
                     ));
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception exception) {
+            log.debug("DuckDuckGo HTML search failed for query '{}': {}", TextUtil.limit(query, 120), exception.getMessage());
             return Optional.empty();
         }
         return Optional.empty();
@@ -177,7 +274,7 @@ public class WebSearchClient {
 
         return candidates.stream()
                 .filter(candidate -> !candidate.title().isBlank() && !candidate.url().isBlank())
-                .limit(5)
+                .limit(10)
                 .toList();
     }
 
@@ -202,7 +299,8 @@ public class WebSearchClient {
                 text = text.substring(0, MAX_CONTENT_LENGTH);
             }
             return text.isBlank() ? Optional.empty() : Optional.of(text);
-        } catch (Exception ignored) {
+        } catch (Exception exception) {
+            log.debug("Web content extraction failed for '{}': {}", TextUtil.limit(url, 160), exception.getMessage());
             return Optional.empty();
         }
     }
@@ -237,11 +335,14 @@ public class WebSearchClient {
     private List<String> buildQueries(String question) {
         String trimmed = clean(question);
         LinkedHashSet<String> queries = new LinkedHashSet<>();
-        for (String task : splitQuestionTasks(trimmed)) {
+        for (String task : queryUnderstandingService.analyze(trimmed).tasks()) {
             String technicalTerms = extractTechnicalQuery(task);
             if (!technicalTerms.isBlank()) {
                 queries.add(technicalTerms + " official documentation");
                 queries.add(technicalTerms + " specification");
+                for (String officialDomain : officialDomainsFor(task + " " + technicalTerms)) {
+                    queries.add(technicalTerms + " site:" + officialDomain);
+                }
                 if (isTroubleshootingQuery(task)) {
                     queries.add(technicalTerms + " troubleshooting");
                 }
@@ -255,26 +356,34 @@ public class WebSearchClient {
         }
         return queries.stream()
                 .filter(query -> query.length() >= 8)
-                .limit(10)
+                .limit(8)
                 .toList();
     }
 
-    private List<String> splitQuestionTasks(String question) {
-        String normalized = clean(question);
-        if (normalized.isBlank()) {
-            return List.of();
+    private List<String> officialDomainsFor(String text) {
+        String category = KnowledgeCategoryResolver.infer(text);
+        String normalized = TextUtil.safeLower(text + " " + category);
+        LinkedHashSet<String> domains = new LinkedHashSet<>();
+        if (TextUtil.containsAny(normalized, "docker", "dockerfile", "compose", "buildkit", "container")) {
+            domains.add("docs.docker.com");
         }
-        LinkedHashSet<String> tasks = new LinkedHashSet<>();
-        for (String part : normalized.split("\\?+|;+|\\band\\s+(?=(what|why|how|when|should|does|do|is|are|can)\\b)")) {
-            String task = clean(part);
-            if (task.length() >= 8) {
-                tasks.add(task);
-            }
+        if (TextUtil.containsAny(normalized, "kubernetes", "pod", "ingress", "gateway", "hpa", "probe")) {
+            domains.add("kubernetes.io/docs");
         }
-        if (tasks.isEmpty()) {
-            tasks.add(normalized);
+        if (TextUtil.containsAny(normalized, "postgres", "postgresql", "database", "sql", "wal", "replication")) {
+            domains.add("postgresql.org/docs");
         }
-        return tasks.stream().limit(4).toList();
+        if (TextUtil.containsAny(normalized, "redis", "cache", "eviction", "slowlog")) {
+            domains.add("redis.io/docs");
+        }
+        if (TextUtil.containsAny(normalized, "jwt", "spring security", "oauth", "oidc", "bearer")) {
+            domains.add("docs.spring.io");
+            domains.add("datatracker.ietf.org");
+        }
+        if (TextUtil.containsAny(normalized, "incident", "severity", "priority", "sla", "ticket")) {
+            domains.add("sre.google");
+        }
+        return domains.stream().limit(3).toList();
     }
 
     private boolean isTroubleshootingQuery(String question) {
@@ -285,9 +394,7 @@ public class WebSearchClient {
     }
 
     private String extractTechnicalQuery(String question) {
-        List<String> terms = Arrays.stream(TextUtil.safeLower(question).split("[^a-z0-9+#./-]+"))
-                .map(String::trim)
-                .filter(term -> term.length() >= 3)
+        List<String> terms = queryUnderstandingService.extractSearchTerms(question).stream()
                 .filter(term -> !TextUtil.containsAny(term, "why", "what", "how", "because", "even", "though", "not", "has", "have", "does", "with", "without", "first"))
                 .distinct()
                 .limit(8)
@@ -296,17 +403,36 @@ public class WebSearchClient {
     }
 
     private String get(String url) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+        URI safeUri = externalUrlPolicy.requirePublicHttpUrl(url);
+        HttpRequest request = HttpRequest.newBuilder(safeUri)
                 .timeout(Duration.ofSeconds(12))
                 .header("User-Agent", "AegisCloud-KnowledgeSupport/1.0")
                 .header("Accept", "text/html,application/json;q=0.9,*/*;q=0.8")
                 .GET()
                 .build();
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        if (response.statusCode() >= 400) {
+        HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            response.body().close();
             throw new IllegalStateException("External search request failed");
         }
-        return response.body();
+        try (InputStream body = response.body()) {
+            return new String(readLimited(body, MAX_PAGE_RESPONSE_BYTES), StandardCharsets.UTF_8);
+        }
+    }
+
+    private byte[] readLimited(InputStream input, int maxBytes) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(maxBytes, 8192));
+        byte[] buffer = new byte[8192];
+        int total = 0;
+        int read;
+        while ((read = input.read(buffer, 0, Math.min(buffer.length, maxBytes - total + 1))) != -1) {
+            total += read;
+            if (total > maxBytes) {
+                throw new IOException("External response exceeds the configured size limit");
+            }
+            output.write(buffer, 0, read);
+        }
+        return output.toByteArray();
     }
 
     private String normalizeDuckDuckGoUrl(String rawUrl) {
@@ -357,8 +483,16 @@ public class WebSearchClient {
                 score++;
             }
         }
-        if (TextUtil.containsAny(normalized, "purpose", "instruction", "command", "sets", "copies", "runs", "exposes", "executes", "default")) {
+        if (TextUtil.containsAny(normalized,
+                "means", "defines", "sets", "available", "persist", "build-time", "runtime",
+                "difference", "different", "compared", "because", "improves", "used to",
+                "purpose", "instruction", "command", "copies", "runs", "exposes", "executes", "default")) {
             score += 2;
+        }
+        if (TextUtil.containsAny(normalized,
+                "we will", "let's", "in this guide", "in this tutorial", "getting started",
+                "previous dockerfile", "copy page", "edit this page")) {
+            score -= 4;
         }
         return score;
     }
@@ -373,51 +507,81 @@ public class WebSearchClient {
                 Category: %s
 
                 ## Overview
-                This knowledge explains the verified operational concept behind the user's question. It should be integrated into the closest existing Knowledge Pack when the evidence is technically relevant.
-
-                ## Core Answer
                 %s
 
-                ## Key Concepts
+                ## Core Concepts
+                %s
+
+                ## Operational Notes
                 %s
 
                 ## Troubleshooting
-                - Confirm the exact production component, version, and failure signal before applying this guidance.
-                - Prefer reproducible commands, logs, metrics, and configuration names.
-                - If the evidence is only partially related, keep the verified concept and remove assumptions.
+                %s
 
                 ## Best Practices
-                - Integrate overlapping concepts into the related section instead of appending separate notes.
-                - Keep one concept per section and remove repeated definitions.
-                - Keep the final article readable as one official document.
-
-                ## References
-                - Add verified official documentation or approved internal references when available.
+                %s
                 """.formatted(
                 title,
                 category,
+                buildSuggestedOverview(question, category),
                 answerDraft,
-                normalizeEvidenceForArticle(summary)
+                normalizeEvidenceForArticle(summary),
+                buildTroubleshootingNotes(question, summary),
+                buildBestPracticeNotes(question, summary)
         );
     }
 
-    private String buildUserAnswerDraft(String question, String summary) {
-        String normalizedQuestion = question == null ? "" : question.toLowerCase(Locale.ROOT);
-        if (normalizedQuestion.contains("dockerfile")
-                && normalizedQuestion.contains("workdir")
-                && normalizedQuestion.contains("copy")
-                && normalizedQuestion.contains("run")
-                && normalizedQuestion.contains("expose")
-                && normalizedQuestion.contains("cmd")) {
-            return """
-                    - WORKDIR sets the default directory inside the image for later instructions.
-                    - COPY moves application files from the build context into the image.
-                    - RUN executes build-time commands and saves the result into image layers.
-                    - EXPOSE documents the listening port; it does not publish the port by itself.
-                    - CMD defines the default command that starts the app when the container runs.
-                    """.trim();
-        }
+    private String buildSuggestedOverview(String question, String category) {
+        String technicalTopic = suggestTitle(question);
+        return "This section explains " + technicalTopic + " for the " + category
+                + " domain, focusing on the durable behavior, configuration impact, and operational checks that support teams can reuse.";
+    }
 
+    private String buildTroubleshootingNotes(String question, String summary) {
+        String normalized = TextUtil.safeLower(question + " " + summary);
+        LinkedHashSet<String> notes = new LinkedHashSet<>();
+        if (TextUtil.containsAny(normalized, "error", "fail", "failure", "timeout", "latency", "rejected", "cannot", "connection")) {
+            notes.add("Confirm the affected component, version, exact error, and first failing timestamp.");
+            notes.add("Compare the runtime configuration with the expected behavior described in this knowledge.");
+        }
+        if (TextUtil.containsAny(normalized, "docker", "compose", "container")) {
+            notes.add("Check container logs, service names, ports, environment variables, health checks, and build context.");
+        }
+        if (TextUtil.containsAny(normalized, "kubernetes", "pod", "gateway", "ingress", "httproute")) {
+            notes.add("Check resource events, route attachment, namespace rules, backend service references, and controller status.");
+        }
+        if (TextUtil.containsAny(normalized, "postgres", "postgresql")) {
+            notes.add("Check connection settings, server health, wait events, active sessions, and storage or I/O pressure.");
+        }
+        if (TextUtil.containsAny(normalized, "redis")) {
+            notes.add("Check latency, slow logs, memory policy, key TTLs, eviction, persistence, and client connection behavior.");
+        }
+        if (notes.isEmpty()) {
+            notes.add("Verify the production component, configuration, logs, metrics, and version before applying the guidance.");
+        }
+        return notes.stream().map(note -> "- " + note).reduce((left, right) -> left + "\n" + right).orElse("");
+    }
+
+    private String buildBestPracticeNotes(String question, String summary) {
+        String normalized = TextUtil.safeLower(question + " " + summary);
+        LinkedHashSet<String> notes = new LinkedHashSet<>();
+        if (TextUtil.containsAny(normalized, "docker", "build", "image", "dockerfile")) {
+            notes.add("Keep build-time concerns separate from runtime configuration and avoid adding unnecessary files or secrets to images.");
+        }
+        if (TextUtil.containsAny(normalized, "jwt", "oauth", "token")) {
+            notes.add("Separate authentication failures from authorization failures and keep token validation rules explicit.");
+        }
+        if (TextUtil.containsAny(normalized, "gateway", "httproute", "ingress")) {
+            notes.add("Use Gateway API when ownership boundaries and advanced routing need to be explicit.");
+        }
+        if (TextUtil.containsAny(normalized, "cache", "redis")) {
+            notes.add("Use caching features only when invalidation behavior and data freshness requirements are understood.");
+        }
+        notes.add("Prefer guidance that is reproducible, version-aware, and safe to apply in production.");
+        return notes.stream().map(note -> "- " + note).reduce((left, right) -> left + "\n" + right).orElse("");
+    }
+
+    private String buildUserAnswerDraft(String question, String summary) {
         List<String> points = Arrays.stream(summary.split("\\R+|(?<=[.!?])\\s+"))
                 .map(this::clean)
                 .filter(point -> point.length() >= 24)
@@ -463,10 +627,20 @@ public class WebSearchClient {
         return new BigDecimal("0.75");
     }
 
-    private boolean hasStrongOfficialCoverage(List<WebEvidence> evidenceCandidates) {
+    private boolean hasStrongOfficialCoverage(String question, List<WebEvidence> evidenceCandidates) {
+        long requiredSources = requiresMultipleSources(question) ? 2 : 1;
         return evidenceCandidates.stream()
                 .filter(evidence -> sourceQualityScore(evidence.getUrl(), evidence.getTitle(), evidence.getExtractedContent()) >= 90)
-                .count() >= 2;
+                .map(WebEvidence::getUrl)
+                .distinct()
+                .count() >= requiredSources;
+    }
+
+    private boolean requiresMultipleSources(String question) {
+        String normalized = TextUtil.safeLower(question);
+        return TextUtil.containsAny(normalized,
+                "compare", "comparison", "differences between", "trade-offs", "tradeoffs",
+                "multiple sources", "across", "from kubernetes, redis", "work together");
     }
 
     private WebEvidence mergeEvidence(String question, List<WebEvidence> ranked, Long userId) {
@@ -500,7 +674,7 @@ public class WebSearchClient {
         String normalizedUrl = TextUtil.safeLower(url);
         String normalizedTitle = TextUtil.safeLower(title);
         String normalizedText = TextUtil.safeLower(text);
-        if (isRejectedEvidencePage(normalizedUrl, normalizedTitle, normalizedText)) {
+        if (isRejectedEvidencePage(normalizedUrl, normalizedTitle)) {
             return 0;
         }
         if (isOfficialDocumentation(normalizedUrl)) {
@@ -632,19 +806,28 @@ public class WebSearchClient {
         String normalizedTitle = TextUtil.safeLower(title);
         String normalizedText = TextUtil.safeLower(title + " " + snippet + " " + content);
 
-        if (isRejectedEvidencePage(normalizedUrl, normalizedTitle, normalizedText)) {
+        if (isRejectedEvidencePage(normalizedUrl, normalizedTitle)) {
             return false;
         }
-        return isOfficialDocumentation(normalizedUrl)
-                || isRfcOrStandard(normalizedUrl, normalizedTitle)
+        if (isOfficialDocumentation(normalizedUrl)) {
+            return hasConcreteTechnicalContent(normalizedText);
+        }
+        if (isPromotionalContent(normalizedText) && !hasConcreteTechnicalContent(normalizedText)) {
+            return false;
+        }
+        return isRfcOrStandard(normalizedUrl, normalizedTitle)
                 || isTechnicalArticle(normalizedUrl, normalizedTitle, normalizedText)
                 || isHighQualityEngineeringBlog(normalizedUrl, normalizedText);
     }
 
-    private boolean isRejectedEvidencePage(String url, String title, String text) {
+    private boolean isRejectedEvidencePage(String url, String title) {
         return TextUtil.containsAny(url, "/courses", "/course", "/training", "/bootcamp", "/certification", "/pricing", "/tag/", "/tags/", "/category/", "/categories/", "/search", "/archive")
-                || TextUtil.containsAny(title, "course", "training", "bootcamp", "certification", "pricing", "tag:", "category:", "search results", "index")
-                || TextUtil.containsAny(text, "enroll now", "course curriculum", "course overview", "start free trial", "buy now", "pricing", "advertisement", "sponsored", "certificate of completion");
+                || TextUtil.containsAny(title, "course", "training", "bootcamp", "certification", "pricing", "tag:", "category:", "search results", "index");
+    }
+
+    private boolean isPromotionalContent(String text) {
+        return TextUtil.containsAny(text, "enroll now", "course curriculum", "course overview", "start free trial",
+                "buy now", "advertisement", "sponsored", "certificate of completion");
     }
 
     private boolean isOfficialDocumentation(String url) {
@@ -668,6 +851,34 @@ public class WebSearchClient {
 
     private boolean hasConcreteTechnicalContent(String text) {
         return TextUtil.containsAny(text, "configure", "configuration", "command", "error", "failure", "diagnose", "troubleshoot", "protocol", "api", "postgres", "redis", "docker", "kubernetes", "jwt", "token", "sql", "yaml", "http", "tls");
+    }
+
+    private boolean hasQuestionCoverage(String question, String text) {
+        String normalizedText = TextUtil.safeLower(text);
+        List<String> terms = Arrays.stream(TextUtil.safeLower(question).split("[^a-z0-9+#./_-]+"))
+                .map(String::trim)
+                .filter(term -> term.length() >= 3)
+                .filter(term -> !TextUtil.containsAny(term,
+                        "why", "what", "how", "when", "should", "does", "with", "without", "because",
+                        "even", "though", "first", "the", "and", "for", "from", "this", "that",
+                        "use", "using", "used", "issue", "problem", "help", "check"))
+                .distinct()
+                .limit(10)
+                .toList();
+        if (terms.isEmpty()) {
+            return true;
+        }
+        List<String> specificTerms = terms.stream()
+                .filter(term -> term.matches(".*[0-9+#./_-].*") || term.length() >= 6)
+                .toList();
+        if (!specificTerms.isEmpty() && specificTerms.stream().noneMatch(normalizedText::contains)) {
+            return false;
+        }
+        long matched = terms.stream()
+                .filter(normalizedText::contains)
+                .count();
+        double coverage = (double) matched / (double) terms.size();
+        return matched >= Math.min(3, terms.size()) || coverage >= 0.45;
     }
 
     private String clean(String value) {

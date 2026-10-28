@@ -20,6 +20,7 @@ import com.zwf.aisupport.vo.DocumentSearchResultVO;
 import com.zwf.aisupport.vo.KnowledgeDocumentVO;
 import com.zwf.aisupport.vo.PageVO;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
@@ -57,6 +58,7 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    @Transactional
     public KnowledgeDocumentVO upload(MultipartFile file, String category) {
         Long currentUserId = CurrentUserUtil.requireCurrentUserId();
 
@@ -89,6 +91,8 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public PageVO<KnowledgeDocumentVO> listDocuments(String keyword, String category, String status, Integer page, Integer size) {
+        Long userId = CurrentUserUtil.requireCurrentUserId();
+        boolean admin = CurrentUserUtil.isAdmin();
         int safePage = PageRequestUtil.page(page);
         int safeSize = PageRequestUtil.size(size);
         String safeStatus = PageRequestUtil.optionalText(status);
@@ -99,6 +103,8 @@ public class DocumentServiceImpl implements DocumentService {
                         PageRequestUtil.optionalText(keyword),
                         PageRequestUtil.optionalText(category),
                         safeStatus,
+                        userId,
+                        admin,
                         PageRequestUtil.offset(safePage, safeSize),
                         safeSize
                 )
@@ -108,14 +114,20 @@ public class DocumentServiceImpl implements DocumentService {
         long total = knowledgeDocumentMapper.countPage(
                 PageRequestUtil.optionalText(keyword),
                 PageRequestUtil.optionalText(category),
-                safeStatus
+                safeStatus,
+                userId,
+                admin
         );
         return PageVO.of(items, safePage, safeSize, total);
     }
 
     @Override
     public List<DocumentChunkVO> listChunks(Long documentId) {
-        KnowledgeDocument document = knowledgeDocumentMapper.findById(documentId);
+        KnowledgeDocument document = knowledgeDocumentMapper.findAccessibleById(
+                documentId,
+                CurrentUserUtil.requireCurrentUserId(),
+                CurrentUserUtil.isAdmin()
+        );
         if (document == null || !"ACTIVE".equals(document.getStatus())) {
             throw new BusinessException("Document not found");
         }
@@ -156,6 +168,7 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    @Transactional
     public DocumentChunkAdminVO updateChunk(Long chunkId, DocumentChunkUpdateDTO updateDTO) {
         CurrentUserUtil.requireAdmin("Only administrators can update document chunks");
         requireActiveChunk(chunkId);
@@ -169,6 +182,7 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    @Transactional
     public void archiveChunk(Long chunkId) {
         CurrentUserUtil.requireAdmin("Only administrators can archive document chunks");
         requireActiveChunk(chunkId);
@@ -184,10 +198,15 @@ public class DocumentServiceImpl implements DocumentService {
             throw new BusinessException("Search keyword cannot be blank");
         }
 
-        return documentChunkMapper.searchChunks(keyword.trim());
+        return documentChunkMapper.searchChunks(
+                keyword.trim(),
+                CurrentUserUtil.requireCurrentUserId(),
+                CurrentUserUtil.isAdmin()
+        );
     }
 
     @Override
+    @Transactional
     public void archive(Long documentId) {
         CurrentUserUtil.requireAdmin("Only administrators can archive documents");
 
