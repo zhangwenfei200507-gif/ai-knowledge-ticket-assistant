@@ -12,6 +12,7 @@ public class KnowledgeGapVO {
     private String question;
     private String answer;
     private String sourceType;
+    private String category;
     private Long createdTicketId;
     private String feedback;
     private String feedbackComment;

@@ -1,6 +1,7 @@
 package com.zwf.aisupport.service;
 
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
+import com.zwf.aisupport.vo.AiAnswerVO;
 import com.zwf.aisupport.vo.KnowledgeStewardRunVO;
 import com.zwf.aisupport.vo.KnowledgeStewardTaskVO;
 import com.zwf.aisupport.vo.PageVO;
@@ -8,6 +9,8 @@ import com.zwf.aisupport.vo.PageVO;
 public interface KnowledgeStewardService {
 
     KnowledgeStewardRunVO run(Integer limit);
+
+    void queueAnswerCandidate(AiAnswerVO answer, Long userId);
 
     PageVO<KnowledgeStewardTaskVO> listTasks(String keyword,
                                              String status,

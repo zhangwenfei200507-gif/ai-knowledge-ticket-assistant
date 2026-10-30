@@ -26,7 +26,7 @@ public interface AiAssistantService {
 
     AiDashboardStatsVO getDashboardStats();
 
-    PageVO<KnowledgeGapVO> listKnowledgeGaps(String keyword, Integer page, Integer size);
+    PageVO<KnowledgeGapVO> listKnowledgeGaps(String keyword, String category, String status, Integer page, Integer size);
 
     KnowledgeArticleVO createArticleFromKnowledgeGap(Long logId, KnowledgeArticleCreateDTO createDTO);
 

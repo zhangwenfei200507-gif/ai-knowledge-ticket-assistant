@@ -41,6 +41,7 @@ public class WebSearchClient {
     private static final Logger log = LoggerFactory.getLogger(WebSearchClient.class);
 
     private static final int MAX_CONTENT_LENGTH = 5000;
+    private static final int MAX_REDIRECTS = 3;
     private static final int MAX_PAGE_RESPONSE_BYTES = 1_500_000;
     private static final Pattern RESULT_LINK_PATTERN = Pattern.compile(
             "<a[^>]+class=\"result__a\"[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>",
@@ -155,7 +156,7 @@ public class WebSearchClient {
             String snippet = clean(item.snippet());
             String extracted = fetchReadableText(url).orElse(snippet);
             if (!extracted.isBlank()
-                    && hasQuestionCoverage(query, title + " " + snippet + " " + extracted)
+                    && hasQuestionCoverage(question, url + " " + title + " " + snippet + " " + extracted)
                     && isAcceptableEvidenceSource(url, title, snippet, extracted)) {
                 evidence.add(buildEvidence(question, query, title, url, snippet, extracted, userId));
             }
@@ -174,7 +175,7 @@ public class WebSearchClient {
             String heading = root.path("Heading").asText("");
 
             if (!abstractText.isBlank() && !abstractUrl.isBlank()
-                    && hasQuestionCoverage(query, abstractText)
+                    && hasQuestionCoverage(question, abstractUrl + " " + heading + " " + abstractText)
                     && isAcceptableEvidenceSource(abstractUrl, heading, abstractText, abstractText)) {
                 return Optional.of(buildEvidence(
                         question,
@@ -199,7 +200,7 @@ public class WebSearchClient {
                 String text = clean(best.path("Text").asText(""));
                 String firstUrl = best.path("FirstURL").asText("");
                 if (!text.isBlank() && !firstUrl.isBlank()
-                        && hasQuestionCoverage(query, text)
+                        && hasQuestionCoverage(question, firstUrl + " " + text)
                         && isAcceptableEvidenceSource(firstUrl, shortTitle(text), text, text)) {
                     return Optional.of(buildEvidence(
                             question,
@@ -222,7 +223,8 @@ public class WebSearchClient {
     private Optional<WebEvidence> searchDuckDuckGoHtml(String question, String query, Long userId) {
         try {
             String searchUrl = "https://html.duckduckgo.com/html/?q="
-                    + URLEncoder.encode(query, StandardCharsets.UTF_8);
+                    + URLEncoder.encode(query, StandardCharsets.UTF_8)
+                    + "&kl=us-en";
             String body = get(searchUrl);
             List<SearchCandidate> candidates = parseCandidates(body);
             for (SearchCandidate candidate : candidates) {
@@ -232,7 +234,7 @@ public class WebSearchClient {
                 String extracted = fetchReadableText(candidate.url())
                         .orElse(candidate.snippet());
                 if (!extracted.isBlank()
-                        && hasQuestionCoverage(query, candidate.title() + " " + candidate.snippet() + " " + extracted)
+                        && hasQuestionCoverage(question, candidate.url() + " " + candidate.title() + " " + candidate.snippet() + " " + extracted)
                         && isAcceptableEvidenceSource(candidate.url(), candidate.title(), candidate.snippet(), extracted)) {
                     return Optional.of(buildEvidence(
                             question,
@@ -323,7 +325,7 @@ public class WebSearchClient {
         evidence.setSnippet(TextUtil.limit(clean(snippet), 1200));
         evidence.setExtractedContent(TextUtil.limit(summary.isBlank() ? content : summary, MAX_CONTENT_LENGTH));
         evidence.setSuggestedArticleTitle(TextUtil.limit(suggestTitle(question), 150));
-        evidence.setSuggestedArticleContent(buildSuggestedArticle(question, summary, url, evidence.getDomain()));
+        evidence.setSuggestedArticleContent(buildSuggestedArticle(question, summary));
         evidence.setCategory(KnowledgeCategoryResolver.infer(question + " " + title + " " + snippet));
         evidence.setCredibilityScore(scoreDomain(url));
         evidence.setEvidenceOrigin("WEB_SEARCH");
@@ -395,7 +397,10 @@ public class WebSearchClient {
 
     private String extractTechnicalQuery(String question) {
         List<String> terms = queryUnderstandingService.extractSearchTerms(question).stream()
-                .filter(term -> !TextUtil.containsAny(term, "why", "what", "how", "because", "even", "though", "not", "has", "have", "does", "with", "without", "first"))
+                .filter(term -> !TextUtil.containsAny(term,
+                        "why", "what", "how", "because", "even", "though", "not", "has", "have", "does", "with", "without", "first",
+                        "main", "step", "steps", "according", "official", "documentation", "documented", "current", "latest",
+                        "production", "environment", "available", "unavailable", "become", "becomes", "question", "purpose", "explain"))
                 .distinct()
                 .limit(8)
                 .toList();
@@ -403,21 +408,39 @@ public class WebSearchClient {
     }
 
     private String get(String url) throws Exception {
-        URI safeUri = externalUrlPolicy.requirePublicHttpUrl(url);
-        HttpRequest request = HttpRequest.newBuilder(safeUri)
-                .timeout(Duration.ofSeconds(12))
-                .header("User-Agent", "AegisCloud-KnowledgeSupport/1.0")
-                .header("Accept", "text/html,application/json;q=0.9,*/*;q=0.8")
-                .GET()
-                .build();
-        HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            response.body().close();
-            throw new IllegalStateException("External search request failed");
+        String currentUrl = url;
+        for (int redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
+            URI safeUri = externalUrlPolicy.requirePublicHttpUrl(currentUrl);
+            HttpRequest request = HttpRequest.newBuilder(safeUri)
+                    .timeout(Duration.ofSeconds(12))
+                    // DuckDuckGo returns a no-result shell to opaque bot user
+                    // agents. Keep the request identifiable as a normal HTML
+                    // client while retaining the source URL and safety checks.
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0 Safari/537.36")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .header("Accept", "text/html,application/json;q=0.9,*/*;q=0.8")
+                    .GET()
+                    .build();
+            HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            int status = response.statusCode();
+            if (status >= 300 && status < 400) {
+                String location = response.headers().firstValue("location").orElse("");
+                response.body().close();
+                if (location.isBlank() || redirect == MAX_REDIRECTS) {
+                    throw new IOException("External response redirect limit exceeded");
+                }
+                currentUrl = safeUri.resolve(location).toString();
+                continue;
+            }
+            if (status < 200 || status >= 300) {
+                response.body().close();
+                throw new IOException("External search request failed with HTTP " + status);
+            }
+            try (InputStream body = response.body()) {
+                return new String(readLimited(body, MAX_PAGE_RESPONSE_BYTES), StandardCharsets.UTF_8);
+            }
         }
-        try (InputStream body = response.body()) {
-            return new String(readLimited(body, MAX_PAGE_RESPONSE_BYTES), StandardCharsets.UTF_8);
-        }
+        throw new IOException("External response redirect limit exceeded");
     }
 
     private byte[] readLimited(InputStream input, int maxBytes) throws IOException {
@@ -497,10 +520,18 @@ public class WebSearchClient {
         return score;
     }
 
-    private String buildSuggestedArticle(String question, String summary, String url, String domain) {
+    private String buildSuggestedArticle(String question, String summary) {
         String category = KnowledgeCategoryResolver.infer(question + " " + summary);
         String title = suggestTitle(question);
-        String answerDraft = buildUserAnswerDraft(question, summary);
+        List<String> evidencePoints = extractEvidencePoints(summary, 6, 260);
+        String overview = evidencePoints.stream()
+                .limit(2)
+                .reduce((left, right) -> left + " " + right)
+                .orElse("No clean evidence summary was extracted. Re-open the source before approval.");
+        String concepts = evidencePoints.stream()
+                .map(point -> "- " + point)
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("- No clean evidence summary was extracted. Re-open the source before approval.");
         return """
                 # %s
 
@@ -511,99 +542,22 @@ public class WebSearchClient {
 
                 ## Core Concepts
                 %s
-
-                ## Operational Notes
-                %s
-
-                ## Troubleshooting
-                %s
-
-                ## Best Practices
-                %s
                 """.formatted(
                 title,
                 category,
-                buildSuggestedOverview(question, category),
-                answerDraft,
-                normalizeEvidenceForArticle(summary),
-                buildTroubleshootingNotes(question, summary),
-                buildBestPracticeNotes(question, summary)
+                overview,
+                concepts
         );
     }
 
-    private String buildSuggestedOverview(String question, String category) {
-        String technicalTopic = suggestTitle(question);
-        return "This section explains " + technicalTopic + " for the " + category
-                + " domain, focusing on the durable behavior, configuration impact, and operational checks that support teams can reuse.";
-    }
-
-    private String buildTroubleshootingNotes(String question, String summary) {
-        String normalized = TextUtil.safeLower(question + " " + summary);
-        LinkedHashSet<String> notes = new LinkedHashSet<>();
-        if (TextUtil.containsAny(normalized, "error", "fail", "failure", "timeout", "latency", "rejected", "cannot", "connection")) {
-            notes.add("Confirm the affected component, version, exact error, and first failing timestamp.");
-            notes.add("Compare the runtime configuration with the expected behavior described in this knowledge.");
-        }
-        if (TextUtil.containsAny(normalized, "docker", "compose", "container")) {
-            notes.add("Check container logs, service names, ports, environment variables, health checks, and build context.");
-        }
-        if (TextUtil.containsAny(normalized, "kubernetes", "pod", "gateway", "ingress", "httproute")) {
-            notes.add("Check resource events, route attachment, namespace rules, backend service references, and controller status.");
-        }
-        if (TextUtil.containsAny(normalized, "postgres", "postgresql")) {
-            notes.add("Check connection settings, server health, wait events, active sessions, and storage or I/O pressure.");
-        }
-        if (TextUtil.containsAny(normalized, "redis")) {
-            notes.add("Check latency, slow logs, memory policy, key TTLs, eviction, persistence, and client connection behavior.");
-        }
-        if (notes.isEmpty()) {
-            notes.add("Verify the production component, configuration, logs, metrics, and version before applying the guidance.");
-        }
-        return notes.stream().map(note -> "- " + note).reduce((left, right) -> left + "\n" + right).orElse("");
-    }
-
-    private String buildBestPracticeNotes(String question, String summary) {
-        String normalized = TextUtil.safeLower(question + " " + summary);
-        LinkedHashSet<String> notes = new LinkedHashSet<>();
-        if (TextUtil.containsAny(normalized, "docker", "build", "image", "dockerfile")) {
-            notes.add("Keep build-time concerns separate from runtime configuration and avoid adding unnecessary files or secrets to images.");
-        }
-        if (TextUtil.containsAny(normalized, "jwt", "oauth", "token")) {
-            notes.add("Separate authentication failures from authorization failures and keep token validation rules explicit.");
-        }
-        if (TextUtil.containsAny(normalized, "gateway", "httproute", "ingress")) {
-            notes.add("Use Gateway API when ownership boundaries and advanced routing need to be explicit.");
-        }
-        if (TextUtil.containsAny(normalized, "cache", "redis")) {
-            notes.add("Use caching features only when invalidation behavior and data freshness requirements are understood.");
-        }
-        notes.add("Prefer guidance that is reproducible, version-aware, and safe to apply in production.");
-        return notes.stream().map(note -> "- " + note).reduce((left, right) -> left + "\n" + right).orElse("");
-    }
-
-    private String buildUserAnswerDraft(String question, String summary) {
-        List<String> points = Arrays.stream(summary.split("\\R+|(?<=[.!?])\\s+"))
+    private List<String> extractEvidencePoints(String summary, int limit, int maxChars) {
+        return Arrays.stream(blankToDefault(summary, "").split("\\R+|(?<=[.!?])\\s+"))
                 .map(this::clean)
                 .filter(point -> point.length() >= 24)
                 .filter(point -> !isWebNoise(point))
-                .limit(5)
-                .map(point -> "- " + TextUtil.limit(point, 220))
+                .limit(limit)
+                .map(point -> TextUtil.limit(point, maxChars))
                 .toList();
-        if (points.isEmpty()) {
-            return "- Review the source evidence and write a concise operational answer before publishing.";
-        }
-        return String.join("\n", points);
-    }
-
-    private String normalizeEvidenceForArticle(String summary) {
-        List<String> points = Arrays.stream(blankToDefault(summary, "").split("\\R+|(?<=[.!?])\\s+"))
-                .map(this::clean)
-                .filter(point -> point.length() >= 24)
-                .filter(point -> !isWebNoise(point))
-                .limit(6)
-                .map(point -> "- " + TextUtil.limit(point, 260))
-                .toList();
-        return points.isEmpty() ? "- No clean evidence summary was extracted. Re-open the source before approval." : String.join("\n", points);
     }
 
     private BigDecimal scoreDomain(String url) {
@@ -664,7 +618,7 @@ public class WebSearchClient {
         primary.setSnippet(TextUtil.limit(ranked.stream().map(WebEvidence::getSnippet).distinct().reduce((left, right) -> left + "\n" + right).orElse(primary.getSnippet()), 1200));
         primary.setExtractedContent(mergedContent);
         primary.setSuggestedArticleTitle(TextUtil.limit(suggestTitle(question), 150));
-        primary.setSuggestedArticleContent(buildSuggestedArticle(question, mergedContent, primary.getUrl(), primary.getDomain()));
+        primary.setSuggestedArticleContent(buildSuggestedArticle(question, mergedContent));
         primary.setCredibilityScore(scoreDomain(primary.getUrl()));
         primary.setCreatedBy(userId);
         return primary;
@@ -759,7 +713,6 @@ public class WebSearchClient {
                 .replace('\u00a0', ' ')
                 .replaceAll("(?m)^\\s*(Skip to content|Search|Sign in|Sign up|Edit this page|Copy page|Table of contents)\\s*$", " ")
                 .replaceAll("(?m)^\\s*(Previous|Next|Feedback|Was this page helpful\\??|On this page)\\s*$", " ")
-                .replaceAll("(?im)^.*(advertisement|sponsored|enroll now|start free trial|pricing|course overview|course curriculum|bootcamp|certification).*$", " ")
                 .replaceAll("\\{[^\\n]{80,}\\}", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
@@ -868,8 +821,12 @@ public class WebSearchClient {
         if (terms.isEmpty()) {
             return true;
         }
+        // Length alone does not make a word a discriminating technical term:
+        // "production", "environment" and "troubleshooting" appear in many
+        // valid pages. Only enforce exact matching for versioned or symbolic
+        // identifiers; the domain concept check below handles normal language.
         List<String> specificTerms = terms.stream()
-                .filter(term -> term.matches(".*[0-9+#./_-].*") || term.length() >= 6)
+                .filter(term -> term.matches(".*[0-9+#./_-].*"))
                 .toList();
         if (!specificTerms.isEmpty() && specificTerms.stream().noneMatch(normalizedText::contains)) {
             return false;
@@ -878,7 +835,14 @@ public class WebSearchClient {
                 .filter(normalizedText::contains)
                 .count();
         double coverage = (double) matched / (double) terms.size();
-        return matched >= Math.min(3, terms.size()) || coverage >= 0.45;
+        // Search snippets and official pages often use the canonical term rather
+        // than the user's wording (for example, "logical replication" vs
+        // "replication slots"). Require the core concept, not every query word.
+        boolean hasCoreConcept = TextUtil.containsAny(normalizedText,
+                "redis", "postgres", "postgresql", "replication", "slot", "docker",
+                "container", "kubernetes", "pod", "jwt", "token", "oauth", "http",
+                "keyspace", "sentinel", "buildkit", "dockerfile");
+        return hasCoreConcept && (matched >= Math.min(2, terms.size()) || coverage >= 0.30);
     }
 
     private String clean(String value) {

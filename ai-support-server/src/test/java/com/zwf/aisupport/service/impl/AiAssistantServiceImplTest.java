@@ -12,6 +12,7 @@ import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
 import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.security.CurrentUser;
 import com.zwf.aisupport.service.DocumentService;
+import com.zwf.aisupport.service.KnowledgeStewardService;
 import com.zwf.aisupport.service.LlmGatewayService;
 import com.zwf.aisupport.service.WebEvidenceService;
 import com.zwf.aisupport.vo.AiAnswerVO;
@@ -33,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -64,6 +66,9 @@ class AiAssistantServiceImplTest {
     private LlmGatewayService llmGatewayService;
 
     @Mock
+    private KnowledgeStewardService knowledgeStewardService;
+
+    @Mock
     private KnowledgePackReorganizer knowledgePackReorganizer;
 
     @Mock
@@ -84,13 +89,14 @@ class AiAssistantServiceImplTest {
                 llmGatewayService,
                 knowledgePackReorganizer,
                 new LlmUsagePolicy(new AiRoutingProperties()),
+                knowledgeStewardService,
                 new AiQueryUnderstandingService(),
                 new KnowledgeCoverageEvaluator(),
                 new KnowledgeChunkRanker(new KnowledgeCoverageEvaluator()),
                 knowledgeArticleChunkManager,
                 new RetrievalTraceCodec(new ObjectMapper())
         );
-        when(knowledgeArticleChunkMapper.searchChunks(any(), any(), anyInt())).thenReturn(List.of());
+        lenient().when(knowledgeArticleChunkMapper.searchChunks(any(), any(), anyInt())).thenReturn(List.of());
         authenticateAsAdmin();
     }
 
@@ -144,9 +150,6 @@ class AiAssistantServiceImplTest {
     @Test
     void askDoesNotUseDirectLlmFallbackForOutOfDomainQuestions() {
         String question = "Write a poem about summer vacation";
-        when(documentChunkMapper.searchChunks(question, 4L, true)).thenReturn(List.of());
-        when(knowledgeArticleMapper.findPublishedArticles()).thenReturn(List.of());
-        when(webEvidenceService.searchAndStoreEvidence(question, 4L)).thenReturn(Optional.empty());
 
         AiAskDTO askDTO = new AiAskDTO();
         askDTO.setQuestion(question);
@@ -344,6 +347,27 @@ class AiAssistantServiceImplTest {
         assertThat(answer.getAnswer()).doesNotContainIgnoringCase("Compose");
         assertCleanUserAnswer(answer.getAnswer());
         verify(webEvidenceService, never()).searchAndStoreEvidence(any(), any());
+        verify(aiQuestionLogMapper).insert(any());
+    }
+
+    @Test
+    void answersRedisAvailabilityFromInternalChunkWithoutWebFallback() {
+        String question = "What are the main troubleshooting steps when Redis becomes unavailable in a production environment?";
+        when(knowledgeArticleChunkMapper.searchChunks(any(), any(), anyInt())).thenReturn(List.of(genericRedisChunk()));
+
+        AiAskDTO askDTO = new AiAskDTO();
+        askDTO.setQuestion(question);
+
+        AiAnswerVO answer = aiAssistantService.ask(askDTO);
+
+        assertThat(answer.getAnswerMode()).isEqualTo("INTERNAL_RAG");
+        assertThat(answer.getSourceType()).isEqualTo("ARTICLE");
+        assertThat(answer.getAnswer()).containsIgnoringCase("Redis");
+        assertThat(answer.getAnswer()).containsIgnoringCase("healthy");
+        assertThat(answer.getAnswer()).doesNotContainIgnoringCase("enough reliable knowledge");
+        assertCleanUserAnswer(answer.getAnswer());
+        verify(webEvidenceService, never()).searchAndStoreEvidence(any(), any());
+        verify(llmGatewayService, never()).generateDirectAnswer(any());
         verify(aiQuestionLogMapper).insert(any());
     }
 

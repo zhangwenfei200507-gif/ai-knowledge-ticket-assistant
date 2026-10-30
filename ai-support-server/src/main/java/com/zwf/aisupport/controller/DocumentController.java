@@ -37,6 +37,12 @@ public class DocumentController {
                                                              @RequestParam(required = false) Integer size) {
         return Result.success(documentService.listDocuments(keyword, category, status, page, size));
     }
+
+    @GetMapping("/{documentId}")
+    public Result<KnowledgeDocumentVO> getDocument(@PathVariable Long documentId) {
+        return Result.success(documentService.getDocument(documentId));
+    }
+
     @GetMapping("/chunks/search")
     public Result<List<DocumentSearchResultVO>> searchChunks(@RequestParam String keyword) {
         List<DocumentSearchResultVO> results = documentService.searchChunks(keyword);

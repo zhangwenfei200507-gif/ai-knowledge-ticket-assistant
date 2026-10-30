@@ -41,6 +41,7 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
     private final int maxOutputTokens;
     private final int maxRetries;
     private final long retryBackoffMs;
+    private final String reasoningEffort;
     private final BigDecimal inputPricePerMillion;
     private final BigDecimal outputPricePerMillion;
     private final AtomicLong totalCalls = new AtomicLong();
@@ -59,6 +60,7 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
                                             @Value("${app.llm.openai.max-output-tokens:700}") int maxOutputTokens,
                                             @Value("${app.llm.openai.max-retries:1}") int maxRetries,
                                             @Value("${app.llm.openai.retry-backoff-ms:250}") long retryBackoffMs,
+                                            @Value("${app.llm.openai.reasoning-effort:low}") String reasoningEffort,
                                             @Value("${app.llm.openai.input-price-per-million:}") String inputPricePerMillion,
                                             @Value("${app.llm.openai.output-price-per-million:}") String outputPricePerMillion) {
         this.objectMapper = objectMapper;
@@ -70,6 +72,7 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
         this.maxOutputTokens = Math.max(200, maxOutputTokens);
         this.maxRetries = Math.max(0, Math.min(2, maxRetries));
         this.retryBackoffMs = Math.max(0, Math.min(2000, retryBackoffMs));
+        this.reasoningEffort = normalizeReasoningEffort(reasoningEffort);
         this.inputPricePerMillion = parsePrice(inputPricePerMillion);
         this.outputPricePerMillion = parsePrice(outputPricePerMillion);
         this.httpClient = HttpClient.newBuilder()
@@ -199,7 +202,23 @@ public class OpenAiResponsesLlmGatewayService implements LlmGatewayService {
         payload.put("input", input);
         payload.put("max_output_tokens", outputTokens);
         payload.put("store", false);
+        if (supportsReasoningControl()) {
+            payload.put("reasoning", Map.of("effort", reasoningEffort));
+        }
         return callResponsesApi(operation, payload);
+    }
+
+    private boolean supportsReasoningControl() {
+        String normalizedModel = model == null ? "" : model.trim().toLowerCase(java.util.Locale.ROOT);
+        return normalizedModel.startsWith("gpt-5") || normalizedModel.startsWith("o");
+    }
+
+    private String normalizeReasoningEffort(String value) {
+        String normalized = value == null ? "low" : value.trim().toLowerCase(java.util.Locale.ROOT);
+        return switch (normalized) {
+            case "none", "minimal", "low", "medium", "high" -> normalized;
+            default -> "low";
+        };
     }
 
     private LlmGenerationResult callResponsesApi(String operation, Map<String, Object> payload) {

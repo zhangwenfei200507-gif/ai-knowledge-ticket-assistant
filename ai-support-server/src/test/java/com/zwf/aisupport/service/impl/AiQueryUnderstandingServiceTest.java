@@ -40,4 +40,29 @@ class AiQueryUnderstandingServiceTest {
         assertThat(plan.requiredConcepts()).contains("arg", "env", "dockerfile", ".dockerignore");
         assertThat(plan.domainCandidates()).contains("Docker");
     }
+
+    @Test
+    void doesNotTreatGrammaticalAvailabilityWordsAsTechnicalConcepts() {
+        AiQueryPlan plan = service.analyze(
+                "What are the main troubleshooting steps when Redis becomes unavailable in production?"
+        );
+
+        assertThat(plan.requiredConcepts()).contains("redis").doesNotContain("becomes", "unavailable");
+        assertThat(plan.anchorConcepts()).containsExactly("redis");
+        assertThat(plan.intent()).isEqualTo(AiAnswerIntent.TROUBLESHOOTING);
+    }
+
+    @Test
+    void keepsTheComputerDomainBroadAcrossTechnicalTopics() {
+        assertThat(service.isComputerRelated("How does a TCP handshake work?"))
+                .isTrue();
+        assertThat(service.isComputerRelated("How do I design a reliable data pipeline?"))
+                .isTrue();
+    }
+
+    @Test
+    void rejectsClearlyNonComputerQuestionsBeforeRetrieval() {
+        assertThat(service.isComputerRelated("What is a good recipe for chocolate cake?"))
+                .isFalse();
+    }
 }

@@ -23,6 +23,7 @@ import com.zwf.aisupport.mapper.TicketMapper;
 import com.zwf.aisupport.service.AiAssistantService;
 import com.zwf.aisupport.service.DocumentService;
 import com.zwf.aisupport.service.LlmGatewayService;
+import com.zwf.aisupport.service.KnowledgeStewardService;
 import com.zwf.aisupport.service.WebEvidenceService;
 import com.zwf.aisupport.service.model.LlmGenerationResult;
 import com.zwf.aisupport.vo.*;
@@ -77,6 +78,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private final LlmGatewayService llmGatewayService;
     private final KnowledgePackReorganizer knowledgePackReorganizer;
     private final LlmUsagePolicy llmUsagePolicy;
+    private final KnowledgeStewardService knowledgeStewardService;
     private final AiQueryUnderstandingService queryUnderstandingService;
     private final KnowledgeCoverageEvaluator coverageEvaluator;
     private final KnowledgeChunkRanker knowledgeChunkRanker;
@@ -94,6 +96,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                                   LlmGatewayService llmGatewayService,
                                   KnowledgePackReorganizer knowledgePackReorganizer,
                                   LlmUsagePolicy llmUsagePolicy,
+                                  KnowledgeStewardService knowledgeStewardService,
                                   AiQueryUnderstandingService queryUnderstandingService,
                                   KnowledgeCoverageEvaluator coverageEvaluator,
                                   KnowledgeChunkRanker knowledgeChunkRanker,
@@ -109,6 +112,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         this.llmGatewayService = llmGatewayService;
         this.knowledgePackReorganizer = knowledgePackReorganizer;
         this.llmUsagePolicy = llmUsagePolicy;
+        this.knowledgeStewardService = knowledgeStewardService;
         this.queryUnderstandingService = queryUnderstandingService;
         this.coverageEvaluator = coverageEvaluator;
         this.knowledgeChunkRanker = knowledgeChunkRanker;
@@ -133,6 +137,11 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         }
 
         String trimmedQuestion = question.trim();
+        if (!queryUnderstandingService.isComputerRelated(trimmedQuestion)) {
+            AiAnswerVO answerVO = buildOutOfScopeAnswer();
+            saveQuestionLog(trimmedQuestion, answerVO);
+            return answerVO;
+        }
         if (file == null || file.isEmpty()) {
             AiAskDTO askDTO = new AiAskDTO();
             askDTO.setQuestion(trimmedQuestion);
@@ -148,7 +157,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             RetrievalTraceState trace = new RetrievalTraceState();
             trace.start("QUERY_ANALYSIS");
             AiQueryPlan plan = queryUnderstandingService.analyze(trimmedQuestion);
-            trace.finish("QUERY_ANALYSIS", "SUCCEEDED", "Question intent, domains, and required concepts identified", null);
+            trace.finish("QUERY_ANALYSIS", "SUCCEEDED", "Question is IN_SCOPE; intent, domains, and required concepts identified", null);
             trace.internalAttempted = true;
             trace.internalSufficient = true;
             trace.finish("INTERNAL_RETRIEVAL", "SUCCEEDED", "Relevant chunks selected from the uploaded file", null);
@@ -202,8 +211,15 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private AiAnswerVO findAnswerFromKnowledgeBase(String question) {
         RetrievalTraceState trace = new RetrievalTraceState();
         trace.start("QUERY_ANALYSIS");
+        if (!queryUnderstandingService.isComputerRelated(question)) {
+            trace.finish("QUERY_ANALYSIS", "REJECTED", "Question is outside the computer and CloudOps workspace scope", "OUT_OF_SCOPE");
+            trace.finish("INTERNAL_RETRIEVAL", "SKIPPED", "Out-of-scope question was not sent to knowledge retrieval", "OUT_OF_SCOPE");
+            trace.finish("WEB_RETRIEVAL", "SKIPPED", "Out-of-scope question was not sent to web search", "OUT_OF_SCOPE");
+            trace.finish("LLM_FALLBACK", "SKIPPED", "Out-of-scope question was not sent to the language model", "OUT_OF_SCOPE");
+            return finalizeAnswer(buildOutOfScopeAnswer(), trace, "OUT_OF_SCOPE");
+        }
         AiQueryPlan contract = queryUnderstandingService.analyze(question);
-        trace.finish("QUERY_ANALYSIS", "SUCCEEDED", "Question intent, domains, and required concepts identified", null);
+        trace.finish("QUERY_ANALYSIS", "SUCCEEDED", "Question is IN_SCOPE; intent, domains, and required concepts identified", null);
         trace.internalAttempted = true;
         trace.start("INTERNAL_RETRIEVAL");
         List<String> terms = contract.retrievalTerms();
@@ -212,7 +228,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<String> coreConcepts = contract.requiredConcepts();
         List<AiAnswerSourceVO> internalSources = new ArrayList<>();
 
-        List<KnowledgeArticleChunkSearchResultVO> articleChunks = findRelevantArticleChunks(question, contract, terms, specificTerms, versionTerms, coreConcepts);
+        List<KnowledgeArticleChunkSearchResultVO> articleChunks = findRelevantArticleChunks(question, contract, terms, coreConcepts);
         if (!articleChunks.isEmpty()) {
             List<AiAnswerSourceVO> articleChunkSources = buildArticleChunkSources(articleChunks);
             internalSources.addAll(articleChunkSources);
@@ -234,7 +250,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         // Whole-article matching is retained only for installations that have not built semantic chunks yet.
         List<KnowledgeArticle> articles = List.of();
         if (!hasPublishedArticleChunks()) {
-            articles = findRelevantArticles(question, contract, terms, specificTerms, versionTerms, coreConcepts);
+            articles = findRelevantArticles(contract, terms);
             if (!articles.isEmpty()) {
                 List<AiAnswerSourceVO> articleSources = buildArticleSources(articles);
                 internalSources.addAll(articleSources);
@@ -604,6 +620,11 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         aiQuestionLog.setCreatedTicketId(answerVO.getCreatedTicketId());
 
         aiQuestionLogMapper.insert(aiQuestionLog);
+        try {
+            knowledgeStewardService.queueAnswerCandidate(answerVO, currentUserId);
+        } catch (RuntimeException exception) {
+            log.warn("Automatic knowledge candidate queue failed for question log", exception);
+        }
     }
 
     private void markResponsePersistenceSucceeded(AiRetrievalTraceVO trace) {
@@ -687,20 +708,26 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return statsVO;
     }
     @Override
-    public PageVO<KnowledgeGapVO> listKnowledgeGaps(String keyword, Integer page, Integer size) {
+    public PageVO<KnowledgeGapVO> listKnowledgeGaps(String keyword, String category, String status, Integer page, Integer size) {
         CurrentUserUtil.requireAdmin("Only administrators can access knowledge gaps");
 
         int safePage = PageRequestUtil.page(page);
         int safeSize = PageRequestUtil.size(size);
         List<KnowledgeGapVO> items = aiQuestionLogMapper.findKnowledgeGapsPage(
                         PageRequestUtil.optionalText(keyword),
+                        PageRequestUtil.optionalText(category),
+                        PageRequestUtil.optionalText(status),
                         PageRequestUtil.offset(safePage, safeSize),
                         safeSize
                 )
                 .stream()
                 .map(this::convertToKnowledgeGapVO)
                 .toList();
-        long total = aiQuestionLogMapper.countKnowledgeGapsPage(PageRequestUtil.optionalText(keyword));
+        long total = aiQuestionLogMapper.countKnowledgeGapsPage(
+                PageRequestUtil.optionalText(keyword),
+                PageRequestUtil.optionalText(category),
+                PageRequestUtil.optionalText(status)
+        );
         return PageVO.of(items, safePage, safeSize, total);
     }
     @Override
@@ -747,6 +774,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         vo.setQuestion(aiQuestionLog.getQuestion());
         vo.setAnswer(aiQuestionLog.getAnswer());
         vo.setSourceType(aiQuestionLog.getSourceType());
+        vo.setCategory(KnowledgeCategoryResolver.infer(aiQuestionLog.getQuestion()));
         vo.setCreatedTicketId(aiQuestionLog.getCreatedTicketId());
         vo.setFeedback(aiQuestionLog.getFeedback());
         vo.setFeedbackComment(aiQuestionLog.getFeedbackComment());
@@ -1023,8 +1051,6 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private List<KnowledgeArticleChunkSearchResultVO> findRelevantArticleChunks(String question,
                                                                                 AiQueryPlan contract,
                                                                                 List<String> terms,
-                                                                                List<String> specificTerms,
-                                                                                List<String> versionTerms,
                                                                                 List<String> coreConcepts) {
         if (question == null || question.isBlank() || terms.isEmpty()) {
             return List.of();
@@ -1076,12 +1102,8 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return coverageEvaluator.contributesEvidence(source, result.getCategory(), contract);
     }
 
-    private List<KnowledgeArticle> findRelevantArticles(String question,
-                                                        AiQueryPlan contract,
-                                                        List<String> terms,
-                                                        List<String> specificTerms,
-                                                        List<String> versionTerms,
-                                                        List<String> coreConcepts) {
+    private List<KnowledgeArticle> findRelevantArticles(AiQueryPlan contract,
+                                                        List<String> terms) {
         if (terms.isEmpty()) {
             return List.of();
         }
@@ -1956,6 +1978,13 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         answerVO.setSuggestCreateTicket(true);
         answerVO.setCreatedTicketId(null);
         answerVO.setSources(new ArrayList<>());
+        return answerVO;
+    }
+
+    private AiAnswerVO buildOutOfScopeAnswer() {
+        AiAnswerVO answerVO = buildFallbackAnswer();
+        answerVO.setAnswer("This assistant is limited to computer and CloudOps topics. Please ask about software, systems, data, security, infrastructure, development, or this workspace.");
+        answerVO.setSuggestCreateTicket(false);
         return answerVO;
     }
     private List<AiAnswerSourceVO> buildDocumentSources(List<DocumentSearchResultVO> documentResults) {

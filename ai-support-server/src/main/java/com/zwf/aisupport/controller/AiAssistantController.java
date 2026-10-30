@@ -74,9 +74,11 @@ public class AiAssistantController {
     }
     @GetMapping("/knowledge-gaps")
     public Result<PageVO<KnowledgeGapVO>> listKnowledgeGaps(@RequestParam(required = false) String keyword,
+                                                            @RequestParam(required = false) String category,
+                                                            @RequestParam(required = false) String status,
                                                             @RequestParam(required = false) Integer page,
                                                             @RequestParam(required = false) Integer size) {
-        return Result.success(aiAssistantService.listKnowledgeGaps(keyword, page, size));
+        return Result.success(aiAssistantService.listKnowledgeGaps(keyword, category, status, page, size));
     }
     @PostMapping("/knowledge-gaps/{logId}/article")
     public Result<KnowledgeArticleVO> createArticleFromKnowledgeGap(@PathVariable Long logId,

@@ -1,6 +1,9 @@
 package com.zwf.aisupport.service.impl;
 
 import com.zwf.aisupport.entity.WebEvidence;
+import com.zwf.aisupport.entity.KnowledgeArticle;
+import com.zwf.aisupport.entity.KnowledgeStewardTask;
+import com.zwf.aisupport.common.exception.BusinessException;
 import com.zwf.aisupport.mapper.AiQuestionLogMapper;
 import com.zwf.aisupport.mapper.DocumentKnowledgeCandidateMapper;
 import com.zwf.aisupport.mapper.KnowledgeArticleMapper;
@@ -9,6 +12,7 @@ import com.zwf.aisupport.mapper.WebEvidenceMapper;
 import com.zwf.aisupport.security.CurrentUser;
 import com.zwf.aisupport.service.LlmGatewayService;
 import com.zwf.aisupport.vo.KnowledgeStewardRunVO;
+import com.zwf.aisupport.vo.AiAnswerVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -116,6 +120,58 @@ class KnowledgeStewardServiceImplTest {
         assertThat(taskCaptor.getValue().getTargetDomain()).isEqualTo("Redis Cache");
         assertThat(taskCaptor.getValue().getStatus()).isEqualTo("NEEDS_ADMIN_REVIEW");
         assertThat(taskCaptor.getValue().getProposalContent()).contains("Redis keyspace notifications");
+    }
+
+    @Test
+    void rejectsApprovalWhenTargetDomainDoesNotMatchKnowledgePack() {
+        KnowledgeStewardTask task = new KnowledgeStewardTask();
+        task.setId(31L);
+        task.setStatus("NEEDS_ADMIN_REVIEW");
+        task.setTargetArticleId(99L);
+        task.setTargetDomain("Docker");
+        task.setProposalTitle("Docker Networking");
+        task.setProposalContent("Docker containers use service discovery for network communication.");
+        task.setRecommendedAction("UPDATE_SECTION");
+
+        KnowledgeArticle article = new KnowledgeArticle();
+        article.setId(99L);
+        article.setCategory("Redis Cache");
+        article.setStatus("PUBLISHED");
+
+        when(taskMapper.findById(31L)).thenReturn(task);
+        when(knowledgeArticleMapper.findById(99L)).thenReturn(article);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.approve(31L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("The target Knowledge Pack domain must match the proposal domain");
+        verify(knowledgePackReorganizer, never()).reorganizeExistingById(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void queuesWebOrAiOnlyEvidenceWithoutCallingTheModelAgain() {
+        WebEvidence evidence = new WebEvidence();
+        evidence.setId(41L);
+        evidence.setEvidenceOrigin("LLM_GENERATED");
+        evidence.setStatus("NEEDS_REVIEW");
+        evidence.setQuestion("What is Redis keyspace notification?");
+        evidence.setTitle("Redis Keyspace Notifications");
+        evidence.setDomain("OpenAI model");
+        evidence.setCategory("Redis Cache");
+        evidence.setExtractedContent("Redis keyspace notifications publish events when keys change.");
+        evidence.setSuggestedArticleContent("## Core Concepts\n\nRedis keyspace notifications publish events when keys change.");
+
+        AiAnswerVO answer = new AiAnswerVO();
+        answer.setSourceType("LLM");
+        answer.setSourceWebEvidenceId(41L);
+
+        when(webEvidenceMapper.findById(41L)).thenReturn(evidence);
+        when(taskMapper.countActiveBySource("WEB_EVIDENCE", 41L)).thenReturn(0L);
+        when(knowledgeArticleMapper.findPublishedArticles()).thenReturn(List.of());
+
+        service.queueAnswerCandidate(answer, 4L);
+
+        verify(taskMapper).insert(any());
+        verify(llmGatewayService, never()).generateKnowledgeStewardProposal(any());
     }
 
     private void authenticateAsAdmin() {

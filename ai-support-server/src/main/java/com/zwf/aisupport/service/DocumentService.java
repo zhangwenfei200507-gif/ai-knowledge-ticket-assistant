@@ -17,6 +17,8 @@ public interface DocumentService {
 
     PageVO<KnowledgeDocumentVO> listDocuments(String keyword, String category, String status, Integer page, Integer size);
 
+    KnowledgeDocumentVO getDocument(Long documentId);
+
     List<DocumentChunkVO> listChunks(Long documentId);
 
     PageVO<DocumentChunkAdminVO> listChunksForAdmin(String keyword,

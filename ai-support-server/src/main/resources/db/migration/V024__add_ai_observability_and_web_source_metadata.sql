@@ -1,4 +1,14 @@
 ALTER TABLE ai_question_logs
+    ADD COLUMN IF NOT EXISTS answer_mode VARCHAR(40),
+    ADD COLUMN IF NOT EXISTS answer_engine VARCHAR(40),
+    ADD COLUMN IF NOT EXISTS internal_attempted BOOLEAN,
+    ADD COLUMN IF NOT EXISTS internal_sufficient BOOLEAN,
+    ADD COLUMN IF NOT EXISTS web_attempted BOOLEAN,
+    ADD COLUMN IF NOT EXISTS web_succeeded BOOLEAN,
+    ADD COLUMN IF NOT EXISTS web_sufficient BOOLEAN,
+    ADD COLUMN IF NOT EXISTS llm_attempted BOOLEAN,
+    ADD COLUMN IF NOT EXISTS llm_succeeded BOOLEAN,
+    ADD COLUMN IF NOT EXISTS retrieval_failure_reason TEXT,
     ADD COLUMN IF NOT EXISTS total_latency_ms BIGINT,
     ADD COLUMN IF NOT EXISTS retrieval_trace_json JSONB,
     ADD COLUMN IF NOT EXISTS llm_provider VARCHAR(80),
@@ -13,6 +23,24 @@ ALTER TABLE ai_question_logs
     ADD COLUMN IF NOT EXISTS llm_latency_ms BIGINT,
     ADD COLUMN IF NOT EXISTS llm_request_status VARCHAR(30),
     ADD COLUMN IF NOT EXISTS llm_error_category VARCHAR(80);
+
+-- Keep this migration self-contained for installations that were baselined
+-- before the external web-source table was copied into the Flyway history.
+CREATE TABLE IF NOT EXISTS web_evidence_sources (
+    id BIGSERIAL PRIMARY KEY,
+    evidence_id BIGINT NOT NULL REFERENCES web_evidence(id) ON DELETE CASCADE,
+    title VARCHAR(300),
+    url TEXT NOT NULL,
+    domain VARCHAR(200),
+    excerpt TEXT,
+    credibility_score NUMERIC(5, 2),
+    source_rank INTEGER NOT NULL,
+    created_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (evidence_id, url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_web_evidence_sources_evidence_rank
+    ON web_evidence_sources (evidence_id, source_rank);
 
 ALTER TABLE web_evidence_sources
     ADD COLUMN IF NOT EXISTS source_type VARCHAR(60),

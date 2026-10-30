@@ -122,6 +122,19 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    public KnowledgeDocumentVO getDocument(Long documentId) {
+        KnowledgeDocument document = knowledgeDocumentMapper.findAccessibleById(
+                documentId,
+                CurrentUserUtil.requireCurrentUserId(),
+                CurrentUserUtil.isAdmin()
+        );
+        if (document == null || !"ACTIVE".equals(document.getStatus())) {
+            throw new BusinessException("Document not found");
+        }
+        return convertToKnowledgeDocumentVO(document);
+    }
+
+    @Override
     public List<DocumentChunkVO> listChunks(Long documentId) {
         KnowledgeDocument document = knowledgeDocumentMapper.findAccessibleById(
                 documentId,

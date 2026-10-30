@@ -19,6 +19,7 @@ import com.zwf.aisupport.mapper.WebEvidenceMapper;
 import com.zwf.aisupport.service.KnowledgeStewardService;
 import com.zwf.aisupport.service.LlmGatewayService;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
+import com.zwf.aisupport.vo.AiAnswerVO;
 import com.zwf.aisupport.vo.KnowledgeStewardRunVO;
 import com.zwf.aisupport.vo.KnowledgeStewardTaskVO;
 import com.zwf.aisupport.vo.PageVO;
@@ -94,6 +95,27 @@ public class KnowledgeStewardServiceImpl implements KnowledgeStewardService {
     }
 
     @Override
+    public void queueAnswerCandidate(AiAnswerVO answer, Long userId) {
+        if (answer == null || userId == null
+                || answer.getSourceWebEvidenceId() == null
+                || !("WEB".equalsIgnoreCase(answer.getSourceType())
+                || "LLM".equalsIgnoreCase(answer.getSourceType()))) {
+            return;
+        }
+
+        WebEvidence evidence = webEvidenceMapper.findById(answer.getSourceWebEvidenceId());
+        if (evidence == null || !"NEEDS_REVIEW".equalsIgnoreCase(evidence.getStatus())
+                || taskMapper.countActiveBySource("WEB_EVIDENCE", evidence.getId()) > 0) {
+            return;
+        }
+
+        KnowledgeStewardTask task = buildRuleBasedTask(buildCandidate(evidence), userId);
+        task.setReasoning("Automatically queued from a WEB or AI_ONLY answer; no extra LLM call was used.");
+        task.setWarnings(appendWarning(task.getWarnings(), "Administrator verification is required before publishing."));
+        taskMapper.insert(task);
+    }
+
+    @Override
     public PageVO<KnowledgeStewardTaskVO> listTasks(String keyword,
                                                     String status,
                                                     String sourceType,
@@ -159,7 +181,10 @@ public class KnowledgeStewardServiceImpl implements KnowledgeStewardService {
             throw new BusinessException("The proposal still contains raw evidence or review artifacts");
         }
 
-        KnowledgeArticle article = task.getTargetArticleId() == null
+        KnowledgeArticle targetArticle = task.getTargetArticleId() == null
+                ? null
+                : requireMatchingTargetArticle(task);
+        KnowledgeArticle article = targetArticle == null
                 ? knowledgePackReorganizer.reorganizeOrCreate(
                 task.getProposalTitle(),
                 task.getTargetDomain(),
@@ -494,8 +519,31 @@ public class KnowledgeStewardServiceImpl implements KnowledgeStewardService {
         return task;
     }
 
+    private KnowledgeArticle requireMatchingTargetArticle(KnowledgeStewardTask task) {
+        KnowledgeArticle article = knowledgeArticleMapper.findById(task.getTargetArticleId());
+        if (article == null || !"PUBLISHED".equals(article.getStatus())) {
+            throw new BusinessException("The selected Knowledge Pack is no longer available");
+        }
+        if (!sameDomain(article.getCategory(), task.getTargetDomain())) {
+            throw new BusinessException("The target Knowledge Pack domain must match the proposal domain");
+        }
+        return article;
+    }
+
+    private boolean sameDomain(String left, String right) {
+        return left != null && right != null
+                && left.trim().equalsIgnoreCase(right.trim());
+    }
+
     private String nonBlank(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value.trim();
+    }
+
+    private String appendWarning(String existing, String addition) {
+        if (existing == null || existing.isBlank()) {
+            return addition;
+        }
+        return existing.trim() + " " + addition;
     }
 
     private KnowledgeStewardTaskVO toVO(KnowledgeStewardTask task) {

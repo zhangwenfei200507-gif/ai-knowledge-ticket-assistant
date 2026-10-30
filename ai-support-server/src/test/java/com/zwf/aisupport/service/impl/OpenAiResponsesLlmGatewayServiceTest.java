@@ -85,6 +85,6 @@ class OpenAiResponsesLlmGatewayServiceTest {
 
     private OpenAiResponsesLlmGatewayService gateway() {
         return new OpenAiResponsesLlmGatewayService(
-                objectMapper, "test-only-key", baseUrl, "test-model", 4800, 1200, 500, 1, 0, "", "");
+                objectMapper, "test-only-key", baseUrl, "test-model", 4800, 1200, 500, 1, 0, "low", "", "");
     }
 }

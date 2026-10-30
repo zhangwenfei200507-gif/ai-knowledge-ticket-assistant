@@ -47,7 +47,8 @@ public class AiQueryUnderstandingService {
             "classify", "classification", "return", "returns", "returned", "purpose", "updated",
             "update", "receives", "forbidden", "normal", "endpoint", "endpoints", "specific",
             "interesting", "interestingly", "directly", "production", "named", "called", "logged", "system",
-            "architecture", "given", "likely", "root", "cause", "access", "analytics"
+                "architecture", "given", "likely", "root", "cause", "access", "analytics",
+                "become", "becomes", "available", "unavailable", "unavailability", "reachable", "unreachable"
     );
     private static final Set<String> QUERY_CONTEXT_TERMS = Set.of(
             "according", "official", "documentation", "documented", "current", "currently", "latest",
@@ -55,6 +56,16 @@ public class AiQueryUnderstandingService {
             "steps", "step", "diagnose", "diagnosed", "explain", "analysis", "analyze", "compare",
             "comparison", "work", "works", "working", "together", "environment", "unavailable",
             "available", "high", "severity", "production", "specific", "exact", "information"
+    );
+    private static final Set<String> COMPUTER_SCOPE_TERMS = Set.of(
+            "computer", "computing", "computer science", "software", "hardware", "programming", "code", "coding", "algorithm", "data", "pipeline", "distributed",
+            "api", "database", "sql", "http", "https", "tcp", "udp", "ip", "dns", "web", "network",
+            "server", "backend", "frontend", "application", "system", "cloud", "cloudops", "devops",
+            "linux", "windows", "macos", "android", "ios", "java", "python", "javascript", "typescript",
+            "spring", "git", "github", "docker", "kubernetes", "postgresql", "postgres", "redis", "jwt",
+            "oauth", "authentication", "authorization", "security", "container", "storage",
+            "cache", "queue", "kafka", "rabbitmq", "terraform", "aws", "azure", "gcp", "incident",
+            "outage", "ticket", "support", "knowledge", "rag", "embedding", "model", "ai", "artificial intelligence", "machine learning", "deep learning"
     );
 
     public AiQueryPlan analyze(String question) {
@@ -96,6 +107,28 @@ public class AiQueryUnderstandingService {
                 requiresExternalEvidence(normalizedQuestion),
                 intent
         );
+    }
+
+    /**
+     * The product answers computer and CloudOps questions. The boundary is intentionally
+     * broad inside technology, but unknown non-technical topics are stopped before retrieval,
+     * web search, or model fallback can pollute the workspace or spend tokens.
+     */
+    public boolean isComputerRelated(String question) {
+        String normalized = TextUtil.safeLower(question);
+        if (normalized.isBlank()) {
+            return false;
+        }
+        return COMPUTER_SCOPE_TERMS.stream().anyMatch(term -> containsScopeTerm(normalized, term));
+    }
+
+    private boolean containsScopeTerm(String text, String term) {
+        if (term.contains(" ")) {
+            return text.contains(term);
+        }
+        return Pattern.compile("(?<![a-z0-9])" + Pattern.quote(term) + "(?![a-z0-9])")
+                .matcher(text)
+                .find();
     }
 
     public List<String> extractSearchTerms(String question) {
@@ -242,7 +275,7 @@ public class AiQueryUnderstandingService {
     private AiAnswerIntent classifyIntent(String question) {
         String normalized = TextUtil.safeLower(question);
         boolean troubleshooting = TextUtil.containsAny(normalized,
-                "fail", "fails", "failed", "failure", "error", "cannot", "can't", "unable",
+                "fail", "fails", "failed", "failure", "error", "cannot", "can't", "unable", "unavailable", "unavailability", "unreachable",
                 "timeout", "rejected", "reject", "down", "not working", "not connect", "connection refused",
                 "keeps", "stuck", "broken", "slow", "latency", "forbidden", "unauthorized")
                 || Pattern.compile("\\b[45]\\d{2}\\b").matcher(normalized).find();

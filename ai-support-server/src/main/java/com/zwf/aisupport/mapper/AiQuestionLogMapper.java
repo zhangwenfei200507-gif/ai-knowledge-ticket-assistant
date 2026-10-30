@@ -137,6 +137,19 @@ public interface AiQuestionLogMapper {
     @Select("""
             select * from ai_question_logs
             where source_type = 'NONE'
+              and (cast(#{status} as varchar) is null
+                   or (#{status} = 'OPEN' and feedback is null)
+                   or (#{status} = 'REVIEWED' and feedback is not null))
+              and (cast(#{category} as varchar) is null
+                   or (#{category} = 'Auth / JWT' and lower(question) ~ '(jwt|oauth|auth|token|login)')
+                   or (#{category} = 'Redis Cache' and lower(question) ~ '(redis|cache|keyspace|sentinel)')
+                   or (#{category} = 'PostgreSQL' and lower(question) ~ '(postgres|postgresql|database|sql|wal|replication)')
+                   or (#{category} = 'Docker' and lower(question) ~ '(docker|container|compose|buildkit)')
+                   or (#{category} = 'Kubernetes' and lower(question) ~ '(kubernetes|k8s|pod|cluster|ingress)')
+                   or (#{category} = 'Incident SOP' and lower(question) ~ '(incident|outage|rollback|postmortem|mitigation)')
+                   or (#{category} = 'Ticket Rules' and lower(question) ~ '(ticket|sla|priority|triage|escalation)')
+                   or (#{category} = 'Customer Templates' and lower(question) ~ '(customer|template|reply|communication)')
+                   or (#{category} = 'General' and lower(question) !~ '(jwt|oauth|auth|token|login|redis|cache|keyspace|sentinel|postgres|database|sql|wal|replication|docker|container|compose|buildkit|kubernetes|k8s|pod|cluster|ingress|incident|outage|rollback|postmortem|mitigation|ticket|sla|priority|triage|escalation|customer|template|reply|communication)'))
               and (
                   cast(#{keyword} as varchar) is null
                   or lower(question) like lower(concat('%', cast(#{keyword} as varchar), '%'))
@@ -146,19 +159,36 @@ public interface AiQuestionLogMapper {
             limit #{size} offset #{offset}
             """)
     List<AiQuestionLog> findKnowledgeGapsPage(@Param("keyword") String keyword,
+                                              @Param("category") String category,
+                                              @Param("status") String status,
                                               @Param("offset") int offset,
                                               @Param("size") int size);
 
     @Select("""
             select count(*) from ai_question_logs
             where source_type = 'NONE'
+              and (cast(#{status} as varchar) is null
+                   or (#{status} = 'OPEN' and feedback is null)
+                   or (#{status} = 'REVIEWED' and feedback is not null))
+              and (cast(#{category} as varchar) is null
+                   or (#{category} = 'Auth / JWT' and lower(question) ~ '(jwt|oauth|auth|token|login)')
+                   or (#{category} = 'Redis Cache' and lower(question) ~ '(redis|cache|keyspace|sentinel)')
+                   or (#{category} = 'PostgreSQL' and lower(question) ~ '(postgres|postgresql|database|sql|wal|replication)')
+                   or (#{category} = 'Docker' and lower(question) ~ '(docker|container|compose|buildkit)')
+                   or (#{category} = 'Kubernetes' and lower(question) ~ '(kubernetes|k8s|pod|cluster|ingress)')
+                   or (#{category} = 'Incident SOP' and lower(question) ~ '(incident|outage|rollback|postmortem|mitigation)')
+                   or (#{category} = 'Ticket Rules' and lower(question) ~ '(ticket|sla|priority|triage|escalation)')
+                   or (#{category} = 'Customer Templates' and lower(question) ~ '(customer|template|reply|communication)')
+                   or (#{category} = 'General' and lower(question) !~ '(jwt|oauth|auth|token|login|redis|cache|keyspace|sentinel|postgres|database|sql|wal|replication|docker|container|compose|buildkit|kubernetes|k8s|pod|cluster|ingress|incident|outage|rollback|postmortem|mitigation|ticket|sla|priority|triage|escalation|customer|template|reply|communication)'))
               and (
                   cast(#{keyword} as varchar) is null
                   or lower(question) like lower(concat('%', cast(#{keyword} as varchar), '%'))
                   or lower(answer) like lower(concat('%', cast(#{keyword} as varchar), '%'))
               )
             """)
-    Long countKnowledgeGapsPage(@Param("keyword") String keyword);
+    Long countKnowledgeGapsPage(@Param("keyword") String keyword,
+                                @Param("category") String category,
+                                @Param("status") String status);
 
     @Select("select * from ai_question_logs where id = #{id}")
     AiQuestionLog findById(Long id);
