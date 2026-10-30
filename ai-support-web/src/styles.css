@@ -3525,6 +3525,9 @@ button {
   font-size: 12px;
   font-weight: 800;
 }
+.gapToolbar { display: grid; grid-template-columns: auto minmax(220px, 1fr) 180px 160px; margin: 0 14px; padding: 12px 0 4px; }
+.gapToolbar .librarySearch { min-width: 0; margin: 0; }
+.gapToolbar select { min-height: 38px; padding: 0 10px; border: 1px solid #dce6e1; border-radius: 8px; color: #3e5d52; background: #fff; font-size: 11px; }
 
 .librarySearch {
   width: 100%;
@@ -3755,6 +3758,13 @@ button {
   gap: 14px;
 }
 
+.webEvidenceWorkspace .knowledgeContentBlock,
+.webEvidenceWorkspace .knowledgeReader pre {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
 .webEvidenceHero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(420px, 0.8fr);
@@ -3888,6 +3898,14 @@ button {
   color: #17231f;
   background: #fff;
   text-align: left;
+}
+
+.webEvidenceQueue > button strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  line-height: 1.4;
 }
 
 .webEvidenceQueue > button:hover,
@@ -4678,6 +4696,332 @@ button {
   }
 }
 
+/* AegisCloud operations workspace: compact enterprise layout */
+.adminShell {
+  grid-template-columns: 232px minmax(0, 1fr);
+  background: #f7f9f8;
+}
+
+.adminSidebar {
+  padding: 20px 12px 16px;
+  background: #102f2a;
+}
+
+.adminLogo {
+  gap: 10px;
+  margin: 0 8px 24px;
+}
+
+.adminLogo svg { width: 30px; height: 30px; }
+.adminLogo strong { font-size: 17px; }
+.adminLogo span { font-size: 10px; }
+
+.adminNav { gap: 2px; }
+.adminNav button { min-height: 38px; padding: 0 12px; border-radius: 8px; font-size: 12px; }
+.adminNav button svg { width: 16px; height: 16px; }
+.adminNav button:hover, .adminNav button.active { background: #1d5145; box-shadow: inset 3px 0 0 #38d49a; }
+.navGroupLabel { display: block; margin: 15px 10px 5px; color: #86a99c; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.navGroupToggle { position: relative; }
+.navGroupToggle svg:last-child { margin-left: auto; transition: transform 160ms ease; }
+.navGroupToggle svg:last-child.collapsed { transform: rotate(-90deg); }
+.navGroupToggle.activeParent { color: #fff; background: rgba(29,81,69,.55); }
+.navSubgroup { display: grid; gap: 2px; margin: 1px 0 3px 12px; padding-left: 9px; border-left: 1px solid rgba(157,184,174,.25); }
+.navSubgroup button { min-height: 34px; padding-left: 10px; font-size: 11px; }
+.navSubgroup button:hover, .navSubgroup button.active { background: #1d5145; box-shadow: inset 2px 0 0 #34d399; }
+
+.adminMain { padding: 18px 24px 20px; max-width: 1680px; width: 100%; margin: 0 auto; }
+.adminTopSection { gap: 12px; margin-bottom: 20px; }
+.adminTopbar { grid-template-columns: minmax(240px, 1fr) minmax(500px, auto); align-items: center; gap: 18px; }
+.adminEyebrow { display: none; }
+.adminTopbar h1 { margin-top: 0; font-size: 28px; }
+.adminTopbar p { margin-top: 5px; font-size: 12px; }
+.topbarControls { grid-template-columns: minmax(250px, 340px) 40px auto; gap: 10px; }
+.environmentPill { display: none; }
+.adminSearch { min-height: 38px; }
+.serviceHealthBar { justify-content: flex-end; gap: 14px; padding: 0; border: 0; background: transparent; }
+.serviceHealthBar { display: none; }
+.serviceHealthBar button { min-height: 24px; padding: 0; border: 0; background: transparent; font-size: 11px; }
+.serviceHealthBar button span { width: 7px; height: 7px; }
+.serviceHealthBar button b { color: var(--text-secondary); font-weight: 500; }
+
+.dashboardMetrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.dashboardMetrics .adminMetricCard { min-height: 112px; padding: 16px; }
+.dashboardMetrics .adminMetricCard > svg { width: 30px; height: 30px; }
+.dashboardMetrics .adminMetricCard strong { font-size: 25px; }
+.dashboardMetrics .adminMetricCard small { font-size: 11px; }
+
+.dashboardAskPanel {
+  display: grid;
+  grid-template-columns: minmax(240px, .8fr) minmax(420px, 1.4fr);
+  gap: 24px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 22px 24px;
+  border: 1px solid #dcebe5;
+  border-radius: 14px;
+  background: linear-gradient(100deg, #eef9f5 0%, #fff 62%);
+  box-shadow: 0 8px 24px rgba(25, 65, 53, .05);
+}
+.dashboardAskCopy h2 { margin: 5px 0 6px; font-size: 22px; }
+.dashboardAskCopy p { max-width: 430px; margin: 0; color: var(--text-secondary); font-size: 13px; }
+.panelKicker { color: #087f5b; font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+.aiRouteChips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.aiRouteChips span, .routeBadge { padding: 5px 8px; border-radius: 999px; color: #087f5b; background: #ddf5e9; font-size: 10px; font-weight: 700; }
+.aiRouteChips span:nth-child(2) { color: #3764b4; background: #e8f0ff; }
+.aiRouteChips span:nth-child(3) { color: #7452b6; background: #f1e9ff; }
+.dashboardAskForm textarea, .assistantComposer textarea { width: 100%; min-height: 68px; resize: vertical; border: 1px solid #d7e2dc; border-radius: 10px; background: #fff; }
+.dashboardAskActions, .assistantComposer > div { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 9px; }
+.dashboardAskActions button, .dashboardAskActions label, .assistantComposer button, .assistantComposer label { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid #d7e2dc; border-radius: 8px; color: #31534a; background: #fff; font-size: 11px; cursor: pointer; }
+.dashboardAskActions .primaryAction, .assistantComposer .primaryAction { margin-left: auto; border-color: #087f5b; color: #fff; background: #087f5b; }
+.attachAction input, .composerAttach input { display: none; }
+.dashboardAnswerPreview { margin-top: 12px; padding: 12px; border: 1px solid #dce7e2; border-radius: 10px; background: #fff; font-size: 12px; }
+.dashboardAnswerPreview button { margin-top: 8px; border: 0; color: #087f5b; background: transparent; font-weight: 700; cursor: pointer; }
+
+.dashboardOperationsGrid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(320px, .7fr); gap: 16px; margin-bottom: 16px; }
+.dashboardOperationsGrid .insightPanel { min-height: 222px; }
+.overviewMetrics { display: flex; gap: 28px; margin: 14px 0 18px; }
+.overviewMetrics div { display: grid; gap: 3px; }
+.overviewMetrics strong { color: #172b27; font-size: 21px; }
+.overviewMetrics span { color: var(--text-secondary); font-size: 11px; }
+.attentionList button { display: grid; grid-template-columns: 42px minmax(0,1fr) 16px; align-items: center; gap: 8px; width: 100%; min-height: 43px; padding: 8px 4px; border: 0; border-bottom: 1px solid #edf1ef; text-align: left; background: transparent; cursor: pointer; }
+.attentionList button:hover { background: #f4faf7; }
+.attentionList button strong { color: #087f5b; font-size: 12px; }
+.attentionList button span { overflow: hidden; color: #4b625a; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.attentionList button svg { transform: rotate(-90deg); color: #93a69e; }
+.dashboardActivityPanel { padding: 16px 18px; border: 1px solid #e1e8e4; border-radius: 12px; background: #fff; }
+.activityTableHead, .activityTable button { display: grid; grid-template-columns: minmax(250px, 2fr) 1fr 90px 90px 140px; gap: 12px; align-items: center; }
+.activityTableHead { padding: 8px 10px; color: #789087; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.activityTable button { width: 100%; padding: 11px 10px; border: 0; border-top: 1px solid #edf1ef; text-align: left; background: #fff; cursor: pointer; }
+.activityTable button:hover { background: #f6fbf8; }
+.activityTable button > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activityTable button b { color: #55766a; font-size: 11px; font-weight: 600; }
+.activityTable small { color: #789087; font-size: 10px; }
+
+.assistantWorkspace { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: calc(100vh - 170px); overflow: hidden; border: 1px solid #e1e8e4; border-radius: 14px; background: #fff; box-shadow: 0 8px 28px rgba(24, 52, 43, .06); }
+.assistantConversations { display: flex; min-width: 0; flex-direction: column; gap: 12px; padding: 18px 12px; border-right: 1px solid #e7eeea; background: #fbfdfc; }
+.assistantPanelHeader, .assistantChatHeader { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.assistantPanelHeader h2, .assistantChatHeader h2 { margin: 3px 0; font-size: 17px; }
+.assistantPanelHeader button, .assistantChatHeader button { min-width: 32px; min-height: 32px; border: 1px solid #d7e2dc; border-radius: 8px; background: #fff; cursor: pointer; }
+.assistantHeaderActions { display: flex; gap: 7px; }
+.assistantHeaderActions button:first-child { padding: 0 12px; color: #fff; background: #087f5b; }
+.assistantHeaderActions button:last-child { display: grid; place-items: center; padding: 0 8px; color: #31534a; }
+.conversationList { display: grid; gap: 4px; overflow: auto; }
+.conversationList button { display: grid; grid-template-columns: 16px minmax(0,1fr); gap: 6px; align-items: center; padding: 9px 8px; border: 0; border-radius: 8px; color: #38554b; text-align: left; background: transparent; cursor: pointer; }
+.conversationList button.active, .conversationList button:hover { color: #123d31; background: #e7f7ef; }
+.conversationList button span { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.conversationList button small { grid-column: 2; color: #8a9b94; font-size: 9px; }
+.assistantChatPanel { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; }
+.assistantChatHeader { padding: 20px 24px 15px; border-bottom: 1px solid #edf1ef; }
+.assistantChatHeader p { margin: 4px 0 0; color: #70837a; font-size: 12px; }
+.assistantChatHeader button { padding: 0 12px; color: #fff; background: #087f5b; }
+.assistantMessages { min-height: 0; overflow: auto; padding: 24px; }
+.assistantWelcome { max-width: 680px; margin: 7vh auto 0; text-align: center; }
+.assistantSpark { width: 42px; height: 42px; display: grid; place-items: center; margin: 0 auto 16px; border-radius: 50%; color: #087f5b; background: #e4f7ee; font-size: 22px; }
+.assistantWelcome h2 { font-size: 22px; }
+.assistantWelcome p { color: #70837a; font-size: 13px; }
+.assistantQuickActions { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin-top: 22px; }
+.assistantQuickActions button { padding: 13px; border: 1px solid #e1e8e4; border-radius: 9px; color: #34574b; background: #fff; text-align: left; cursor: pointer; }
+.assistantQuickActions button:hover { border-color: #76c9a6; background: #f5fbf8; }
+.assistantThread { max-width: 760px; margin: 0 auto; }
+.assistantUserMessage { max-width: 78%; margin: 0 0 18px auto; padding: 11px 14px; border-radius: 12px 12px 3px 12px; color: #174438; background: #dff6ec; font-size: 13px; }
+.assistantAnswerMessage { padding: 18px; border: 1px solid #e2ebe6; border-radius: 12px; background: #fff; }
+.assistantAnswerMessage.answerUnavailable, .dashboardAnswerPreview.answerUnavailable { border-color: #efc7c1; background: #fff8f6; }
+.assistantAnswerMessage.answerUnavailable .routeBadge { color: #a2463c; background: #fde8e4; }
+.answerMeta { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: #809089; font-size: 10px; }
+.answerMeta button { margin-left: auto; border: 0; color: #087f5b; background: transparent; cursor: pointer; }
+.assistantSources { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #edf1ef; color: #557268; font-size: 10px; }
+.assistantSources strong { color: #263f36; }
+.assistantComposer { padding: 14px 24px 18px; border-top: 1px solid #edf1ef; background: #fbfdfc; }
+.assistantComposer textarea { min-height: 54px; }
+.assistantWorkspace.fullscreen { position: fixed; z-index: 60; inset: 0; grid-template-columns: 270px minmax(0, 1fr); min-height: 100vh; border: 0; border-radius: 0; box-shadow: 0 0 0 1px #dfe9e4; }
+.assistantWorkspace.fullscreen .assistantMessages { padding: 34px clamp(24px, 7vw, 120px); }
+.assistantWorkspace.fullscreen .assistantThread { max-width: 900px; }
+
+.aiActivityMetrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
+.aiActivityMetrics .adminMetricCard { min-height: 100px; }
+.aiActivityAnalytics { grid-template-columns: minmax(0, 1.2fr) minmax(300px, .8fr); margin-bottom: 16px; }
+.analyticsCard { padding: 16px; border: 1px solid #e1e8e4; border-radius: 12px; background: #fff; }
+.qualityRows { display: grid; gap: 17px; margin-top: 22px; }
+.qualityRows > div { display: grid; grid-template-columns: 1fr auto; gap: 7px 14px; align-items: center; color: #60766c; font-size: 12px; }
+.qualityRows strong { color: #173e31; }
+.qualityRows i { grid-column: 1 / -1; height: 7px; overflow: hidden; border-radius: 99px; background: #edf2ef; }
+.qualityRows i em { display: block; height: 100%; border-radius: inherit; background: #31aa79; }
+.qualityRows i em.dangerFill { background: #e56d63; }
+.activityLogWorkspace { padding: 16px; border: 1px solid #e1e8e4; border-radius: 12px; background: #fff; }
+.activityLogWorkspace .topRecordList { max-height: none; }
+
+.libraryTabs { display: flex; gap: 24px; padding: 0 20px; border-bottom: 1px solid #e5ebe8; background: #fff; }
+.libraryTabs button { min-height: 42px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; color: #667872; background: transparent; font-size: 12px; font-weight: 650; cursor: pointer; }
+.libraryTabs button.active, .libraryTabs button:hover { border-color: #087f5b; color: #087f5b; }
+.knowledgePackLayout, .sourceTableLayout { display: block !important; }
+.knowledgePackLayout .libraryList, .sourceTableLayout .libraryList { display: grid; gap: 0; padding: 16px 20px 20px; }
+.libraryListOnly { min-height: 0; border-right: 0; background: transparent; }
+.detailPageSurface { overflow: visible; }
+.detailBreadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 16px 20px 0; color: #82958c; font-size: 11px; }
+.detailBreadcrumb button { padding: 0; border: 0; color: #087f5b; background: transparent; font: inherit; cursor: pointer; }
+.detailBreadcrumb button:hover { text-decoration: underline; }
+.detailBreadcrumb strong { max-width: min(520px, 60vw); overflow: hidden; color: #4d6359; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.detailPageHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 16px 20px 20px; border-bottom: 1px solid #eceee9; }
+.detailPageHeader > div:first-child { min-width: 0; }
+.detailPageHeader span, .detailPanelHeader > span { color: #0a7654; font-size: 11px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.detailPageHeader h2 { margin: 5px 0 0; color: #071512; font-size: 25px; line-height: 1.2; overflow-wrap: anywhere; }
+.detailPageHeader p { margin: 7px 0 0; color: #66736d; font-size: 12px; }
+.detailPageActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.detailPageActions button, .detailSideActions button { min-height: 34px; padding: 0 12px; border: 1px solid #d8ddd8; border-radius: 7px; color: #18312a; background: #fff; font-size: 12px; font-weight: 800; cursor: pointer; }
+.detailPageActions button:hover, .detailSideActions button:hover { border-color: rgba(8, 112, 78, .5); background: #f0f8f3; }
+.detailPageActions button.danger { color: #8b2e22; border-color: #e8c1ba; background: #fff7f4; }
+.detailMetaGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; margin: 16px 20px 0; border: 1px solid #e4ebe6; border-radius: 10px; overflow: hidden; background: #e4ebe6; }
+.detailMetaGrid > div { display: grid; gap: 6px; min-width: 0; padding: 12px 13px; background: #fbfdfc; }
+.detailMetaGrid span { color: #82958c; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.detailMetaGrid strong { color: #193b30; font-size: 12px; overflow-wrap: anywhere; }
+.detailContentGrid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 14px; padding: 16px 20px 20px; }
+.detailContentPanel, .detailSidePanel { min-width: 0; padding: 18px; border: 1px solid #e1e8e4; border-radius: 10px; background: #fff; }
+.detailPanelHeader { display: grid; gap: 4px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #edf1ef; }
+.detailPanelHeader small { color: #74867d; font-size: 11px; line-height: 1.5; }
+.detailSidePanel dl { display: grid; gap: 12px; margin: 0; }
+.detailSidePanel dl > div { display: grid; gap: 4px; }
+.detailSidePanel dt { color: #82958c; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.detailSidePanel dd { margin: 0; color: #203c32; font-size: 12px; overflow-wrap: anywhere; }
+.detailSideActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.detailTabs { display: flex; gap: 22px; margin: 16px 20px 0; border-bottom: 1px solid #e5ebe8; }
+.detailTabs button { min-height: 38px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; color: #667872; background: transparent; font-size: 12px; font-weight: 750; cursor: pointer; }
+.detailTabs button.active, .detailTabs button:hover:not(:disabled) { border-color: #087f5b; color: #087f5b; }
+.detailTabs button:disabled { color: #a0ada7; cursor: not-allowed; }
+.detailTabs + .knowledgeReader { padding: 20px; }
+.detailState { display: grid; justify-items: center; gap: 10px; min-height: 330px; padding: 80px 20px; color: #6a7c73; text-align: center; }
+.detailState h2, .detailState p { margin: 0; }
+.detailState h2 { color: #17352b; font-size: 18px; }
+.detailState p { max-width: 520px; font-size: 13px; line-height: 1.6; }
+.detailState button { min-height: 34px; padding: 0 13px; border: 1px solid #0d684d; border-radius: 7px; color: #fff; background: #087f5b; font-weight: 800; cursor: pointer; }
+.libraryFilterBar { display: grid; grid-template-columns: minmax(220px, 1fr) 150px 130px 145px; gap: 10px; margin-bottom: 14px; }
+.libraryFilterBar .librarySearch { min-height: 38px; margin: 0; }
+.libraryFilterBar select { min-height: 38px; padding: 0 10px; border: 1px solid #dce6e1; border-radius: 8px; color: #3e5d52; background: #fff; font-size: 11px; }
+.reviewAdminPage { overflow: hidden; border-color: #dbe6e1; background: #fbfcfb; box-shadow: 0 12px 32px rgba(20, 49, 39, .055); }
+.reviewAdminPage > .adminPageHeader { min-height: 0; padding: 0; }
+.reviewQueueTabs { display: flex; gap: 4px; width: fit-content; max-width: calc(100% - 40px); margin: 18px 20px 0; padding: 4px; border: 1px solid #e0e9e4; border-radius: 8px; background: #f0f5f2; }
+.reviewQueueTabs button { display: inline-flex; align-items: center; gap: 9px; min-height: 36px; padding: 0 12px; border: 1px solid transparent; border-radius: 6px; color: #64786f; background: transparent; font-size: 12px; font-weight: 650; cursor: pointer; }
+.reviewQueueTabs button:hover { color: #1c4739; background: #f8fbf9; }
+.reviewQueueTabs button.active { border-color: #dbe9e2; color: #174b3a; background: #fff; box-shadow: 0 1px 3px rgba(14, 56, 40, .08); }
+.reviewQueueTabs button span { display: inline-grid; min-width: 22px; height: 20px; place-items: center; padding: 0 6px; border-radius: 5px; color: #687b72; background: #e9efec; font-size: 10px; font-variant-numeric: tabular-nums; }
+.reviewQueueTabs button.active span { color: #087f5b; background: #e1f3e9; }
+.stewardWorkspace { display: grid; gap: 14px; margin: 0; padding: 18px 20px 20px; border: 0; border-radius: 0; background: transparent; }
+.stewardWorkspaceHeader { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 72px; padding: 12px 14px; border: 1px solid #e1e9e5; border-radius: 7px; background: linear-gradient(100deg, #f0f7f3 0%, #f8faf9 58%, #f4f7f8 100%); }
+.stewardWorkspaceHeader > div { min-width: 0; }
+.stewardRunControl { display: grid; flex: 0 0 min(300px, 35%); justify-items: end; gap: 6px; }
+.stewardRunButtons, .reviewQueueActions { display: flex; align-items: center; gap: 8px; }
+.stewardRunButtons > button:first-child, .reviewQueueActions > button:not(.primaryAction) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 0 10px; border: 1px solid #d5e2da; border-radius: 6px; color: #36574a; background: #fff; font-size: 11px; font-weight: 650; cursor: pointer; }
+.reviewQueueActions > button.primaryAction { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 11px; font-size: 11px; }
+.stewardRunControl span { color: #72847b; font-size: 10px; line-height: 1.4; text-align: right; }
+.stewardWorkspaceHeader span, .stewardProposalHeader > div > span { color: #087b59; font-size: 10px; font-weight: 700; }
+.stewardWorkspaceHeader h3 { margin: 4px 0 3px; color: #17372d; font-size: 15px; line-height: 1.35; }
+.stewardWorkspaceHeader p { margin: 0; color: #687c73; font-size: 11px; line-height: 1.45; }
+.stewardWorkspaceGrid { display: grid; grid-template-columns: minmax(250px, 330px) minmax(0, 1fr); gap: 12px; align-items: start; }
+.stewardTaskList, .stewardProposal { min-width: 0; padding: 14px; border: 1px solid #dfe8e3; border-radius: 7px; background: #fff; }
+.stewardTaskList { display: grid; gap: 8px; align-content: start; }
+.stewardTaskList > strong { margin-bottom: 2px; color: #244238; font-size: 12px; }
+.stewardTaskList > select { min-height: 36px; padding: 0 10px; border: 1px solid #dce6e1; border-radius: 6px; color: #3e5d52; background: #fff; font-size: 11px; }
+.stewardTaskList > button { display: grid; gap: 6px; width: 100%; padding: 11px; border: 1px solid #e6ede9; border-radius: 6px; color: #203b31; background: #fff; text-align: left; cursor: pointer; }
+.stewardTaskList > button.active { border-color: #72b89a; background: #f0f8f4; box-shadow: inset 3px 0 #087f5b; }
+.stewardTaskList > button:hover:not(.active) { border-color: #bfd8ca; background: #f8fbf9; }
+.stewardTaskList > button b { overflow: hidden; font-size: 11px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.stewardTaskList > button span { color: #71847b; font-size: 10px; }
+.stewardProposal { min-height: 260px; }
+.stewardProposalHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding-bottom: 12px; border-bottom: 1px solid #edf1ef; }
+.stewardProposalHeader h4 { margin: 5px 0 0; color: #17372d; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
+.stewardProposalHeader > div:last-child { display: flex; flex: 0 0 auto; align-items: flex-start; gap: 7px; }
+.stewardProposalHeader button { min-height: 35px; padding: 0 11px; border: 1px solid #087b59; border-radius: 6px; color: #fff; background: #087b59; font-size: 11px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.stewardProposalHeader button:hover { border-color: #066648; background: #066648; }
+.stewardProposalHeader button.danger { border-color: #e6c6c1; color: #a23b35; background: #fff; }
+.stewardProposal > p { color: #5f746a; font-size: 11px; line-height: 1.5; }
+.stewardProposal details { margin-top: 14px; padding-top: 12px; border-top: 1px solid #edf1ef; color: #52695e; font-size: 12px; }
+.stewardProposal summary { cursor: pointer; font-weight: 700; }
+.reviewCandidatesWorkspace { min-height: 0; grid-template-columns: minmax(285px, 34%) minmax(0, 1fr); margin: 0; }
+.reviewCandidatesWorkspace .libraryList { gap: 10px; padding: 16px 14px 18px 20px; border-right-color: #e5ece8; background: transparent; }
+.reviewCandidatesWorkspace .libraryToolbar { align-items: center; }
+.reviewCandidatesWorkspace .libraryList > button { border-radius: 6px; }
+.reviewCandidatesWorkspace .knowledgeReader { min-width: 0; padding: 20px; }
+.reviewAdminPage .knowledgeContentBlock { max-height: none; overflow: visible; padding-right: 0; }
+.reviewCandidatesWorkspace .knowledgeReader pre { max-height: none; overflow: visible; }
+.actionRecordGrid + .reviewPager, .stewardTaskList .reviewPager { margin-top: 8px; }
+.reviewAdminPage button:focus-visible, .reviewAdminPage select:focus-visible, .reviewAdminPage input:focus-visible { outline: 3px solid rgba(8, 127, 91, .2); outline-offset: 2px; }
+@media (max-width: 1024px) { .stewardWorkspaceGrid, .reviewCandidatesWorkspace { grid-template-columns: 1fr; } .reviewCandidatesWorkspace .libraryList { border-right: 0; border-bottom: 1px solid #e5ece8; padding: 16px; } }
+@media (max-width: 820px) { .stewardWorkspaceHeader, .stewardProposalHeader { align-items: flex-start; flex-direction: column; } .stewardRunControl { width: 100%; flex-basis: auto; justify-items: start; } .stewardRunControl span { text-align: left; } .stewardProposalHeader > div:last-child { flex-wrap: wrap; } .reviewQueueActions { flex-wrap: wrap; justify-content: flex-end; } }
+.knowledgePackRow { display: grid; grid-template-columns: 38px minmax(0,1fr) 82px 48px 34px; gap: 12px; align-items: center; width: 100%; min-height: 84px; padding: 12px 14px; border: 1px solid #edf1ef; border-radius: 10px; background: #fff; text-align: left; cursor: pointer; }
+.knowledgePackRow + .knowledgePackRow { margin-top: 8px; }
+.knowledgePackRow:hover, .knowledgePackRow.active { border-color: #a8d8c1; background: #f5fbf8; }
+.packIcon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; color: #087f5b; background: #ddf5e9; }
+.packSummary { display: grid; min-width: 0; gap: 4px; }
+.packSummary strong { overflow: hidden; color: #172b27; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.packSummary small { overflow: hidden; color: #667872; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.packSummary em { color: #82958c; font-size: 10px; font-style: normal; }
+.knowledgePackRow > b { justify-self: start; padding: 4px 7px; border-radius: 999px; color: #087f5b; background: #e6f7ee; font-size: 9px; white-space: nowrap; }
+.rowAction { justify-self: center; color: #087f5b; font-size: 10px; font-weight: 700; }
+.moreAction { color: #778d84; letter-spacing: 1px; }
+.sourceTableHead, .sourceTableRow { display: grid; grid-template-columns: minmax(230px,2fr) 70px 105px 70px 90px 125px 42px; gap: 10px; align-items: center; }
+.sourceTableHead { min-height: 38px; padding: 0 12px; color: #82958c; background: #f7faf8; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.sourceTableRow { width: 100%; min-height: 58px; padding: 8px 12px; border: 0; border-bottom: 1px solid #edf1ef; color: #557268; background: #fff; font-size: 11px; text-align: left; cursor: pointer; }
+.sourceTableRow:hover, .sourceTableRow.active { background: #f5fbf8; }
+.sourceTableRow strong { display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; color: #203c32; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.sourceTableRow strong svg { flex: 0 0 auto; color: #087f5b; }
+.sourceTableRow b { justify-self: start; padding: 4px 7px; border-radius: 999px; color: #087f5b; background: #e6f7ee; font-size: 9px; white-space: nowrap; }
+@media (max-width: 1100px) {
+  .adminShell { grid-template-columns: 86px minmax(0, 1fr); }
+  .adminSidebar { align-items: center; }
+  .adminLogo div, .adminNav span, .lastUpdated span, .lastUpdated strong, .collapseButton { display: none; }
+  .adminNav button { width: 48px; justify-content: center; padding: 0; }
+  .lastUpdated { width: 48px; padding: 14px; }
+  .lastUpdated svg { position: static; transform: none; }
+  .collapseButton { width: 48px; justify-content: center; padding: 0; }
+  .dashboardAskPanel { grid-template-columns: 1fr; }
+  .topbarControls { grid-template-columns: minmax(220px, 1fr) 40px auto; }
+}
+@media (max-width: 820px) {
+  .adminMain { padding: 14px; }
+  .adminTopbar { grid-template-columns: 1fr; }
+  .topbarControls { grid-template-columns: minmax(0, 1fr) 40px auto; }
+  .serviceHealthBar { justify-content: flex-start; overflow-x: auto; }
+  .dashboardMetrics, .aiActivityMetrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboardOperationsGrid, .aiActivityAnalytics { grid-template-columns: 1fr; }
+  .assistantWorkspace { grid-template-columns: 205px minmax(0, 1fr); }
+  .activityTable { overflow-x: auto; }
+  .activityTableHead, .activityTable button { min-width: 680px; }
+}
+@media (max-width: 620px) {
+  .adminShell { display: block; }
+  .adminSidebar { position: fixed; z-index: 50; width: 232px; transform: translateX(-100%); align-items: stretch; }
+  .adminSidebar.mobileOpen { transform: translateX(0); }
+  .adminLogo div, .adminNav span, .lastUpdated span, .lastUpdated strong, .collapseButton { display: block; }
+  .adminNav button, .lastUpdated, .collapseButton { width: 100%; justify-content: flex-start; padding-left: 12px; }
+  .adminLogo div { display: block; }
+  .topbarControls { grid-template-columns: minmax(0, 1fr) 40px; }
+  .adminProfile { display: none; }
+  .dashboardMetrics, .aiActivityMetrics { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .dashboardMetrics .adminMetricCard { min-height: 96px; padding: 12px; }
+  .dashboardMetrics .adminMetricCard strong { font-size: 20px; }
+  .dashboardAskPanel { padding: 17px; }
+  .dashboardAskActions .primaryAction { margin-left: 0; }
+  .assistantWorkspace { display: block; min-height: auto; }
+  .assistantConversations { display: none; }
+  .assistantChatPanel { min-height: calc(100vh - 150px); }
+  .assistantChatHeader, .assistantMessages, .assistantComposer { padding-right: 14px; padding-left: 14px; }
+  .assistantQuickActions { grid-template-columns: 1fr; }
+  .assistantUserMessage { max-width: 92%; }
+  .activityTableHead, .activityTable button { min-width: 620px; }
+  .libraryFilterBar { grid-template-columns: 1fr 1fr; }
+  .libraryFilterBar .librarySearch { grid-column: 1 / -1; }
+  .gapToolbar { grid-template-columns: 1fr 1fr; margin: 0 10px; }
+  .gapToolbar > strong, .gapToolbar .librarySearch { grid-column: 1 / -1; }
+  .knowledgePackRow { grid-template-columns: 34px minmax(0,1fr) 30px; }
+  .knowledgePackRow > b, .knowledgePackRow .rowAction:not(.moreAction) { display: none; }
+  .sourceTableLayout .libraryList { overflow-x: auto; }
+  .sourceTableHead, .sourceTableRow { min-width: 760px; }
+  .detailPageHeader, .detailContentGrid { grid-template-columns: 1fr; display: grid; }
+  .detailPageActions { justify-content: flex-start; }
+  .detailContentGrid { padding-right: 14px; padding-left: 14px; }
+  .detailMetaGrid { margin-right: 14px; margin-left: 14px; }
+  .detailBreadcrumb { padding-right: 14px; padding-left: 14px; }
+  .detailTabs { margin-right: 14px; margin-left: 14px; overflow-x: auto; }
+}
 .userManagementPage { overflow: hidden; }
 .userManagementHeader { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 21px 22px; border-bottom: 1px solid var(--border); }
 .userManagementTitle { display: flex; align-items: center; gap: 13px; min-width: 0; }
@@ -4802,4 +5146,209 @@ button {
   .userTable { min-width: 720px; }
   .userFeedback { margin-right: 11px; margin-left: 11px; }
   .userPagination { padding: 0 8px; font-size: 9px; }
+}
+
+/* Responsive operations workspace */
+@media (max-width: 980px) {
+  .adminShell,
+  .adminShell.sidebarCollapsed { display: block; min-height: 100dvh; }
+
+  .adminSidebar,
+  .adminShell.sidebarCollapsed .adminSidebar {
+    position: fixed;
+    z-index: 50;
+    inset: 0 auto 0 0;
+    width: min(290px, calc(100vw - 48px));
+    height: 100dvh;
+    align-items: stretch;
+    padding: 18px 12px max(16px, env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transform: translateX(-105%);
+  }
+
+  .adminSidebar.mobileOpen { transform: translateX(0); }
+  .adminShell.sidebarCollapsed .adminLogo div,
+  .adminShell.sidebarCollapsed .adminNav span,
+  .adminShell.sidebarCollapsed .lastUpdated span,
+  .adminShell.sidebarCollapsed .lastUpdated strong,
+  .adminShell.sidebarCollapsed .collapseButton { display: initial; }
+  .adminShell.sidebarCollapsed .adminNav button,
+  .adminShell.sidebarCollapsed .collapseButton { width: 100%; justify-content: flex-start; padding: 0 12px; }
+  .adminShell.sidebarCollapsed .lastUpdated { width: auto; padding: 12px; }
+
+  .adminMain { width: 100%; max-width: none; padding: 16px 18px; }
+  .adminTopbar { grid-template-columns: 40px minmax(0, 1fr); gap: 10px 12px; }
+  .mobileMenuButton { display: grid; grid-column: 1; grid-row: 1; }
+  .adminTitleBlock { grid-column: 2; grid-row: 1; min-width: 0; }
+  .topbarControls { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) 40px auto; }
+  .adminSearch { min-width: 0; }
+  .mobileSidebarScrim { z-index: 40; }
+  .adminPageHeader { align-items: flex-start; gap: 10px; }
+  .adminPageHeader > div:last-child { flex-wrap: wrap; }
+  .webEvidenceReviewGrid,
+  .stewardWorkspaceGrid,
+  .reviewCandidatesWorkspace,
+  .knowledgePackLayout,
+  .sourceTableLayout,
+  .dashboardOperationsGrid,
+  .aiActivityAnalytics { grid-template-columns: minmax(0, 1fr); }
+  .webEvidenceReviewGrid { min-height: 0; }
+  .webEvidenceQueue { border-right: 0; border-bottom: 1px solid var(--border); }
+  .reviewCandidatesWorkspace .libraryList { border-right: 0; border-bottom: 1px solid var(--border); }
+  .webEvidenceMeta { grid-template-columns: minmax(0, 1fr); }
+  .sourceTableLayout .libraryList,
+  .activityTable,
+  .adminTableWrap,
+  .userTableWrap { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+  .sourceTableHead,
+  .sourceTableRow { min-width: 720px; }
+  .assistantWorkspace { grid-template-columns: minmax(190px, 230px) minmax(0, 1fr); }
+}
+
+@media (max-width: 760px) {
+  html,
+  body,
+  #root { min-width: 320px; width: 100%; }
+
+  body { overflow-x: hidden; }
+  .adminMain { padding: 12px 12px max(18px, env(safe-area-inset-bottom)); }
+  .adminMain > * { min-width: 0; }
+  .collapseButton { display: none; }
+  .adminTopSection { gap: 10px; margin-bottom: 14px; }
+  .adminTopbar { grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 8px 10px; }
+  .adminTitleBlock h1,
+  .adminTopbar h1 { font-size: 21px; line-height: 1.2; overflow-wrap: anywhere; }
+  .adminTitleBlock p,
+  .adminTopbar p { margin-top: 3px; font-size: 11px; line-height: 1.45; }
+  .topbarControls { grid-template-columns: minmax(0, 1fr) 40px 40px; gap: 7px; }
+  .topbarControls .environmentPill { display: none; }
+  .topbarControls .adminSearch { grid-column: 1 / -1; grid-row: 2; height: 40px; }
+  .topbarControls .notificationButton { grid-column: 2; grid-row: 1; width: 40px; height: 40px; }
+  .topbarControls .adminProfile { display: grid; grid-column: 3; grid-row: 1; width: 40px; height: 40px; justify-content: center; padding: 0; }
+  .adminProfile p,
+  .adminProfile > svg { display: none; }
+  .adminPageSurface,
+  .adminSection,
+  .insightPanel,
+  .analyticsCard,
+  .dashboardActivityPanel { min-width: 0; border-radius: 8px; }
+  .adminPageHeader { display: flex; min-width: 0; overflow: visible; padding-bottom: 10px; }
+  .adminPageHeader > div:last-child { width: 100%; justify-content: flex-start; gap: 7px; }
+  .adminPageHeader button { min-height: 38px; }
+  .metricsGrid,
+  .dashboardMetrics,
+  .aiActivityMetrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .adminMetricCard { min-width: 0; grid-template-columns: 32px minmax(0, 1fr); gap: 8px; padding: 10px; }
+  .adminMetricIcon { width: 32px; height: 32px; }
+  .adminMetricCard strong { font-size: 19px; }
+  .adminMetricCard h3,
+  .adminMetricCard span,
+  .adminMetricCard small { overflow-wrap: anywhere; }
+  .dashboardAskPanel { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 15px; }
+  .dashboardAskCopy h2 { font-size: 19px; }
+  .dashboardAskActions,
+  .assistantComposer > div { gap: 7px; }
+  .dashboardAskActions button,
+  .dashboardAskActions label,
+  .assistantComposer button,
+  .assistantComposer label { min-height: 40px; }
+  .dashboardAskActions .primaryAction,
+  .assistantComposer .primaryAction { margin-left: auto; }
+  .overviewMetrics { flex-wrap: wrap; gap: 18px; }
+  .webEvidenceHero { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 16px; }
+  .webEvidenceHero h2 { font-size: 21px; }
+  .webEvidenceSearch { min-width: 0; }
+  .webEvidenceSearch button { flex: 0 0 auto; padding-inline: 10px; }
+  .webEvidenceStats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .webEvidenceStats article { padding: 12px; }
+  .webEvidenceReviewGrid { overflow: visible; }
+  .webEvidenceQueue,
+  .webEvidenceDetail { min-width: 0; padding: 12px; }
+  .webEvidenceQueue .libraryToolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .webEvidenceQueue .libraryToolbar > strong { grid-column: 1 / -1; }
+  .webEvidenceQueue .libraryToolbar select,
+  .webEvidenceQueue .libraryToolbar button { width: 100%; min-width: 0; min-height: 38px; }
+  .readerActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .readerActions button { min-height: 38px; padding-inline: 7px; overflow-wrap: anywhere; }
+  .webEvidenceArticlePreview { min-width: 0; padding: 12px; }
+  .knowledgeContentBlock { overflow-wrap: anywhere; }
+  .stewardWorkspaceHeader,
+  .stewardProposalHeader { align-items: stretch; flex-direction: column; }
+  .stewardWorkspaceHeader > div,
+  .stewardProposalHeader > div { min-width: 0; }
+  .stewardRunControl { width: 100%; }
+  .stewardRunControl button { width: 100%; min-height: 40px; }
+  .reviewQueueActions,
+  .stewardProposalHeader > div:last-child { justify-content: flex-start; }
+  .reviewAdminPage,
+  .reviewCandidatesWorkspace,
+  .stewardWorkspaceGrid { min-width: 0; }
+  .reviewCandidatesWorkspace .knowledgeReader { padding: 14px; }
+  .libraryToolbar { flex-wrap: wrap; gap: 8px; }
+  .libraryToolbar > strong { flex: 1 0 100%; }
+  .libraryToolbar input,
+  .libraryToolbar select { min-width: 0; max-width: 100%; }
+  .libraryFilterBar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .libraryFilterBar > * { min-width: 0; }
+  .gapToolbar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .detailPageHeader { display: grid; grid-template-columns: minmax(0, 1fr); padding: 14px; }
+  .detailPageHeader h2 { font-size: 21px; }
+  .detailPageActions { justify-content: flex-start; }
+  .detailPageActions button { min-height: 40px; }
+  .detailMetaGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px; }
+  .detailContentGrid { display: grid; grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .detailTabs { gap: 16px; margin-inline: 12px; overflow-x: auto; }
+  .detailTabs button { flex: 0 0 auto; min-height: 42px; }
+  .assistantWorkspace,
+  .assistantWorkspace.fullscreen { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(460px, 68dvh); min-height: 0; overflow: visible; border-radius: 8px; }
+  .assistantWorkspace.fullscreen { position: fixed; z-index: 60; inset: 0; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; border-radius: 0; }
+  .assistantConversations { display: flex; max-height: 190px; min-height: 0; padding: 12px; overflow: hidden; border-right: 0; border-bottom: 1px solid var(--border); }
+  .assistantConversations .conversationList { min-height: 0; overflow-y: auto; }
+  .assistantChatPanel { min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; }
+  .assistantChatHeader { padding: 13px 12px; }
+  .assistantChatHeader h2 { font-size: 16px; }
+  .assistantChatHeader p { font-size: 11px; }
+  .assistantMessages { min-height: 220px; padding: 14px 12px; }
+  .assistantWelcome { margin: 22px auto; }
+  .assistantWelcome h2 { font-size: 19px; }
+  .assistantThread { width: 100%; }
+  .assistantUserMessage { max-width: 94%; }
+  .assistantAnswerMessage { padding: 13px; }
+  .assistantComposer { padding: 10px 12px max(12px, env(safe-area-inset-bottom)); }
+  .assistantComposer textarea { min-height: 62px; font-size: 16px; }
+  .assistantComposer > div { display: flex; }
+  .assistantQuickActions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+  .assistantQuickActions button { min-height: 48px; padding: 10px; font-size: 12px; }
+  .activityTableHead,
+  .activityTable button,
+  .sourceTableHead,
+  .sourceTableRow { min-width: 680px; }
+  .userTableScroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+  .userManagementHeader { gap: 10px; }
+  .userCount { justify-items: end; }
+  .userConfirmDialog { max-height: calc(100dvh - 32px); overflow-y: auto; padding: 20px; }
+}
+
+@media (max-width: 420px) {
+  .adminMain { padding-inline: 9px; }
+  .adminTitleBlock h1,
+  .adminTopbar h1 { font-size: 19px; }
+  .metricsGrid,
+  .dashboardMetrics,
+  .aiActivityMetrics,
+  .webEvidenceStats { gap: 6px; }
+  .adminMetricCard { grid-template-columns: minmax(0, 1fr); align-content: start; }
+  .adminMetricIcon { display: none; }
+  .adminMetricCard strong { font-size: 18px; }
+  .webEvidenceSearch { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .webEvidenceSearch button { justify-content: center; width: 100%; }
+  .webEvidenceQueue .libraryToolbar { grid-template-columns: minmax(0, 1fr); }
+  .webEvidenceQueue .libraryToolbar > strong { grid-column: auto; }
+  .readerActions { grid-template-columns: minmax(0, 1fr); }
+  .assistantQuickActions { grid-template-columns: minmax(0, 1fr); }
+  .assistantHeaderActions button:first-child { min-height: 38px; }
+  .detailMetaGrid { grid-template-columns: minmax(0, 1fr); }
+  .userManagementHeader { flex-direction: column; }
+  .userCount { display: flex; align-items: baseline; gap: 6px; }
 }

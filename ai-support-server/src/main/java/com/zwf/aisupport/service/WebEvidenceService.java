@@ -5,6 +5,7 @@ import com.zwf.aisupport.entity.WebEvidence;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.PageVO;
 import com.zwf.aisupport.vo.WebEvidenceVO;
+import com.zwf.aisupport.vo.WebEvidenceSummaryVO;
 
 import java.util.List;
 import java.util.Optional;
@@ -20,6 +21,8 @@ public interface WebEvidenceService {
     WebEvidenceVO searchManually(WebEvidenceSearchDTO searchDTO);
 
     PageVO<WebEvidenceVO> listAll(String keyword, String status, String category, String origin, Integer page, Integer size);
+
+    WebEvidenceSummaryVO getSummary();
 
     KnowledgeArticleVO approveToArticle(Long id);
 

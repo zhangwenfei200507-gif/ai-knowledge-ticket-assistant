@@ -61,9 +61,13 @@ const buildQuery = (params = {}) => {
 
 export const getKnowledgeArticles = (params = {}) => requestJson(`/api/knowledge/articles${buildQuery(params)}`);
 
+export const getKnowledgeArticle = (id) => requestJson(`/api/knowledge/articles/${id}`);
+
 export const searchKnowledgeArticles = (keyword) => requestJson(`/api/knowledge/articles/search?keyword=${encodeURIComponent(keyword)}`);
 
 export const getKnowledgeDocuments = (params = {}) => requestJson(`/api/documents${buildQuery(params)}`);
+
+export const getKnowledgeDocument = (id) => requestJson(`/api/documents/${id}`);
 
 export const getDocumentChunks = (documentId) => requestJson(`/api/documents/${documentId}/chunks`);
 
@@ -112,6 +116,8 @@ export const closeTicket = (id) => requestJson(`/api/tickets/${id}/close`, {
 
 export const getWebEvidence = (params = {}) => requestJson(`/api/admin/web-evidence${buildQuery(params)}`);
 
+export const getWebEvidenceSummary = () => requestJson('/api/admin/web-evidence/summary');
+
 export const searchWebEvidence = (question) => requestJson('/api/admin/web-evidence/search', {
   method: 'POST',
   body: JSON.stringify({ question }),
@@ -139,6 +145,16 @@ export const deleteWebEvidence = (id) => requestJson(`/api/admin/web-evidence/${
 });
 
 export const getDocumentKnowledgeCandidates = (params = {}) => requestJson(`/api/admin/document-knowledge-candidates${buildQuery(params)}`);
+
+export const runKnowledgeSteward = (limit = 20) => requestJson(`/api/admin/knowledge-steward/run${buildQuery({ limit })}`, { method: 'POST' });
+
+export const getKnowledgeStewardTasks = (params = {}) => requestJson(`/api/admin/knowledge-steward/tasks${buildQuery(params)}`);
+
+export const approveKnowledgeStewardTask = (id) => requestJson(`/api/admin/knowledge-steward/tasks/${id}/approve`, { method: 'POST' });
+
+export const rejectKnowledgeStewardTask = (id) => requestJson(`/api/admin/knowledge-steward/tasks/${id}/reject`, { method: 'PATCH' });
+
+export const archiveKnowledgeStewardTask = (id) => requestJson(`/api/admin/knowledge-steward/tasks/${id}/archive`, { method: 'PATCH' });
 
 export const approveDocumentKnowledgeCandidate = (id) => requestJson(`/api/admin/document-knowledge-candidates/${id}/approve`, {
   method: 'POST',

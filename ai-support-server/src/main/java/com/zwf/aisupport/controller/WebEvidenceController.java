@@ -7,6 +7,7 @@ import com.zwf.aisupport.service.WebEvidenceService;
 import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.PageVO;
 import com.zwf.aisupport.vo.WebEvidenceVO;
+import com.zwf.aisupport.vo.WebEvidenceSummaryVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,6 +29,11 @@ public class WebEvidenceController {
                                                  @RequestParam(required = false) Integer page,
                                                  @RequestParam(required = false) Integer size) {
         return Result.success(webEvidenceService.listAll(keyword, status, category, origin, page, size));
+    }
+
+    @GetMapping("/summary")
+    public Result<WebEvidenceSummaryVO> summary() {
+        return Result.success(webEvidenceService.getSummary());
     }
 
     @PostMapping("/search")

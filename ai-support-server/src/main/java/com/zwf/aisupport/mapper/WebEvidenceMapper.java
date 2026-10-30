@@ -68,7 +68,9 @@ public interface WebEvidenceMapper {
         where status <> 'ARCHIVED'
           and (cast(#{status} as varchar) is null or status = #{status})
           and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(cast(#{category} as varchar)))
-          and (cast(#{origin} as varchar) is null or evidence_origin = #{origin})
+          and (cast(#{origin} as varchar) is null
+               or (#{origin} = 'WEB_SEARCH' and coalesce(evidence_origin, 'WEB_SEARCH') <> 'LLM_GENERATED')
+               or evidence_origin = #{origin})
           and (
               cast(#{keyword} as varchar) is null
               or lower(question) like lower(concat('%', cast(#{keyword} as varchar), '%'))
@@ -91,7 +93,9 @@ public interface WebEvidenceMapper {
         where status <> 'ARCHIVED'
           and (cast(#{status} as varchar) is null or status = #{status})
           and (cast(#{category} as varchar) is null or lower(coalesce(category, '')) = lower(cast(#{category} as varchar)))
-          and (cast(#{origin} as varchar) is null or evidence_origin = #{origin})
+          and (cast(#{origin} as varchar) is null
+               or (#{origin} = 'WEB_SEARCH' and coalesce(evidence_origin, 'WEB_SEARCH') <> 'LLM_GENERATED')
+               or evidence_origin = #{origin})
           and (
               cast(#{keyword} as varchar) is null
               or lower(question) like lower(concat('%', cast(#{keyword} as varchar), '%'))
@@ -182,4 +186,16 @@ public interface WebEvidenceMapper {
 
     @Select("select count(distinct domain) from web_evidence where domain is not null and domain <> ''")
     Long countDistinctDomains();
+
+    @Select("select count(*) from web_evidence where status <> 'ARCHIVED'")
+    Long countActiveEvidence();
+
+    @Select("select count(*) from web_evidence where status <> 'ARCHIVED' and coalesce(evidence_origin, 'WEB_SEARCH') <> 'LLM_GENERATED'")
+    Long countWebEvidence();
+
+    @Select("select count(*) from web_evidence where status <> 'ARCHIVED' and evidence_origin = 'LLM_GENERATED'")
+    Long countModelGeneratedEvidence();
+
+    @Select("select count(*) from web_evidence where status = #{status}")
+    Long countByStatus(@Param("status") String status);
 }

@@ -49,6 +49,17 @@ Determine which existing Knowledge Pack the new knowledge belongs to.
 - The extracted knowledge Domain must match the target Knowledge Pack Domain before any reorganization is allowed.
 - If the Domain does not match, do not merge or reorganize into that Knowledge Pack; create or select a Knowledge Pack from the correct Domain instead.
 
+### Computer Domain Guard
+
+The product scope is the broad computer and CloudOps domain, not one fixed list of narrow categories.
+
+- Treat software, hardware, programming, data, databases, networking, security, AI, cloud, infrastructure, operations, support tooling, and adjacent computer-science topics as in scope.
+- Do not reject a computer-related question only because it does not match an existing Knowledge Pack category. It may continue to broad retrieval, web evidence, or controlled model fallback.
+- Clearly non-computer topics must be stopped before internal retrieval, web search, model fallback, document learning, or knowledge-candidate creation.
+- The scope decision must be observable in the retrieval trace as `IN_SCOPE` or `OUT_OF_SCOPE`.
+- Out-of-scope questions must not spend web or model tokens and must not pollute Knowledge Gaps or the Knowledge Library.
+- A broad in-scope decision does not override the hard domain rule for Knowledge Pack reorganization: the proposed knowledge must still match the target Pack domain before publication.
+
 ## Evidence Quality Rules
 
 External evidence may enter the knowledge workflow only when it is a trustworthy technical source.

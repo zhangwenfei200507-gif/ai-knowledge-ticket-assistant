@@ -18,6 +18,7 @@ import com.zwf.aisupport.vo.KnowledgeArticleVO;
 import com.zwf.aisupport.vo.PageVO;
 import com.zwf.aisupport.vo.WebEvidenceVO;
 import com.zwf.aisupport.vo.WebEvidenceSourceVO;
+import com.zwf.aisupport.vo.WebEvidenceSummaryVO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -142,6 +143,23 @@ public class WebEvidenceServiceImpl implements WebEvidenceService {
                 PageRequestUtil.optionalText(origin)
         );
         return PageVO.of(items, safePage, safeSize, total);
+    }
+
+    @Override
+    public WebEvidenceSummaryVO getSummary() {
+        CurrentUserUtil.requireAdmin("Only administrators can manage web evidence");
+        WebEvidenceSummaryVO summary = new WebEvidenceSummaryVO();
+        summary.setTotal(nullToZero(webEvidenceMapper.countActiveEvidence()));
+        summary.setWebSources(nullToZero(webEvidenceMapper.countWebEvidence()));
+        summary.setModelGenerated(nullToZero(webEvidenceMapper.countModelGeneratedEvidence()));
+        summary.setNeedsReview(nullToZero(webEvidenceMapper.countByStatus("NEEDS_REVIEW")));
+        summary.setConverted(nullToZero(webEvidenceMapper.countByStatus("CONVERTED")));
+        summary.setRejected(nullToZero(webEvidenceMapper.countByStatus("REJECTED")));
+        return summary;
+    }
+
+    private long nullToZero(Long value) {
+        return value == null ? 0 : value;
     }
 
     @Override

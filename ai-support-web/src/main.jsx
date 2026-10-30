@@ -45,6 +45,9 @@ const safeExternalUrl = (value) => {
   }
 };
 
+const isUnavailableAnswer = (value) => [value?.answerMode, value?.sourceType]
+  .some((item) => String(item || '').toUpperCase() === 'NONE');
+
 function StatusItem({ icon: Icon, label, state }) {
   const stateText = state === 'up' ? 'Connected' : state === 'down' ? 'Unavailable' : 'Checking';
   return (
@@ -97,6 +100,9 @@ function UserWorkspace({ onSignOut }) {
         throw new Error(payload?.message || 'The assistant could not complete this request.');
       }
       setAnswer(payload.data);
+      if (isUnavailableAnswer(payload.data)) {
+        setError('Insufficient evidence. The assistant could not produce a reliable answer yet.');
+      }
     } catch (requestError) {
       setError(requestError.message || 'The assistant could not complete this request.');
     } finally {
@@ -200,9 +206,9 @@ function UserWorkspace({ onSignOut }) {
         {answer && (
           <section className="workspaceAnswer" aria-live="polite">
             <div className="workspaceAnswerHeader">
-              <span className="workspaceAnswerSignal"><Check size={16} /> ANSWER</span>
+              <span className="workspaceAnswerSignal"><Check size={16} /> {isUnavailableAnswer(answer) ? 'INSUFFICIENT EVIDENCE' : 'ANSWER'}</span>
               <div className="workspaceAnswerActions">
-                <span className="workspaceSourceType">{answer.sourceType || 'UNVERIFIED'}</span>
+                <span className="workspaceSourceType">{isUnavailableAnswer(answer) ? 'NO RELIABLE ANSWER' : answer.answerMode || answer.sourceType || 'UNVERIFIED'}</span>
                 <button type="button" className="workspaceCopy" onClick={copyAnswer} aria-label="Copy answer" title="Copy answer">
                   {copied ? <Check size={15} /> : <Copy size={15} />}
                   {copied ? 'Copied' : 'Copy'}
@@ -248,6 +254,7 @@ function App() {
   const [verifiedUser, setVerifiedUser] = useState(null);
   const [sessionStatus, setSessionStatus] = useState('idle');
   const [sessionPath, setSessionPath] = useState('');
+  const isAdminPath = currentPath === '/admin' || currentPath.startsWith('/admin/');
 
   const navigate = useCallback((path, replace = false) => {
     if (replace) window.history.replaceState({}, '', path);
@@ -319,7 +326,7 @@ function App() {
   }, [currentPath, navigate]);
 
   useEffect(() => {
-    if (currentPath !== '/admin' && currentPath !== '/workspace') {
+    if (!isAdminPath && currentPath !== '/workspace') {
       setSessionStatus('idle');
       setVerifiedUser(null);
       return undefined;
@@ -353,8 +360,11 @@ function App() {
         localStorage.setItem('aegiscloud_user', JSON.stringify(account));
         setVerifiedUser(account);
         setSessionStatus('ready');
-        const destination = account.role === 'ADMIN' ? '/admin' : '/workspace';
-        if (destination !== currentPath) navigate(destination, true);
+        if (account.role !== 'ADMIN' && isAdminPath) {
+          navigate('/workspace', true);
+        } else if (account.role === 'ADMIN' && !isAdminPath) {
+          navigate('/admin', true);
+        }
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
@@ -365,9 +375,9 @@ function App() {
       });
 
     return () => controller.abort();
-  }, [currentPath, navigate]);
+  }, [currentPath, isAdminPath, navigate]);
 
-  const hasAdminAccess = currentPath === '/admin'
+  const hasAdminAccess = isAdminPath
     && sessionPath === currentPath
     && sessionStatus === 'ready'
     && verifiedUser?.role === 'ADMIN';
@@ -395,9 +405,9 @@ function App() {
     }
   };
 
-  if (currentPath === '/admin' && hasAdminAccess) return <AdminOperationsCenter />;
+  if (isAdminPath && hasAdminAccess) return <AdminOperationsCenter />;
   if (currentPath === '/workspace' && hasWorkspaceAccess) return <UserWorkspace onSignOut={signOut} />;
-  if (currentPath === '/auth/callback' || currentPath === '/admin' || currentPath === '/workspace') {
+  if (currentPath === '/auth/callback' || isAdminPath || currentPath === '/workspace') {
     return <main className="callbackShell"><div className="callbackSpinner" /><p>Securing your AegisCloud session...</p></main>;
   }
 
