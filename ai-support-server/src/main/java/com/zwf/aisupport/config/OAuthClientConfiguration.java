@@ -19,21 +19,21 @@ public class OAuthClientConfiguration {
     ClientRegistrationRepository clientRegistrationRepository(OAuthProperties properties) {
         Map<String, ClientRegistration> registrations = new HashMap<>();
         if (properties.getGoogle().isConfigured()) {
-            registrations.put("google", google(properties.getGoogle()));
+            registrations.put("google", google(properties.getGoogle(), properties.getBackendBaseUrl()));
         }
         if (properties.getGithub().isConfigured()) {
-            registrations.put("github", github(properties.getGithub()));
+            registrations.put("github", github(properties.getGithub(), properties.getBackendBaseUrl()));
         }
         return registrations::get;
     }
 
-    private ClientRegistration google(OAuthProperties.Provider provider) {
+    private ClientRegistration google(OAuthProperties.Provider provider, String backendBaseUrl) {
         return ClientRegistration.withRegistrationId("google")
                 .clientId(provider.getClientId())
                 .clientSecret(provider.getClientSecret())
                 .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
                 .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
-                .redirectUri("{baseUrl}/login/oauth2/code/{registrationId}")
+                .redirectUri(backendBaseUrl + "/login/oauth2/code/google")
                 .scope("openid", "profile", "email")
                 .authorizationUri("https://accounts.google.com/o/oauth2/v2/auth")
                 .tokenUri("https://oauth2.googleapis.com/token")
@@ -45,13 +45,13 @@ public class OAuthClientConfiguration {
                 .build();
     }
 
-    private ClientRegistration github(OAuthProperties.Provider provider) {
+    private ClientRegistration github(OAuthProperties.Provider provider, String backendBaseUrl) {
         return ClientRegistration.withRegistrationId("github")
                 .clientId(provider.getClientId())
                 .clientSecret(provider.getClientSecret())
                 .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
                 .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
-                .redirectUri("{baseUrl}/login/oauth2/code/{registrationId}")
+                .redirectUri(backendBaseUrl + "/login/oauth2/code/github")
                 .scope("read:user", "user:email")
                 .authorizationUri("https://github.com/login/oauth/authorize")
                 .tokenUri("https://github.com/login/oauth/access_token")

@@ -11,6 +11,7 @@ import java.util.Locale;
 public class OAuthProperties {
 
     private String frontendCallbackUrl = "http://localhost:5173/auth/callback";
+    private String backendBaseUrl = "http://127.0.0.1:8090";
     private long exchangeCodeTtlSeconds = 60;
     private String bootstrapAdminEmails = "";
     private Provider google = new Provider();

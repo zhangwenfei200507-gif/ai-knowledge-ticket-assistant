@@ -53,8 +53,8 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
                     .encode()
                     .toUriString());
         } catch (RuntimeException exception) {
-            log.warn("OAuth sign-in could not be completed for provider {}",
-                    oauthToken.getAuthorizedClientRegistrationId());
+            log.warn("OAuth sign-in could not be completed for provider {}: {}",
+                    oauthToken.getAuthorizedClientRegistrationId(), exception.getMessage(), exception);
             redirectWithError(response);
         }
     }
