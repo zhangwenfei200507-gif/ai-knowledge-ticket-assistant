@@ -300,10 +300,15 @@ function EmptyState({ text }) {
 
 function LibraryPager({ page, pageCount, total, onPageChange }) {
   if (total <= LIBRARY_PAGE_SIZE) return null;
+  const pages = Array.from({ length: Math.min(pageCount, 5) }, (_, index) => {
+    const start = Math.min(Math.max(1, page - 2), Math.max(1, pageCount - 4));
+    return start + index;
+  });
   return (
     <div className="libraryPager">
       <button type="button" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>Prev</button>
-      <span>{page} / {pageCount} · {total} total</span>
+      {pages.map((number) => <button key={number} type="button" className={number === page ? 'active' : ''} aria-current={number === page ? 'page' : undefined} onClick={() => onPageChange(number)}>{number}</button>)}
+      <span>{(page - 1) * LIBRARY_PAGE_SIZE + 1}–{Math.min(page * LIBRARY_PAGE_SIZE, total)} of {total}</span>
       <button type="button" disabled={page >= pageCount} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>Next</button>
     </div>
   );
@@ -315,10 +320,13 @@ function ReviewPager({ page, pageCount, total, onPageChange, showSinglePage = fa
   const safePageCount = Math.max(1, pageCount || 1);
   const firstItem = (safePage - 1) * REVIEW_PAGE_SIZE + 1;
   const lastItem = Math.min(safePage * REVIEW_PAGE_SIZE, total);
+  const start = Math.min(Math.max(1, safePage - 2), Math.max(1, safePageCount - 4));
+  const pages = Array.from({ length: Math.min(safePageCount, 5) }, (_, index) => start + index);
   return (
     <div className="libraryPager reviewPager">
       <button type="button" disabled={safePage <= 1} onClick={() => onPageChange(Math.max(1, safePage - 1))}>Previous</button>
-      <span>Showing {firstItem}–{lastItem} of {total} · Page {safePage} of {safePageCount}</span>
+      {pages.map((number) => <button key={number} type="button" className={number === safePage ? 'active' : ''} aria-current={number === safePage ? 'page' : undefined} onClick={() => onPageChange(number)}>{number}</button>)}
+      <span>Showing {firstItem}–{lastItem} of {total}</span>
       <button type="button" disabled={safePage >= safePageCount} onClick={() => onPageChange(Math.min(safePageCount, safePage + 1))}>Next</button>
     </div>
   );
@@ -452,6 +460,11 @@ function WebEvidenceWorkspace({
   pageMeta,
   statusFilter,
   originFilter,
+  filterKeyword,
+  categoryFilter,
+  onFilterKeywordChange,
+  onSearchFilter,
+  onCategoryFilterChange,
   onStatusFilterChange,
   onOriginFilterChange,
   onPageChange,
@@ -483,6 +496,8 @@ function WebEvidenceWorkspace({
         <div className="webEvidenceQueue">
           <div className="libraryToolbar">
             <strong>{pageMeta.total} Evidence Records</strong>
+            <input aria-label="Filter evidence records" value={filterKeyword} placeholder="Filter evidence..." onChange={(event) => onFilterKeywordChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') onSearchFilter(); }} />
+            <select aria-label="Filter evidence by category" value={categoryFilter} onChange={(event) => onCategoryFilterChange(event.target.value)}><option value="">All Categories</option>{[...Object.keys(categoryIconMap), 'General'].map((category) => <option key={category} value={category}>{category}</option>)}</select>
             <select value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value)}>
               <option value="">All Status</option>
               <option value="NEEDS_REVIEW">Needs Review</option>
@@ -898,7 +913,9 @@ function AdminOperationsCenter() {
   const [documentCandidates, setDocumentCandidates] = useState([]);
   const [selectedDocumentCandidate, setSelectedDocumentCandidate] = useState(null);
   const [articleSearch, setArticleSearch] = useState('');
+  const [articleCategory, setArticleCategory] = useState('');
   const [documentSearch, setDocumentSearch] = useState('');
+  const [documentCategory, setDocumentCategory] = useState('');
   const [chunkSearch, setChunkSearch] = useState('');
   const [candidateSearch, setCandidateSearch] = useState('');
   const [candidateStatus, setCandidateStatus] = useState('NEEDS_REVIEW');
@@ -939,6 +956,8 @@ function AdminOperationsCenter() {
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [ticketStatus, setTicketStatus] = useState('OPEN');
+  const [ticketListStatus, setTicketListStatus] = useState('');
+  const [ticketPriority, setTicketPriority] = useState('');
   const [notificationSnapshot, setNotificationSnapshot] = useState({ gaps: [], tickets: [], evidence: [], documentCandidates: [] });
   const [webEvidence, setWebEvidence] = useState([]);
   const [webEvidenceSummary, setWebEvidenceSummary] = useState(null);
@@ -946,10 +965,14 @@ function AdminOperationsCenter() {
   const [webEvidenceSearch, setWebEvidenceSearch] = useState('');
   const [webEvidenceStatus, setWebEvidenceStatus] = useState('');
   const [webEvidenceOrigin, setWebEvidenceOrigin] = useState('');
+  const [webEvidenceFilter, setWebEvidenceFilter] = useState('');
+  const [webEvidenceCategory, setWebEvidenceCategory] = useState('');
   const [gapSearch, setGapSearch] = useState('');
   const [gapCategory, setGapCategory] = useState('');
   const [gapStatus, setGapStatus] = useState('');
   const [aiLogSearch, setAiLogSearch] = useState('');
+  const [aiLogSource, setAiLogSource] = useState('');
+  const [aiLogFeedback, setAiLogFeedback] = useState('');
   const [ticketSearch, setTicketSearch] = useState('');
   const [profile, setProfile] = useState(null);
   const [metricContext, setMetricContext] = useState(null);
@@ -1080,10 +1103,10 @@ function AdminOperationsCenter() {
     setActiveModal(modal);
   };
 
-  const loadArticles = async (page = articlePage) => {
+  const loadArticles = async (page = articlePage, filters = {}) => {
     setActionStatus({ type: 'loading', text: 'Loading stored knowledge articles...' });
     try {
-      const result = await getKnowledgeArticles({ page, size: LIBRARY_PAGE_SIZE, keyword: articleSearch, status: 'PUBLISHED' });
+      const result = await getKnowledgeArticles({ page, size: LIBRARY_PAGE_SIZE, keyword: filters.keyword ?? articleSearch, category: filters.category ?? articleCategory, status: 'PUBLISHED' });
       const items = pageItems(result);
       setArticles(items);
       setArticlePageInfo(pageInfo(result, LIBRARY_PAGE_SIZE));
@@ -1094,10 +1117,10 @@ function AdminOperationsCenter() {
     }
   };
 
-  const loadAiLogs = async (page = aiLogPage) => {
+  const loadAiLogs = async (page = aiLogPage, filters = {}) => {
     setActionStatus({ type: 'loading', text: 'Loading real AI question records...' });
     try {
-      const result = await getAiQuestionLogs({ page, size: REVIEW_PAGE_SIZE, keyword: aiLogSearch });
+      const result = await getAiQuestionLogs({ page, size: REVIEW_PAGE_SIZE, keyword: filters.keyword ?? aiLogSearch, sourceType: filters.sourceType ?? aiLogSource, feedback: filters.feedback ?? aiLogFeedback });
       setAiLogs(pageItems(result));
       setAiLogPageInfo(pageInfo(result, REVIEW_PAGE_SIZE));
       setAiLogPage(result?.page ?? page);
@@ -1114,10 +1137,10 @@ function AdminOperationsCenter() {
     await loadAiLogs();
   };
 
-  const loadTickets = async (page = ticketPage) => {
+  const loadTickets = async (page = ticketPage, filters = {}) => {
     setActionStatus({ type: 'loading', text: 'Loading real ticket queue...' });
     try {
-      const result = await getTickets({ page, size: REVIEW_PAGE_SIZE, keyword: ticketSearch });
+      const result = await getTickets({ page, size: REVIEW_PAGE_SIZE, keyword: filters.keyword ?? ticketSearch, status: filters.status ?? ticketListStatus, priority: filters.priority ?? ticketPriority });
       setTickets(pageItems(result));
       setTicketPageInfo(pageInfo(result, REVIEW_PAGE_SIZE));
       setTicketPage(result?.page ?? page);
@@ -1133,11 +1156,11 @@ function AdminOperationsCenter() {
     await loadTickets();
   };
 
-  const loadWebEvidence = async (page = webEvidencePage, status = webEvidenceStatus, origin = webEvidenceOrigin) => {
+  const loadWebEvidence = async (page = webEvidencePage, status = webEvidenceStatus, origin = webEvidenceOrigin, filters = {}) => {
     setActionStatus({ type: 'loading', text: 'Loading external web evidence queue...' });
     try {
       const [resultResponse, summaryResponse] = await Promise.allSettled([
-        getWebEvidence({ page, size: REVIEW_PAGE_SIZE, status, origin }),
+        getWebEvidence({ page, size: REVIEW_PAGE_SIZE, keyword: filters.keyword ?? webEvidenceFilter, category: filters.category ?? webEvidenceCategory, status, origin }),
         getWebEvidenceSummary(),
       ]);
       if (resultResponse.status === 'rejected') throw resultResponse.reason;
@@ -1246,10 +1269,10 @@ function AdminOperationsCenter() {
     window.location.reload();
   };
 
-  const loadDocuments = async (page = documentPage) => {
+  const loadDocuments = async (page = documentPage, filters = {}) => {
     setActionStatus({ type: 'loading', text: 'Loading uploaded documents...' });
     try {
-      const result = await getKnowledgeDocuments({ page, size: LIBRARY_PAGE_SIZE, keyword: documentSearch, status: 'ACTIVE' });
+      const result = await getKnowledgeDocuments({ page, size: LIBRARY_PAGE_SIZE, keyword: filters.keyword ?? documentSearch, category: filters.category ?? documentCategory, status: 'ACTIVE' });
       const loadedDocuments = pageItems(result);
       setDocuments(loadedDocuments);
       setDocumentPageInfo(pageInfo(result, LIBRARY_PAGE_SIZE));
@@ -2345,7 +2368,7 @@ Prevention controls:
       <div className="libraryTabs"><button className="active" type="button">Knowledge Packs</button><button type="button" onClick={() => openModal('coverageDetail')}>Categories</button></div>
       <div className="knowledgeLibrary knowledgePackLayout">
         <div className="libraryList libraryListOnly">
-          <div className="libraryFilterBar"><input className="librarySearch" value={articleSearch} placeholder="Search knowledge packs..." onChange={(event) => setArticleSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadArticles(1); }} /><select aria-label="Category filter"><option>All Categories</option></select><select aria-label="Status filter"><option>All Status</option></select><select aria-label="Sort knowledge packs"><option>Sort: Updated</option></select></div>
+          <div className="libraryFilterBar"><input className="librarySearch" value={articleSearch} placeholder="Search knowledge packs..." onChange={(event) => setArticleSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadArticles(1); }} /><select aria-label="Category filter" value={articleCategory} onChange={(event) => { setArticleCategory(event.target.value); loadArticles(1, { category: event.target.value }); }}><option value="">All Categories</option>{[...Object.keys(categoryIconMap), 'General'].map((category) => <option key={category} value={category}>{category}</option>)}</select><span className="filterContext">Published knowledge</span><button type="button" onClick={() => loadArticles(1)}>Apply</button></div>
           {actionStatus.text && activePage === 'knowledge' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
           {pagedArticles.length ? pagedArticles.map((article) => (
             <button className="knowledgePackRow" type="button" key={article.id} onClick={() => navigateAdmin(`/admin/knowledge/packs/${article.id}`)}>
@@ -2373,7 +2396,7 @@ Prevention controls:
       <div className="libraryTabs"><button className="active" type="button">Documents</button><button type="button" onClick={openWebEvidencePage}>Web Sources</button></div>
       <div className="knowledgeLibrary sourceTableLayout">
         <div className="libraryList libraryListOnly">
-          <div className="libraryFilterBar"><input className="librarySearch" value={documentSearch} placeholder="Search documents..." onChange={(event) => setDocumentSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadDocuments(1); }} /><select aria-label="Document type filter"><option>All Types</option></select><select aria-label="Document status filter"><option>All Status</option></select><select aria-label="Sort documents"><option>Sort: Status</option></select></div>
+          <div className="libraryFilterBar"><input className="librarySearch" value={documentSearch} placeholder="Search documents..." onChange={(event) => setDocumentSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadDocuments(1); }} /><select aria-label="Document category filter" value={documentCategory} onChange={(event) => { setDocumentCategory(event.target.value); loadDocuments(1, { category: event.target.value }); }}><option value="">All Categories</option>{[...Object.keys(categoryIconMap), 'General'].map((category) => <option key={category} value={category}>{category}</option>)}</select><span className="filterContext">Active source documents</span><button type="button" onClick={() => loadDocuments(1)}>Apply</button></div>
           <div className="sourceTableHead"><span>Name</span><span>Type</span><span>Source</span><span>Chunks</span><span>Status</span><span>Updated</span><span>Actions</span></div>
           {actionStatus.text && activePage === 'documents' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}
           {pagedDocuments.length ? pagedDocuments.map((document) => (
@@ -2525,6 +2548,7 @@ Prevention controls:
       <div className="activityLogWorkspace">
         <div className="topRecordList">
           <input className="librarySearch" value={aiLogSearch} placeholder="Search AI logs..." onChange={(event) => setAiLogSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadAiLogs(1); }} />
+          <div className="libraryFilterBar"><select aria-label="Filter AI logs by answer source" value={aiLogSource} onChange={(event) => { setAiLogSource(event.target.value); loadAiLogs(1, { sourceType: event.target.value }); }}><option value="">All answer sources</option><option value="INTERNAL_RAG">Internal knowledge</option><option value="WEB_SEARCH">Web search</option><option value="AI_ASSISTED_WEB">AI-assisted web</option><option value="AI_ONLY">AI only</option><option value="NONE">No reliable answer</option></select><select aria-label="Filter AI logs by feedback" value={aiLogFeedback} onChange={(event) => { setAiLogFeedback(event.target.value); loadAiLogs(1, { feedback: event.target.value }); }}><option value="">All feedback</option><option value="USEFUL">Useful</option><option value="NOT_USEFUL">Not useful</option></select><button type="button" onClick={() => loadAiLogs(1)}>Apply</button></div>
           {pagedAiLogs.length ? pagedAiLogs.map((log) => (
             <button className="recordButton" type="button" key={log.id} onClick={() => openAiLogDetail(log)}>
               <strong>{log.question}</strong>
@@ -2559,6 +2583,11 @@ Prevention controls:
       pageMeta={webEvidencePageInfo}
       statusFilter={webEvidenceStatus}
       originFilter={webEvidenceOrigin}
+      filterKeyword={webEvidenceFilter}
+      categoryFilter={webEvidenceCategory}
+      onFilterKeywordChange={setWebEvidenceFilter}
+      onSearchFilter={() => loadWebEvidence(1)}
+      onCategoryFilterChange={(category) => { setWebEvidenceCategory(category); loadWebEvidence(1, webEvidenceStatus, webEvidenceOrigin, { category }); }}
       onStatusFilterChange={(status) => {
         setWebEvidenceStatus(status);
         loadWebEvidence(1, status, webEvidenceOrigin);
@@ -2614,7 +2643,7 @@ Prevention controls:
           </div>
         </div>
         <div className="topRecordList full">
-          <input className="librarySearch" value={ticketSearch} placeholder="Search tickets..." onChange={(event) => setTicketSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadTickets(1); }} />
+          <div className="libraryFilterBar"><input className="librarySearch" value={ticketSearch} placeholder="Search tickets..." onChange={(event) => setTicketSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') loadTickets(1); }} /><select aria-label="Filter tickets by status" value={ticketListStatus} onChange={(event) => { setTicketListStatus(event.target.value); loadTickets(1, { status: event.target.value }); }}><option value="">All statuses</option><option value="OPEN">Open</option><option value="IN_PROGRESS">In progress</option><option value="RESOLVED">Resolved</option><option value="CLOSED">Closed</option></select><select aria-label="Filter tickets by priority" value={ticketPriority} onChange={(event) => { setTicketPriority(event.target.value); loadTickets(1, { priority: event.target.value }); }}><option value="">All priorities</option><option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option></select><button type="button" onClick={() => loadTickets(1)}>Apply</button></div>
           {tickets.length ? tickets.map((ticket) => (
             <button className="recordButton" type="button" key={ticket.id || ticket.ticketId || ticket.title} onClick={() => openTicketDetail(ticket)}>
               <strong>{ticket.title}</strong>

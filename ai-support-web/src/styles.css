@@ -4685,6 +4685,24 @@ button {
   .adminUnavailableState button { margin-left: 34px; }
 }
 
+@media (max-width: 820px) {
+  html, body, #root { width: 100%; min-width: 320px; overflow-x: clip; }
+  .pageShell { display: flex; width: 100%; min-width: 0; grid-template-columns: minmax(0, 1fr); flex-direction: column; align-items: stretch; overflow-x: clip; }
+  .brandPanel { width: 100%; min-width: 0; min-height: 0; padding: 22px 20px; }
+  .brandLockup { min-width: 0; }
+  .brandLockup h1 { font-size: 30px; white-space: normal; }
+  .brandLockup p { overflow-wrap: anywhere; }
+  .authColumn { width: 100%; max-width: 480px; min-width: 0; margin: auto; padding: 18px 16px 26px; }
+  .authCard, .healthCard { width: 100%; min-width: 0; }
+  .oauthCard { padding: 24px 18px 22px; }
+  .authHeader h2 { font-size: 25px; overflow-wrap: anywhere; }
+  .authHeader p, .providerSetupHint, .authPrivacy { overflow-wrap: anywhere; }
+  .oauthButton { grid-template-columns: 24px minmax(0, 1fr); gap: 9px; padding-inline: 12px; }
+  .oauthButton small { grid-column: 2; white-space: normal; }
+  .healthCard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .healthCard .statusItem { min-width: 0; padding-inline: 8px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -5351,4 +5369,122 @@ button {
   .detailMetaGrid { grid-template-columns: minmax(0, 1fr); }
   .userManagementHeader { flex-direction: column; }
   .userCount { display: flex; align-items: baseline; gap: 6px; }
+}
+
+/* Final shared polish for the operations suite. */
+:root {
+  --primary: #087a57;
+  --primary-hover: #066a4b;
+  --primary-light: #e9f7f0;
+  --sidebar-bg: #102e2b;
+  --sidebar-hover: #1a4840;
+  --sidebar-active: #087a57;
+  --page-bg: #f6f8f7;
+  --surface: #fff;
+  --surface-secondary: #f9fbfa;
+  --border: #e5ebe8;
+  --border-strong: #d4ded8;
+  --text-primary: #132723;
+  --text-secondary: #667a72;
+  --text-muted: #94a39b;
+  --success: #159d6a;
+  --warning: #c88720;
+  --danger: #c94d49;
+  --info: #3978d7;
+}
+
+.libraryFilterBar,
+.libraryToolbar { min-width: 0; }
+.libraryFilterBar input,
+.libraryFilterBar select,
+.libraryFilterBar button,
+.libraryToolbar input,
+.libraryToolbar select,
+.libraryToolbar button {
+  min-height: 40px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+}
+.libraryFilterBar input,
+.libraryToolbar input { padding: 0 12px; }
+.libraryFilterBar select,
+.libraryToolbar select { padding: 0 30px 0 11px; }
+.libraryFilterBar button,
+.libraryToolbar button { padding: 0 14px; font-weight: 650; cursor: pointer; }
+.filterContext { align-self: center; padding: 0 8px; color: var(--text-secondary); font-size: 12px; }
+.libraryFilterBar button:hover,
+.libraryToolbar button:hover { border-color: var(--primary); color: var(--primary); }
+.libraryFilterBar input:focus-visible,
+.libraryFilterBar select:focus-visible,
+.libraryFilterBar button:focus-visible,
+.libraryToolbar input:focus-visible,
+.libraryToolbar select:focus-visible,
+.libraryToolbar button:focus-visible,
+.libraryPager button:focus-visible { outline: 3px solid rgb(8 122 87 / 22%); outline-offset: 2px; }
+
+.libraryPager { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; padding: 14px 0 2px; }
+.libraryPager > span { margin: 0 6px; color: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.libraryPager button { min-width: 36px; height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-primary); cursor: pointer; }
+.libraryPager button:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.libraryPager button.active { border-color: var(--primary); background: var(--primary); color: #fff; font-weight: 700; }
+.libraryPager button:disabled { opacity: .45; cursor: not-allowed; }
+
+.knowledgePackRow,
+.sourceTableRow,
+.recordButton,
+.actionRecordGrid > button,
+.webEvidenceQueue > button { transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease; }
+.knowledgePackRow:hover,
+.sourceTableRow:hover,
+.recordButton:hover,
+.actionRecordGrid > button:hover,
+.webEvidenceQueue > button:hover { border-color: #b6d7c8; background-color: #f5fbf8; }
+.adminActionStatus { overflow-wrap: anywhere; }
+.recordButton > strong,
+.knowledgePackRow strong,
+.sourceTableRow strong { overflow-wrap: anywhere; }
+.adminPageSurface,
+.adminSection,
+.assistantWorkspace,
+.webEvidenceWorkspace,
+.reviewAdminPage { min-width: 0; }
+
+@media (max-width: 760px) {
+  .libraryFilterBar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: 8px; }
+  .libraryFilterBar > input:first-child { grid-column: 1 / -1; width: 100%; }
+  .libraryFilterBar > select,
+  .libraryFilterBar > button { width: 100%; min-width: 0; }
+  .filterContext { grid-column: 1 / -1; padding-inline: 2px; }
+  .libraryPager { justify-content: center; gap: 5px; }
+  .libraryPager > span { flex: 1 0 100%; order: 5; text-align: center; }
+  .libraryPager button { min-width: 34px; height: 36px; }
+  .sourceTableLayout .libraryList,
+  .activityLogWorkspace,
+  .topRecordList,
+  .actionRecordGrid,
+  .webEvidenceReviewGrid,
+  .webEvidenceQueue,
+  .webEvidenceDetail,
+  .knowledgeLibrary { min-width: 0; max-width: 100%; }
+  .sourceTableHead,
+  .sourceTableRow,
+  .activityTableHead,
+  .activityTable button { min-width: 680px; }
+  .webEvidenceQueue .libraryToolbar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .webEvidenceQueue .libraryToolbar > strong { grid-column: 1 / -1; }
+  .webEvidenceQueue .libraryToolbar > input { grid-column: 1 / -1; width: 100%; }
+  .webEvidenceQueue .libraryToolbar > select { width: 100%; min-width: 0; }
+  .adminPageHeader { min-width: 0; }
+  .adminPageHeader h2 { overflow-wrap: anywhere; }
+  .actionRecordGrid > button { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .actionRecordGrid > button > p { grid-column: auto; }
+  .actionRecordGrid > button > b,
+  .actionRecordGrid > button > em { justify-self: start; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
