@@ -124,9 +124,9 @@ function UserWorkspace({ onSignOut }) {
   return (
     <main className="workspaceShell">
       <header className="workspaceTopbar">
-        <a className="workspaceBrand" href="/workspace" aria-label="AegisCloud workspace">
+        <a className="workspaceBrand" href="/workspace" aria-label="CloudOps workspace">
           <span className="workspaceBrandMark"><Shield size={23} /><b>A</b></span>
-          <span><strong>AegisCloud</strong><small>CloudOps Knowledge Support</small></span>
+          <span><strong>CloudOps</strong><small>Knowledge Base &amp; Ticket Assistant</small></span>
         </a>
         <div className="workspaceUser">
           <span className="workspaceAvatar">{(user?.displayName || user?.username || 'U').slice(0, 1).toUpperCase()}</span>
@@ -408,15 +408,15 @@ function App() {
   if (isAdminPath && hasAdminAccess) return <AdminOperationsCenter />;
   if (currentPath === '/workspace' && hasWorkspaceAccess) return <UserWorkspace onSignOut={signOut} />;
   if (currentPath === '/auth/callback' || isAdminPath || currentPath === '/workspace') {
-    return <main className="callbackShell"><div className="callbackSpinner" /><p>Securing your AegisCloud session...</p></main>;
+    return <main className="callbackShell"><div className="callbackSpinner" /><p>Securing your CloudOps session...</p></main>;
   }
 
   return (
     <main className="pageShell">
-      <section className="brandPanel" aria-label="AegisCloud identity">
+      <section className="brandPanel" aria-label="CloudOps identity">
         <div className="brandLockup">
           <div className="brandMark"><Shield size={60} strokeWidth={1.9} /><span>A</span></div>
-          <div><h1>AegisCloud</h1><p>CloudOps AI Knowledge Support</p></div>
+          <div><h1>CloudOps</h1><p>Knowledge Base &amp; Ticket Assistant</p></div>
         </div>
         <div className="goldLine" />
         <p className="brandCopy">Securely access internal knowledge, ask CloudOps questions, and get answers grounded in trusted sources.</p>
@@ -425,13 +425,13 @@ function App() {
           <li><Check size={15} />Web search when evidence is needed</li>
           <li><Check size={15} />Answers grounded in trusted sources</li>
         </ul>
-        <p className="copyright">© 2026 AegisCloud Inc. All rights reserved.</p>
+        <p className="copyright">CloudOps Knowledge Base &amp; Ticket Assistant</p>
       </section>
 
       <section className="authColumn" aria-label="Authentication">
         <div className="authCard oauthCard">
           <div className="authHeader">
-            <h2>Sign in to AegisCloud</h2>
+            <h2>Sign in to CloudOps</h2>
             <p>Continue with a trusted account to access your workspace.</p>
           </div>
           {notice.text && <div className={`notice ${notice.type}`}>{notice.text}</div>}

@@ -1,4 +1,4 @@
-# AegisCloud Knowledge Library Rules
+# CloudOps Knowledge Library Rules
 
 You are an enterprise AI knowledge base architect. Your job is to continuously maintain and optimize the Knowledge Library, not simply generate new documents.
 

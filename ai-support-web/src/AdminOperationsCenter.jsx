@@ -2359,7 +2359,7 @@ Prevention controls:
         <div>
           <span>Knowledge Library</span>
           <h2>Knowledge Packs</h2>
-          <p>Organize and maintain reviewed knowledge packs and articles used by AegisCloud.</p>
+          <p>Organize and maintain reviewed knowledge packs and articles used by CloudOps.</p>
         </div>
         <div>
           <button className="primaryAction" type="button" onClick={() => openModal('uploadArticle')}>+ New Knowledge Pack</button>
@@ -2510,14 +2510,14 @@ Prevention controls:
         </div>
       </aside>
       <div className="assistantChatPanel">
-        <div className="assistantChatHeader"><div><span className="panelKicker">AEGIS AI</span><h2>{selectedAiLog?.question || assistantQuestion ? 'Conversation' : 'How can AegisCloud help you today?'}</h2><p>Search your knowledge, investigate issues, and get grounded AI answers.</p></div><div className="assistantHeaderActions"><button type="button" onClick={() => { setQuestionAnswer(null); setSelectedAiLog(null); setAssistantQuestion(''); setQuestionForm({ question: '', file: null }); }}>New Chat</button><button type="button" aria-label={assistantFullscreen ? 'Exit full screen' : 'Open full screen'} onClick={() => setAssistantFullscreen((value) => !value)}>{assistantFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</button></div></div>
+        <div className="assistantChatHeader"><div><span className="panelKicker">CLOUDOPS AI</span><h2>{selectedAiLog?.question || assistantQuestion ? 'Conversation' : 'How can CloudOps help you today?'}</h2><p>Search your knowledge, investigate issues, and get grounded AI answers.</p></div><div className="assistantHeaderActions"><button type="button" onClick={() => { setQuestionAnswer(null); setSelectedAiLog(null); setAssistantQuestion(''); setQuestionForm({ question: '', file: null }); }}>New Chat</button><button type="button" aria-label={assistantFullscreen ? 'Exit full screen' : 'Open full screen'} onClick={() => setAssistantFullscreen((value) => !value)}>{assistantFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</button></div></div>
         <div className="assistantMessages">
-          {!questionAnswer && !selectedAiLog ? <div className="assistantWelcome"><div className="assistantSpark">✦</div><h2>How can AegisCloud help you today?</h2><p>Ask a precise CloudOps question and I will search internal knowledge first, then trusted web evidence when needed.</p><div className="assistantQuickActions"><button type="button" onClick={() => setQuestionForm((current) => ({ ...current, question: 'Troubleshoot a production incident' }))}>Troubleshoot an incident</button><button type="button" onClick={() => setQuestionForm((current) => ({ ...current, question: 'Search internal knowledge for a technical answer' }))}>Search internal knowledge</button><button type="button" onClick={() => setQuestionForm((current) => ({ ...current, question: 'Explain a technical concept clearly' }))}>Explain a technical concept</button><button type="button" onClick={openWebEvidencePage}>Find web evidence</button></div></div> : <div className="assistantThread">
+          {!questionAnswer && !selectedAiLog ? <div className="assistantWelcome"><div className="assistantSpark">✦</div><h2>How can CloudOps help you today?</h2><p>Ask a precise CloudOps question and I will search internal knowledge first, then trusted web evidence when needed.</p><div className="assistantQuickActions"><button type="button" onClick={() => setQuestionForm((current) => ({ ...current, question: 'Troubleshoot a production incident' }))}>Troubleshoot an incident</button><button type="button" onClick={() => setQuestionForm((current) => ({ ...current, question: 'Search internal knowledge for a technical answer' }))}>Search internal knowledge</button><button type="button" onClick={() => setQuestionForm((current) => ({ ...current, question: 'Explain a technical concept clearly' }))}>Explain a technical concept</button><button type="button" onClick={openWebEvidencePage}>Find web evidence</button></div></div> : <div className="assistantThread">
             <div className="assistantUserMessage">{questionAnswer?.question || assistantQuestion || selectedAiLog?.question}</div>
             <article className={`assistantAnswerMessage ${!hasUsableAnswer(questionAnswer || selectedAiLog) ? 'answerUnavailable' : ''}`}><div className="answerMeta"><span className="routeBadge">{answerRouteLabel(questionAnswer || selectedAiLog)}</span><span>{answerEngineLabel(questionAnswer || selectedAiLog)}</span>{hasUsableAnswer(questionAnswer || selectedAiLog) && <button type="button" onClick={() => copyToClipboard(questionAnswer?.answer || selectedAiLog?.answer, 'Answer copied.')}>Copy</button>}</div><KnowledgeContentBlock content={(questionAnswer?.answer || selectedAiLog?.answer) || 'No reliable answer was generated. Review the retrieval trace or retry with a more specific question.'} /><div className="assistantSources"><strong>{hasUsableAnswer(questionAnswer || selectedAiLog) ? 'Grounding' : 'Status'}</strong><span>{hasUsableAnswer(questionAnswer || selectedAiLog) ? (questionAnswer?.sourceTitle || selectedAiLog?.sourceTitle || answerRouteLabel(questionAnswer || selectedAiLog)) : 'No verified source was available'}</span><span>{hasUsableAnswer(questionAnswer || selectedAiLog) ? (questionAnswer?.sourceDomain || selectedAiLog?.sourceDocumentName || 'Source recorded by backend') : 'Web and model fallback were not sufficient'}</span></div></article>
           </div>}
         </div>
-        <form className="assistantComposer" onSubmit={submitAiQuestion}><textarea value={questionForm.question} rows={2} placeholder="Ask a question..." aria-label="Ask AegisCloud a question" onChange={(event) => setQuestionForm((current) => ({ ...current, question: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form.requestSubmit(); } }} /><div><label className="composerAttach"><Upload size={15} />Attach<input type="file" accept=".txt,.md,.pdf,.docx" onChange={(event) => setQuestionForm((current) => ({ ...current, file: event.target.files?.[0] ?? null }))} /></label><button type="button" onClick={openGlobalSearch}><Search size={15} />Search</button><button type="button" onClick={openWebEvidencePage}><Globe2 size={15} />Web Search</button><button className="primaryAction" type="submit">Send <ChevronDown size={15} /></button></div>{actionStatus.text && activePage === 'assistant' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}</form>
+        <form className="assistantComposer" onSubmit={submitAiQuestion}><textarea value={questionForm.question} rows={2} placeholder="Ask a question..." aria-label="Ask CloudOps a question" onChange={(event) => setQuestionForm((current) => ({ ...current, question: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form.requestSubmit(); } }} /><div><label className="composerAttach"><Upload size={15} />Attach<input type="file" accept=".txt,.md,.pdf,.docx" onChange={(event) => setQuestionForm((current) => ({ ...current, file: event.target.files?.[0] ?? null }))} /></label><button type="button" onClick={openGlobalSearch}><Search size={15} />Search</button><button type="button" onClick={openWebEvidencePage}><Globe2 size={15} />Web Search</button><button className="primaryAction" type="submit">Send <ChevronDown size={15} /></button></div>{actionStatus.text && activePage === 'assistant' && <div className={`adminActionStatus ${actionStatus.type}`}>{actionStatus.text}</div>}</form>
       </div>
     </section>
   );
@@ -3372,7 +3372,7 @@ Prevention controls:
         <div className="adminLogo">
           <Cloud size={38} />
           <div>
-            <strong>AegisCloud</strong>
+            <strong>CloudOps</strong>
             <span>CloudOps AI Knowledge Platform</span>
           </div>
         </div>
@@ -3412,7 +3412,7 @@ Prevention controls:
           <div className="adminTopbar">
             <button className="mobileMenuButton" type="button" aria-label="Open navigation" onClick={() => setMobileSidebarOpen(true)}><Menu size={20} /></button>
             <div className="adminTitleBlock">
-              <span className="adminEyebrow">AegisCloud Operations</span>
+              <span className="adminEyebrow">CloudOps Operations</span>
               <h1>{pageHeadings[activePage]?.[0] ?? 'Dashboard'}</h1>
               <p>{pageHeadings[activePage]?.[1] ?? 'System overview and key operational metrics'}</p>
             </div>

@@ -1,4 +1,4 @@
-# CloudOps AI Knowledge Support Platform
+# CloudOps Knowledge Base & Ticket Assistant
 
 An enterprise-style AI knowledge support platform for CloudOps and B2B SaaS support teams.
 
@@ -193,7 +193,7 @@ The current implementation searches internal document/article content before ext
 ### Project Structure
 
 ```text
-ai-knowledge-ticket-assistant
+cloudops-knowledge-base-ticket-assistant
 |-- ai-support-server   Spring Boot backend API
 |-- ai-support-web      Vite frontend workspace
 |-- docs                SQL scripts and learning notes
