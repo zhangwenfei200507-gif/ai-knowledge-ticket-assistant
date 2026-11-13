@@ -37,10 +37,6 @@ flowchart LR
 
 The answer path searches internal sources before optional external evidence and LLM synthesis. Vector embeddings and vector reranking are not implemented.
 
-## Screenshots
-
-No feature screenshots are included yet. The available sign-in capture shows an authentication-service-unavailable state, while local dashboard mockups contain unverified sample data. They are not presented as working product screens. Capture real screens after running the backend, database, Redis and configured OAuth providers with isolated sample data.
-
 ## Installation and Quick Start
 
 Prerequisites: JDK 17, Docker Desktop/Engine, Node.js and npm. Docker Compose provides the local PostgreSQL and Redis services. Create `.env` from `.env.example`, set a private JWT secret, and add OAuth/provider credentials only when using those integrations. Never commit `.env` or provider secrets.
@@ -78,9 +74,15 @@ OAuth, provider-backed LLM answers and external-web retrieval require their corr
 - Kept answer generation evidence-first and traceable; unresolved requests can enter the ticket workflow.
 - Used lexical/full-text coverage rather than claiming vector semantic retrieval.
 
-## Testing and Verification
+## Build Verification
 
-Audit date: 13 November 2026. From `ai-support-server`, `.\mvnw.cmd -q test` passed 67 tests with zero failures, errors or skips. From `ai-support-web`, `npm run build` completed successfully; Vite reported a bundle-size warning. No browser end-to-end test suite was found. External OAuth, OpenAI and web-provider flows were not exercised in this run.
+The backend can be packaged without running the local-only test suite from `ai-support-server`:
+
+```powershell
+.\mvnw.cmd -DskipTests package
+```
+
+Build the frontend from `ai-support-web` with `npm ci` followed by `npm run build`. Provider integrations require local credentials and have not been represented as production-verified here.
 
 ## Current Limitations
 

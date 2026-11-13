@@ -26,3 +26,21 @@ dist/
 /gap-article.json
 /archive-test.md
 /redis-guide.md
+
+# Keep local verification sources and machine-specific runtime profile private.
+/ai-support-server/src/test/
+/ai-support-server/src/main/resources/application-local.yml
+/rule.md
+/docs/eval/
+/docs/knowledge/
+/docs/ai-answer-audit-*.md
+/docs/backend-open-issues-*.md
+/docs/knowledge-base-optimization-plan.md
+/docs/knowledge-library-v2.md
+/docs/learning-roadmap.md
+/docs/llm-cost-control-strategy.md
+/docs/production-readiness-audit-*.md
+/docs/sql/audit_knowledge_quality_*.sql
+/Pictures/
+/package-lock.json
+/ai-support-server/[[]Help
