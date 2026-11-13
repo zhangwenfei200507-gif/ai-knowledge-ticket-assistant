@@ -44,11 +44,9 @@ Prerequisites: JDK 17, Docker Desktop/Engine, Node.js and npm. Docker Compose pr
 ```powershell
 copy .env.example .env
 docker compose up -d
-cd ai-support-server
-.\mvnw.cmd -q test
 ```
 
-Initialize a new database by applying the SQL scripts in `docs/sql` in numeric order. For an existing database, apply only migrations that have not already run; do not replay scripts blindly.
+Initialize a new database by applying the SQL scripts in `ai-support-server/src/main/resources/db/manual` in numeric order. For an existing database, apply only migrations that have not already run; do not replay scripts blindly. Product knowledge samples are under `ai-support-server/src/main/resources/knowledge-seed/cloudops`.
 
 Start the backend from `ai-support-server` after configuring `.env`:
 
@@ -76,7 +74,7 @@ OAuth, provider-backed LLM answers and external-web retrieval require their corr
 
 ## Build Verification
 
-The backend can be packaged without running the local-only test suite from `ai-support-server`:
+Package the backend from `ai-support-server`:
 
 ```powershell
 .\mvnw.cmd -DskipTests package
